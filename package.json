@@ -1,0 +1,21 @@
+{
+  "name": "altus-gym",
+  "version": "1.0.0",
+  "description": "ALTUS GYM - Sistema de Administración PWA para Gimnasios",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build": "cd client && npm run build",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "start": "cd server && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["gym", "fitness", "pwa", "react", "nodejs"],
+  "author": "ALTUS GYM",
+  "license": "MIT"
+}
+
