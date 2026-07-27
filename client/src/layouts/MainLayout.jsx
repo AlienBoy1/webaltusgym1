@@ -8,6 +8,7 @@ import NotificationPrompt from '../components/NotificationPrompt'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
+import QyntraLogo from '../components/QyntraLogo'
 
 const navItems = [
   { path: '/dashboard', icon: FiHome, label: 'Inicio' },
@@ -100,10 +101,8 @@ export default function MainLayout() {
               </button>
             )}
             <NavLink to="/dashboard" className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
-                <span className="font-display text-lg">A</span>
-              </div>
-              <span className="font-display text-xl tracking-wider hidden sm:block">ALTUS</span>
+              <QyntraLogo size="sm" rounded="lg" />
+              <span className="font-display text-xl tracking-wider hidden sm:block">QYNTRA</span>
             </NavLink>
             
             {/* Search Bar */}

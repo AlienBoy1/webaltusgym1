@@ -1,7 +1,7 @@
 {
-  "name": "altus-gym",
+  "name": "qyntra-gym",
   "version": "1.0.0",
-  "description": "ALTUS GYM - Sistema de Administración PWA para Gimnasios",
+  "description": "QYNTRA GYM - Sistema de Administración PWA para Gimnasios",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
@@ -15,7 +15,7 @@
     "concurrently": "^8.2.2"
   },
   "keywords": ["gym", "fitness", "pwa", "react", "nodejs"],
-  "author": "ALTUS GYM",
+  "author": "QYNTRA GYM",
   "license": "MIT"
 }
 

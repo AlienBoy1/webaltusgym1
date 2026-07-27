@@ -6,7 +6,7 @@ const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViE
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'UUxI4O8-FbRouAevSmBQ6o18hgE4nSG3qwvJTfKc-ls'
 
 webpush.setVapidDetails(
-  'mailto:admin@altusgym.com',
+  'mailto:admin@qyntragym.com',
   VAPID_PUBLIC_KEY,
   VAPID_PRIVATE_KEY
 )

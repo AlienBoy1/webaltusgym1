@@ -9,7 +9,7 @@ const getApiURL = () => {
   
   // Production mode - use environment variable or default
   if (import.meta.env.PROD) {
-    return import.meta.env.VITE_API_URL || 'https://altus-gym-server.onrender.com/api'
+    return import.meta.env.VITE_API_URL || 'https://qyntra-gym-server.onrender.com/api'
   }
   
   // Get current hostname

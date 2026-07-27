@@ -23,7 +23,7 @@ git status
 git add .
 
 # 3. Hacer commit
-git commit -m "feat: Sistema completo ALTUS GYM - Registro con código de acceso, badges, clases, notificaciones y más"
+git commit -m "feat: Sistema completo QYNTRA GYM - Registro con código de acceso, badges, clases, notificaciones y más"
 
 # 4. Hacer push
 git push origin main
@@ -37,7 +37,7 @@ Si quieres empezar con un historial limpio:
 # ⚠️ CUIDADO: Esto BORRA todo el historial de commits
 git checkout --orphan new-main
 git add .
-git commit -m "feat: Sistema completo ALTUS GYM - Versión inicial"
+git commit -m "feat: Sistema completo QYNTRA GYM - Versión inicial"
 git branch -D main
 git branch -m main
 git push -f origin main

@@ -21,7 +21,7 @@ export default function NotificationPrompt({ onAccept, onDecline }) {
       if (permission === 'granted') {
         onAccept?.()
         new Notification('¡Notificaciones activadas!', {
-          body: 'Recibirás alertas de ALTUS GYM',
+          body: 'Recibirás alertas de QYNTRA GYM',
           icon: '/favicon.svg'
         })
       }

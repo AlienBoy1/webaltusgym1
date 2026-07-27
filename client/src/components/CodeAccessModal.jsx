@@ -82,7 +82,7 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
       // Store token and user
       localStorage.setItem('token', data.token)
       
-      toast.success('¡Bienvenido a Altus Gym! Tu membresía está lista.', {
+      toast.success('¡Bienvenido a Qyntra Gym! Tu membresía está lista.', {
         duration: 4000
       })
       

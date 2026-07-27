@@ -1,4 +1,4 @@
-const CACHE_NAME = 'altus-gym-v1'
+const CACHE_NAME = 'qyntra-gym-v1'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -105,7 +105,7 @@ self.addEventListener('push', (event) => {
   }
   
   event.waitUntil(
-    self.registration.showNotification(data.title || 'ALTUS GYM', options)
+    self.registration.showNotification(data.title || 'QYNTRA GYM', options)
   )
 })
 
@@ -160,7 +160,7 @@ async function syncWorkouts() {
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('altus-gym-db', 1)
+    const request = indexedDB.open('qyntra-gym-db', 1)
     request.onerror = () => reject(request.error)
     request.onsuccess = () => resolve(request.result)
   })

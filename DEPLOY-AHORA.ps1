@@ -1,7 +1,7 @@
 # Script para hacer commit y push inmediato
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  DEPLOY ALTUS GYM - Commit y Push" -ForegroundColor Cyan
+Write-Host "  DEPLOY QYNTRA GYM - Commit y Push" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -21,7 +21,7 @@ git add -A
 
 Write-Host ""
 Write-Host "💾 Haciendo commit..." -ForegroundColor Cyan
-$commitMsg = "feat: Sistema completo ALTUS GYM - Registro con código de acceso, badges, clases, notificaciones y más"
+$commitMsg = "feat: Sistema completo QYNTRA GYM - Registro con código de acceso, badges, clases, notificaciones y más"
 git commit -m $commitMsg
 
 if ($LASTEXITCODE -eq 0) {

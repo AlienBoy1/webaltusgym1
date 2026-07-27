@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Qyntra mark">
+  <defs>
+    <linearGradient id="markGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="100%" stop-color="#C94A1F"/>
+    </linearGradient>
+  </defs>
+  <!-- Isotipo solo (sin contenedor) -->
+  <circle cx="46" cy="46" r="26" fill="none" stroke="url(#markGrad)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M54 58 L80 84" fill="none" stroke="url(#markGrad)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M32 28 L42 18" fill="none" stroke="url(#markGrad)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+</svg>

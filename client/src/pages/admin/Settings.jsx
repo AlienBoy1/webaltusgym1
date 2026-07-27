@@ -11,8 +11,8 @@ export default function AdminSettings() {
   const [sendingBroadcast, setSendingBroadcast] = useState(false)
   
   const [settings, setSettings] = useState({
-    gymName: 'ALTUS GYM',
-    email: 'contacto@altusgym.com',
+    gymName: 'QYNTRA GYM',
+    email: 'contacto@qyntragym.com',
     phone: '+52 123 456 7890',
     address: 'Av. Principal #123, Ciudad',
     openingHours: '6:00 AM - 10:00 PM',
@@ -219,7 +219,7 @@ export default function AdminSettings() {
                 
                 <div className="bg-dark-300/50 rounded-xl p-4">
                   <h3 className="font-medium mb-2">Base de Datos</h3>
-                  <p className="text-gray-400 text-sm mb-4">MongoDB Atlas - altusGym</p>
+                  <p className="text-gray-400 text-sm mb-4">MongoDB Atlas - qyntraGym</p>
                   <div className="flex items-center gap-2 text-accent-green">
                     <FiDatabase /> Conectado
                   </div>

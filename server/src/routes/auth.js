@@ -166,7 +166,7 @@ router.post('/complete-registration', async (req, res) => {
     await Notification.create({
       user: user._id,
       type: 'welcome',
-      title: '¡Bienvenido a ALTUS GYM!',
+      title: '¡Bienvenido a QYNTRA GYM!',
       body: '¡Comienza tu viaje fitness hoy! Explora las funciones de la app.',
       icon: '🏋️',
       priority: 'high'
@@ -175,7 +175,7 @@ router.post('/complete-registration', async (req, res) => {
     // Generate token
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'altus_secret_key_2024',
+      process.env.JWT_SECRET || 'qyntra_secret_key_2024',
       { expiresIn: '30d' }
     )
     
@@ -296,7 +296,7 @@ router.post('/register', async (req, res) => {
     const notification = new Notification({
       user: user._id,
       type: 'welcome',
-      title: isFirstUser ? '¡Bienvenido Administrador!' : '¡Bienvenido a ALTUS GYM!',
+      title: isFirstUser ? '¡Bienvenido Administrador!' : '¡Bienvenido a QYNTRA GYM!',
       body: isFirstUser 
         ? 'Eres el primer usuario y administrador. Tienes acceso completo al panel de administración.'
         : '¡Comienza tu viaje fitness hoy! Explora las funciones de la app.',
@@ -308,7 +308,7 @@ router.post('/register', async (req, res) => {
     // Generate token
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'altus_secret_key_2024',
+      process.env.JWT_SECRET || 'qyntra_secret_key_2024',
       { expiresIn: '30d' }
     )
     
@@ -362,7 +362,7 @@ router.post('/login', async (req, res) => {
     // Generate token
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'altus_secret_key_2024',
+      process.env.JWT_SECRET || 'qyntra_secret_key_2024',
       { expiresIn: '30d' }
     )
     
@@ -394,7 +394,7 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ message: 'No autorizado' })
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'altus_secret_key_2024')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'qyntra_secret_key_2024')
     const user = await User.findById(decoded.userId).select('-password')
     
     if (!user) {

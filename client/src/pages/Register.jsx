@@ -5,6 +5,7 @@ import { FiUser, FiMail, FiLock, FiUserPlus, FiCheck } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import confetti from 'canvas-confetti'
+import QyntraLogo from '../components/QyntraLogo'
 
 export default function Register() {
   const [name, setName] = useState('')
@@ -74,8 +75,11 @@ export default function Register() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <QyntraLogo size="xl" withGlow />
+          </div>
           <h1 className="font-display text-4xl mb-2">
-            <span className="text-primary-500">ALTUS</span> GYM
+            <span className="text-primary-500">QYNTRA</span> GYM
           </h1>
           <p className="text-gray-400">Únete a la comunidad</p>
         </div>
@@ -95,7 +99,7 @@ export default function Register() {
                 </div>
                 <h2 className="font-display text-2xl mb-4">🎉 ¡Felicidades!</h2>
                 <p className="text-gray-300 mb-2">
-                  Eres el <span className="text-primary-500 font-bold">primer usuario</span> de ALTUS GYM
+                  Eres el <span className="text-primary-500 font-bold">primer usuario</span> de QYNTRA GYM
                 </p>
                 <p className="text-gray-400 mb-6">
                   Has sido asignado como <span className="text-accent-purple font-semibold">Administrador</span> con acceso completo al sistema

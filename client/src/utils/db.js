@@ -1,6 +1,6 @@
 import { openDB } from 'idb'
 
-const DB_NAME = 'altus-gym-db'
+const DB_NAME = 'qyntra-gym-db'
 const DB_VERSION = 1
 
 export const initDB = async () => {

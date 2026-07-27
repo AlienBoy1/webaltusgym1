@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiMail, FiArrowLeft, FiCheck } from 'react-icons/fi'
 import toast from 'react-hot-toast'
+import QyntraLogo from '../components/QyntraLogo'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -28,7 +29,10 @@ export default function ForgotPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-400 via-dark-300 to-dark-400 p-4">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="font-display text-4xl mb-2"><span className="text-primary-500">ALTUS</span> GYM</h1>
+          <div className="flex justify-center mb-4">
+            <QyntraLogo size="xl" withGlow />
+          </div>
+          <h1 className="font-display text-4xl mb-2"><span className="text-primary-500">QYNTRA</span> GYM</h1>
         </div>
         
         <div className="glass rounded-3xl p-8">

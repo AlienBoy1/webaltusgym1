@@ -12,7 +12,7 @@ git add .
 
 # Hacer commit
 Write-Host "`n💾 Haciendo commit..." -ForegroundColor Cyan
-$commitMessage = "feat: Sistema completo ALTUS GYM - Registro con código de acceso, badges, clases, notificaciones y más"
+$commitMessage = "feat: Sistema completo QYNTRA GYM - Registro con código de acceso, badges, clases, notificaciones y más"
 git commit -m $commitMessage
 
 if ($LASTEXITCODE -eq 0) {

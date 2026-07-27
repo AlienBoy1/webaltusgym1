@@ -1,4 +1,4 @@
-# 🏋️ ALTUS GYM - PWA de Administración de Gimnasios
+# 🏋️ QYNTRA GYM - PWA de Administración de Gimnasios
 
 Sistema de administración completo para gimnasios con experiencia de usuario premium.
 
@@ -47,5 +47,5 @@ npm run dev
 - Notificaciones personalizadas
 
 ---
-**ALTUS GYM** - *Supera tus límites* 💪
+**QYNTRA GYM** - *Supera tus límites* 💪
 

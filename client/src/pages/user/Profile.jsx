@@ -557,7 +557,7 @@ export default function Profile() {
 
       {/* App Info */}
       <div className="text-center text-gray-500 text-sm py-4">
-        <p>ALTUS GYM v1.0.0</p>
+        <p>QYNTRA GYM v1.0.0</p>
         <p className="mt-1">Hecho con 💪 para atletas</p>
       </div>
 

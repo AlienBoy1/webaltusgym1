@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiGrid, FiUsers, FiCreditCard, FiFileText, FiSettings, FiArrowLeft, FiClock } from 'react-icons/fi'
+import QyntraLogo from '../components/QyntraLogo'
 
 const sidebarItems = [
   { path: '/admin', icon: FiGrid, label: 'Dashboard', exact: true },
@@ -20,11 +21,9 @@ export default function AdminLayout() {
       <aside className="hidden md:flex w-64 bg-dark-300 flex-col fixed left-0 top-0 bottom-0 border-r border-white/5">
         <div className="p-6 border-b border-white/5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center">
-              <span className="font-display text-xl">A</span>
-            </div>
+            <QyntraLogo size="md" />
             <div>
-              <span className="font-display text-xl tracking-wider">ALTUS</span>
+              <span className="font-display text-xl tracking-wider">QYNTRA</span>
               <span className="text-xs text-primary-500 block">ADMIN PANEL</span>
             </div>
           </div>

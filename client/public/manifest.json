@@ -1,6 +1,6 @@
 {
-  "name": "ALTUS GYM",
-  "short_name": "ALTUS",
+  "name": "QYNTRA GYM",
+  "short_name": "QYNTRA",
   "description": "Sistema de Administración de Gimnasios PWA",
   "start_url": "/",
   "display": "standalone",

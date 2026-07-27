@@ -7,6 +7,7 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import TermsModal from '../components/TermsModal'
 import CodeAccessModal from '../components/CodeAccessModal'
+import QyntraLogo from '../components/QyntraLogo'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -57,7 +58,7 @@ export default function Login() {
   
   const handleAcceptTerms = () => {
     setShowTerms(false)
-    toast.success('Solicitud enviada. Completa tu proceso de suscripción con tu administrador de Altus Gym para obtener tu código de acceso y continuar con tu registro en nuestra app', {
+    toast.success('Solicitud enviada. Completa tu proceso de suscripción con tu administrador de Qyntra Gym para obtener tu código de acceso y continuar con tu registro en nuestra app', {
       duration: 6000
     })
     setRequestEmail('')
@@ -72,8 +73,11 @@ export default function Login() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <QyntraLogo size="xl" withGlow />
+          </div>
           <h1 className="font-display text-4xl mb-2">
-            <span className="text-primary-500">ALTUS</span> GYM
+            <span className="text-primary-500">QYNTRA</span> GYM
           </h1>
           <p className="text-gray-400">Eleva tu potencial</p>
         </div>

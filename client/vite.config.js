@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'ALTUS GYM',
-        short_name: 'ALTUS',
+        name: 'QYNTRA GYM',
+        short_name: 'QYNTRA',
         description: 'Sistema de Administración de Gimnasios',
         theme_color: '#FF6B35',
         background_color: '#0A0A0F',

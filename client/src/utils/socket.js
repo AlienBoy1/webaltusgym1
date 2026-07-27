@@ -75,7 +75,7 @@ export const showNotification = (title, body, options = {}) => {
       body,
       icon: '/favicon.svg',
       badge: '/favicon.svg',
-      tag: options.tag || 'altus-notification',
+      tag: options.tag || 'qyntra-notification',
       requireInteraction: false,
       ...options
     })

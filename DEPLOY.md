@@ -1,4 +1,4 @@
-# Guía de Deploy - ALTUS GYM
+# Guía de Deploy - QYNTRA GYM
 
 ## Variables de Entorno Necesarias
 
@@ -9,8 +9,8 @@ Configurar en el panel de Render:
 ```
 NODE_ENV=production
 PORT=3001
-MONGODB_URI=mongodb+srv://alien:alien@cluster0.xr01zqx.mongodb.net/altusGym?retryWrites=true&w=majority&appName=Cluster0
-JWT_SECRET=altus_secret_key_2024_production
+MONGODB_URI=mongodb+srv://alien:alien@cluster0.xr01zqx.mongodb.net/qyntraGym?retryWrites=true&w=majority&appName=Cluster0
+JWT_SECRET=qyntra_secret_key_2024_production
 CLIENT_URL=https://tu-app-vercel.vercel.app
 ```
 
@@ -19,7 +19,7 @@ CLIENT_URL=https://tu-app-vercel.vercel.app
 Configurar en el panel de Vercel:
 
 ```
-VITE_API_URL=https://altus-gym-server.onrender.com/api
+VITE_API_URL=https://qyntra-gym-server.onrender.com/api
 ```
 
 ## Comandos Git para Nuevo Repositorio
@@ -32,10 +32,10 @@ git init
 git add .
 
 # 3. Crear commit inicial
-git commit -m "feat: Sistema completo de ALTUS GYM con 50+ insignias, XP optimizado y sistema de asistencias"
+git commit -m "feat: Sistema completo de QYNTRA GYM con 50+ insignias, XP optimizado y sistema de asistencias"
 
 # 4. Agregar nuevo repositorio remoto (reemplaza con tu URL)
-git remote add origin https://github.com/TU_USUARIO/altus-gym.git
+git remote add origin https://github.com/TU_USUARIO/qyntra-gym.git
 
 # 5. Cambiar a rama main (si es necesario)
 git branch -M main
@@ -66,7 +66,7 @@ git push -u origin main
 
 ## Verificación Post-Deploy
 
-1. Verificar que el backend responda en: `https://altus-gym-server.onrender.com/api/health`
+1. Verificar que el backend responda en: `https://qyntra-gym-server.onrender.com/api/health`
 2. Verificar que el frontend cargue correctamente
 3. Probar login y funcionalidades principales
 4. Verificar que las insignias se desbloqueen correctamente

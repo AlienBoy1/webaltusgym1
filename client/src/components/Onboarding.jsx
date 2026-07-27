@@ -6,7 +6,7 @@ import api from '../utils/api'
 
 const slides = [
   {
-    title: '¡Bienvenido a ALTUS!',
+    title: '¡Bienvenido a QYNTRA!',
     description: 'Tu compañero de entrenamiento que te ayudará a alcanzar tus metas.',
     emoji: '💪',
     color: 'primary'

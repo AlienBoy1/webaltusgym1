@@ -9,7 +9,7 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ message: 'No autorizado' })
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'altus_secret_key_2024')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'qyntra_secret_key_2024')
     const user = await User.findById(decoded.userId).select('-password')
     
     if (!user) {

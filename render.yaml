@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: altus-gym-server
+    name: qyntra-gym-server
     env: node
     buildCommand: cd server && npm install
     startCommand: cd server && npm start

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiArrowRight, FiZap, FiUsers, FiTrendingUp, FiSmartphone } from 'react-icons/fi'
+import QyntraLogo from '../components/QyntraLogo'
 
 const features = [
   { icon: FiZap, title: 'Entrena Inteligente', desc: 'Rutinas personalizadas según tus metas' },
@@ -32,11 +33,10 @@ export default function Landing() {
             <motion.div 
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg glow-primary"
             >
-              <span className="font-display text-2xl">A</span>
+              <QyntraLogo size="lg" withGlow />
             </motion.div>
-            <span className="font-display text-3xl tracking-wider">ALTUS</span>
+            <span className="font-display text-3xl tracking-wider">QYNTRA</span>
           </div>
           
           <div className="flex items-center gap-4">
@@ -187,14 +187,12 @@ export default function Landing() {
       <footer className="relative z-10 px-6 py-12 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center">
-              <span className="font-display text-lg">A</span>
-            </div>
-            <span className="font-display text-2xl">ALTUS GYM</span>
+            <QyntraLogo size="md" />
+            <span className="font-display text-2xl">QYNTRA GYM</span>
           </div>
           
           <p className="text-gray-500 text-sm">
-            © 2024 ALTUS GYM. Todos los derechos reservados.
+            © {new Date().getFullYear()} QYNTRA GYM. Todos los derechos reservados.
           </p>
           
           <div className="flex gap-6">
@@ -207,4 +205,3 @@ export default function Landing() {
     </div>
   )
 }
-

@@ -55,7 +55,7 @@ const io = new Server(server, {
 })
 
 const PORT = process.env.PORT || 3001
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://alien:alien@cluster0.xr01zqx.mongodb.net/altusGym?retryWrites=true&w=majority&appName=Cluster0'
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://alien:alien@cluster0.xr01zqx.mongodb.net/qyntraGym?retryWrites=true&w=majority&appName=Cluster0'
 
 // Middleware
 app.use(cors({ origin: allowedOrigins, credentials: true }))
@@ -150,7 +150,7 @@ io.on('connection', (socket) => {
 // Connect to MongoDB and start server
 mongoose.connect(MONGODB_URI)
   .then(() => {
-    console.log('✅ Conectado a MongoDB Atlas - altusGym')
+    console.log('✅ Conectado a MongoDB Atlas - qyntraGym')
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
       console.log(`📱 Accede desde tu celular en: http://${LOCAL_IP}:5173`)

@@ -48,7 +48,7 @@ export default function AdminReports() {
   const generatePDF = () => {
     const data = activeTab === 'attendance' ? attendanceData : activeTab === 'revenue' ? revenueData : growthData
     
-    let content = `REPORTE DE ${activeTab.toUpperCase()} - ALTUS GYM\n`
+    let content = `REPORTE DE ${activeTab.toUpperCase()} - QYNTRA GYM\n`
     content += `Generado: ${new Date().toLocaleString()}\n`
     content += `Período: Últimos ${dateRange} días\n\n`
     content += '='.repeat(50) + '\n\n'
