@@ -9,10 +9,17 @@
  * Dry run (no writes to Supabase Auth/DB except migration_id_map optional):
  *   DRY_RUN=1 node scripts/migrate-mongo-to-supabase.js
  */
+import dns from 'dns'
 import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import { MongoClient, ObjectId } from 'mongodb'
 import { randomUUID } from 'crypto'
+
+// Windows/router DNS often breaks Node SRV lookups (querySrv ECONNREFUSED).
+dns.setServers(['8.8.8.8', '1.1.1.1'])
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first')
+}
 
 dotenv.config()
 
