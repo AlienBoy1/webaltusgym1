@@ -1,0 +1,40 @@
+<!--
+  Pegar en Supabase → Authentication → Email Templates → Reset password
+  Subject: Restablece tu contraseña — Qyntra Gym
+  El enlace DEBE usar {{ .ConfirmationURL }} (verifica el token y redirige a /reset-password).
+-->
+<div style="margin:0;padding:0;background:#0B0B0F;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0B0B0F;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;background:#14141C;border-radius:16px;overflow:hidden;border:1px solid #2A2A35;">
+          <tr>
+            <td style="padding:28px 28px 8px;text-align:center;">
+              <div style="display:inline-block;width:48px;height:48px;line-height:48px;background:#FF6B35;color:#ffffff;font-size:28px;font-weight:700;border-radius:10px;">Q</div>
+              <h1 style="margin:16px 0 0;font-size:22px;letter-spacing:0.5px;">
+                <span style="color:#FF6B35;">QYNTRA</span>
+                <span style="color:#ffffff;"> GYM</span>
+              </h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 28px;color:#E5E7EB;text-align:center;">
+              <h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Restablece tu contraseña</h2>
+              <p style="margin:0 0 24px;font-size:15px;line-height:1.5;color:#9CA3AF;">
+                Recibimos una solicitud para cambiar la contraseña de tu cuenta. Pulsa el botón para elegir una nueva.
+              </p>
+              <a href="{{ .ConfirmationURL }}"
+                 style="display:inline-block;background:#FF6B35;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:999px;">
+                Restablecer contraseña
+              </a>
+              <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#6B7280;">
+                Si no pediste este cambio, ignora este correo. El enlace expira pronto.
+              </p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:20px 0 0;font-size:12px;color:#4B5563;">Qyntra Gym</p>
+      </td>
+    </tr>
+  </table>
+</div>

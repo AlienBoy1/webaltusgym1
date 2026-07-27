@@ -5,39 +5,6 @@ import { mapProfile, attachSocial } from '../lib/mappers.js'
 
 const router = express.Router()
 
-function isLocalUrl(url) {
-  return !url || /localhost|127\.0\.0\.1/i.test(url)
-}
-
-/** Prefer real app origin in production — never send reset links to localhost. */
-function resolveClientSiteUrl(req) {
-  const envClient = process.env.CLIENT_URL?.replace(/\/$/, '')
-  const onVercel = Boolean(process.env.VERCEL)
-
-  if (envClient && !(onVercel && isLocalUrl(envClient))) {
-    return envClient
-  }
-
-  const forwardedHost = req.headers['x-forwarded-host']
-  const proto = req.headers['x-forwarded-proto'] || 'https'
-  if (forwardedHost) {
-    return `${proto}://${String(forwardedHost).split(',')[0].trim()}`
-  }
-
-  if (req.headers.origin && !isLocalUrl(req.headers.origin)) {
-    return req.headers.origin.replace(/\/$/, '')
-  }
-
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-
-  return envClient || 'http://localhost:5173'
-}
-
 async function countProfiles() {
   const { count, error } = await supabaseAdmin
     .from('profiles')
@@ -470,7 +437,23 @@ router.post('/forgot-password', async (req, res) => {
       })
     }
 
-    const siteUrl = resolveClientSiteUrl(req)
+    // Prefer real public URL on Vercel; ignore CLIENT_URL if it is still localhost
+    const configured = (process.env.CLIENT_URL || '').replace(/\/$/, '')
+    const isLocalClient =
+      !configured || /localhost|127\.0\.0\.1/i.test(configured)
+    const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/\/$/, '')}`
+      : null
+    const vercelPreview = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`
+      : null
+    const siteUrl =
+      (!isLocalClient && configured) ||
+      vercelProd ||
+      vercelPreview ||
+      configured ||
+      'http://localhost:5173'
+
     const redirectTo = `${siteUrl.replace(/\/$/, '')}/reset-password`
 
     const { error } = await supabaseAdmin.auth.resetPasswordForEmail(normalized, {
@@ -479,7 +462,8 @@ router.post('/forgot-password', async (req, res) => {
     if (error) throw error
 
     res.json({
-      message: 'Te enviamos un enlace para restablecer tu contraseña. Revisa bandeja y spam.'
+      message: 'Te enviamos un enlace para restablecer tu contraseña. Revisa bandeja y spam.',
+      redirectTo
     })
   } catch (error) {
     console.error('Forgot password error:', error)

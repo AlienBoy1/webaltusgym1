@@ -18,12 +18,20 @@ export default function ResetPassword() {
 
   useEffect(() => {
     let mounted = true
+    let settled = false
 
     const markReady = () => {
-      if (mounted) {
-        setReady(true)
-        setChecking(false)
-      }
+      if (!mounted || settled) return
+      settled = true
+      setReady(true)
+      setChecking(false)
+    }
+
+    const markInvalid = () => {
+      if (!mounted || settled) return
+      settled = true
+      setReady(false)
+      setChecking(false)
     }
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
@@ -33,47 +41,47 @@ export default function ResetPassword() {
       }
     })
 
-    async function bootstrapSession() {
+    ;(async () => {
       try {
-        const search = new URLSearchParams(window.location.search)
-        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+        const params = new URLSearchParams(window.location.search)
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
 
-        const code = search.get('code')
+        const code = params.get('code')
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code)
-          if (!error) {
-            markReady()
-            return
-          }
+          if (error) throw error
+          markReady()
+          return
         }
 
-        const tokenHash = search.get('token_hash') || hash.get('token_hash')
-        const type = search.get('type') || hash.get('type') || 'recovery'
-        if (tokenHash) {
+        const tokenHash = params.get('token_hash') || hashParams.get('token_hash')
+        const type = params.get('type') || hashParams.get('type')
+        if (tokenHash && type) {
           const { error } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
             type
           })
-          if (!error) {
-            markReady()
-            return
-          }
+          if (error) throw error
+          markReady()
+          return
         }
 
-        // Implicit flow: access_token in hash after Supabase verify redirect
         const { data } = await supabase.auth.getSession()
         if (data?.session) {
           markReady()
           return
         }
-      } catch (err) {
-        console.error('Reset session bootstrap:', err)
+
+        // Give detectSessionInUrl / hash parsing a moment
+        await new Promise((r) => setTimeout(r, 800))
+        if (!mounted || settled) return
+        const again = await supabase.auth.getSession()
+        if (again.data?.session) markReady()
+        else markInvalid()
+      } catch {
+        if (mounted) markInvalid()
       }
-
-      if (mounted) setChecking(false)
-    }
-
-    bootstrapSession()
+    })()
 
     return () => {
       mounted = false
@@ -143,12 +151,15 @@ export default function ResetPassword() {
               </Link>
             </div>
           ) : checking ? (
-            <div className="text-center text-gray-400">Validando enlace…</div>
+            <div className="text-center space-y-3">
+              <h2 className="font-display text-2xl">Verificando enlace…</h2>
+              <p className="text-gray-400">Un momento mientras validamos tu solicitud.</p>
+            </div>
           ) : !ready ? (
             <div className="text-center space-y-4">
               <h2 className="font-display text-2xl">Enlace inválido o expirado</h2>
               <p className="text-gray-400">
-                Abre el enlace desde el correo de Qyntra Gym. Si expiró, solicita uno nuevo.
+                Abre el enlace más reciente del correo de recuperación. Si expiró, solicita uno nuevo.
               </p>
               <Link to="/forgot-password" className="btn-primary inline-block">
                 Solicitar nuevo enlace
