@@ -41,8 +41,9 @@ export default function MainLayout() {
   
   useEffect(() => { 
     fetchNotifications()
-    if (user?._id) {
-      initSocket(user._id)
+    const id = user?.id || user?._id
+    if (id) {
+      initSocket(id)
     }
     return () => disconnectSocket()
   }, [user])

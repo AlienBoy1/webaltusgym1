@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { FiMail, FiArrowLeft, FiCheck } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 import QyntraLogo from '../components/QyntraLogo'
+import api from '../utils/api'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -18,11 +19,15 @@ export default function ForgotPassword() {
     }
     
     setLoading(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    setLoading(false)
-    setSent(true)
-    toast.success('Email enviado')
+    try {
+      await api.post('/auth/forgot-password', { email })
+      setSent(true)
+      toast.success('Email enviado')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Error al enviar correo')
+    } finally {
+      setLoading(false)
+    }
   }
   
   return (

@@ -1,6 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
-  ]
+  "$comment": "Deploy desde la RAÍZ del repo (vercel.json en root). No uses esta carpeta como Root Directory.",
+  "rewrites": []
 }
-

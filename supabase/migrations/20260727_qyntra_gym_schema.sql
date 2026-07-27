@@ -1,0 +1,3 @@
+-- Mirror of applied remote migration qyntra_gym_schema
+-- Project ref: bmzaoaeykfmmppwrsrxn
+-- See CUTOVER-SUPABASE.md for apply / verify steps.

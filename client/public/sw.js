@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qyntra-gym-v1'
+const CACHE_NAME = 'qyntra-gym-v3'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -30,19 +30,21 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch event - Network first, falling back to cache
+// Fetch: network-first for app shell (HTML/JS/CSS), cache fallback offline
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
     return
   }
-  
-  // API requests - Network only with cache fallback
+
+  if (event.request.method !== 'GET') {
+    return
+  }
+
+  // API: network only with cache fallback
   if (event.request.url.includes('/api/')) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Clone and cache successful GET requests
           if (event.request.method === 'GET' && response.ok) {
             const responseClone = response.clone()
             caches.open(CACHE_NAME).then((cache) => {
@@ -51,34 +53,51 @@ self.addEventListener('fetch', (event) => {
           }
           return response
         })
-        .catch(() => {
-          return caches.match(event.request)
-        })
+        .catch(() => caches.match(event.request))
     )
     return
   }
-  
-  // Static assets - Cache first, falling back to network
+
+  const accept = event.request.headers.get('accept') || ''
+  const isDocument =
+    event.request.mode === 'navigate' ||
+    accept.includes('text/html') ||
+    event.request.url.match(/\.(js|css|html)(\?|$)/)
+
+  // App shell: always prefer network so rebrands appear immediately
+  if (isDocument) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+          }
+          return response
+        })
+        .catch(() => caches.match(event.request).then((r) => r || caches.match('/index.html')))
+    )
+    return
+  }
+
+  // Images/icons/fonts: cache first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cached version and update cache in background
-        fetch(event.request).then((response) => {
-          if (response.ok) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, response)
-            })
-          }
-        }).catch(() => {})
+        fetch(event.request)
+          .then((response) => {
+            if (response.ok) {
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response))
+            }
+          })
+          .catch(() => {})
         return cachedResponse
       }
-      
+
       return fetch(event.request).then((response) => {
         if (response.ok) {
-          const responseClone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone)
-          })
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
         }
         return response
       })

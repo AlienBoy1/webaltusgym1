@@ -1,37 +1,35 @@
 import axios from 'axios'
 
-// Detect if we're on mobile/local network or production
+/**
+ * - Local: Vite proxy /api → localhost:3001 (or VITE_API_URL)
+ * - Producción (Vercel): same-origin /api (sin Render)
+ */
 const getApiURL = () => {
-  // If VITE_API_URL is set, use it (for production)
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
-  
-  // Production mode - use environment variable or default
+
   if (import.meta.env.PROD) {
-    return import.meta.env.VITE_API_URL || 'https://qyntra-gym-server.onrender.com/api'
+    return '/api'
   }
-  
-  // Get current hostname
+
   const hostname = window.location.hostname
-  
-  // If accessing from IP (not localhost), use that IP for API
   if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('vercel.app')) {
     return `http://${hostname}:3001/api`
   }
-  
-  // Default to localhost for development
-  return 'http://localhost:3001/api'
+
+  // Dev: relative /api so Vite proxy handles it (faster, no CORS)
+  return '/api'
 }
 
 const api = axios.create({
   baseURL: getApiURL(),
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 25000
 })
 
-// Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
@@ -43,12 +41,12 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
       if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
         window.location.href = '/login'
       }

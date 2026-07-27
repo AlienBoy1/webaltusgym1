@@ -219,7 +219,7 @@ export default function AdminSettings() {
                 
                 <div className="bg-dark-300/50 rounded-xl p-4">
                   <h3 className="font-medium mb-2">Base de Datos</h3>
-                  <p className="text-gray-400 text-sm mb-4">MongoDB Atlas - qyntraGym</p>
+                  <p className="text-gray-400 text-sm mb-4">MongoDB Atlas</p>
                   <div className="flex items-center gap-2 text-accent-green">
                     <FiDatabase /> Conectado
                   </div>

@@ -1,51 +1,13 @@
-# 🏋️ QYNTRA GYM - PWA de Administración de Gimnasios
+# QYNTRA GYM - PWA de Administración de Gimnasios
 
-Sistema de administración completo para gimnasios con experiencia de usuario premium.
+**Stack:** React (Vite) + Express API en **Vercel** + **Supabase** (Auth/DB). Sin Render.
 
-## 🚀 Características
+## Setup local
+1. `server/.env` con `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+2. `npm run install:all` → `npm run dev`
+3. Migrar Mongo (opcional): ver [CUTOVER-SUPABASE.md](./CUTOVER-SUPABASE.md)
 
-- **Autenticación Segura**: Login con email, redes sociales, 2FA
-- **Panel Admin**: Gestión completa de usuarios, membresías y reportes
-- **Red Social**: Comunidad para compartir progreso y motivación
-- **Seguimiento**: Registro de entrenamientos y objetivos
-- **PWA**: Funciona offline, instalable en cualquier dispositivo
-- **Notificaciones Push**: Alertas y recordatorios personalizados
+## Deploy
+Ver [DEPLOY-VERCEL.md](./DEPLOY-VERCEL.md) — Root Directory = raíz del repo.
 
-## 📦 Instalación
-
-```bash
-npm run install:all
-```
-
-## 🔧 Desarrollo
-
-```bash
-npm run dev
-```
-
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3001
-
-## 🏗️ Tecnologías
-
-- **Frontend**: React 18, Vite, TailwindCSS, Framer Motion
-- **Backend**: Node.js, Express, MongoDB, JWT
-- **PWA**: Service Workers, IndexedDB, Push API
-
-## 📱 Funcionalidades
-
-### Usuarios
-- Registro y perfil personalizado
-- Red social con posts, likes y comentarios
-- Seguimiento de entrenamientos
-- Badges y logros
-
-### Administradores
-- Dashboard con estadísticas
-- Gestión de membresías
-- Reportes de asistencia
-- Notificaciones personalizadas
-
----
-**QYNTRA GYM** - *Supera tus límites* 💪
-
+**QYNTRA GYM** — Supera tus límites
