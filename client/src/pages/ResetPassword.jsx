@@ -11,6 +11,7 @@ export default function ResetPassword() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
   const [ready, setReady] = useState(false)
   const [done, setDone] = useState(false)
   const navigate = useNavigate()
@@ -18,17 +19,61 @@ export default function ResetPassword() {
   useEffect(() => {
     let mounted = true
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const markReady = () => {
+      if (mounted) {
+        setReady(true)
+        setChecking(false)
+      }
+    }
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
       if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
-        setReady(true)
+        markReady()
       }
     })
 
-    // Also try to parse session from URL hash (email link)
-    supabase.auth.getSession().then(({ data }) => {
-      if (data?.session) setReady(true)
-    })
+    async function bootstrapSession() {
+      try {
+        const search = new URLSearchParams(window.location.search)
+        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+
+        const code = search.get('code')
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (!error) {
+            markReady()
+            return
+          }
+        }
+
+        const tokenHash = search.get('token_hash') || hash.get('token_hash')
+        const type = search.get('type') || hash.get('type') || 'recovery'
+        if (tokenHash) {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type
+          })
+          if (!error) {
+            markReady()
+            return
+          }
+        }
+
+        // Implicit flow: access_token in hash after Supabase verify redirect
+        const { data } = await supabase.auth.getSession()
+        if (data?.session) {
+          markReady()
+          return
+        }
+      } catch (err) {
+        console.error('Reset session bootstrap:', err)
+      }
+
+      if (mounted) setChecking(false)
+    }
+
+    bootstrapSession()
 
     return () => {
       mounted = false
@@ -53,7 +98,6 @@ export default function ResetPassword() {
       const accessToken = sessionData?.session?.access_token
 
       if (accessToken) {
-        // Prefer API with admin update for reliability
         await api.post(
           '/auth/update-password',
           { password },
@@ -98,12 +142,13 @@ export default function ResetPassword() {
                 Ir al Login
               </Link>
             </div>
+          ) : checking ? (
+            <div className="text-center text-gray-400">Validando enlace…</div>
           ) : !ready ? (
             <div className="text-center space-y-4">
               <h2 className="font-display text-2xl">Enlace inválido o expirado</h2>
               <p className="text-gray-400">
-                Abre el enlace desde el correo de recuperación. Si no tienes cuenta en Supabase aún,
-                regístrate primero.
+                Abre el enlace desde el correo de Qyntra Gym. Si expiró, solicita uno nuevo.
               </p>
               <Link to="/forgot-password" className="btn-primary inline-block">
                 Solicitar nuevo enlace
@@ -124,6 +169,7 @@ export default function ResetPassword() {
                       onChange={(e) => setPassword(e.target.value)}
                       className="input-field pl-12"
                       placeholder="••••••••"
+                      autoComplete="new-password"
                     />
                   </div>
                 </div>
@@ -137,6 +183,7 @@ export default function ResetPassword() {
                       onChange={(e) => setConfirm(e.target.value)}
                       className="input-field pl-12"
                       placeholder="••••••••"
+                      autoComplete="new-password"
                     />
                   </div>
                 </div>

@@ -5,6 +5,39 @@ import { mapProfile, attachSocial } from '../lib/mappers.js'
 
 const router = express.Router()
 
+function isLocalUrl(url) {
+  return !url || /localhost|127\.0\.0\.1/i.test(url)
+}
+
+/** Prefer real app origin in production — never send reset links to localhost. */
+function resolveClientSiteUrl(req) {
+  const envClient = process.env.CLIENT_URL?.replace(/\/$/, '')
+  const onVercel = Boolean(process.env.VERCEL)
+
+  if (envClient && !(onVercel && isLocalUrl(envClient))) {
+    return envClient
+  }
+
+  const forwardedHost = req.headers['x-forwarded-host']
+  const proto = req.headers['x-forwarded-proto'] || 'https'
+  if (forwardedHost) {
+    return `${proto}://${String(forwardedHost).split(',')[0].trim()}`
+  }
+
+  if (req.headers.origin && !isLocalUrl(req.headers.origin)) {
+    return req.headers.origin.replace(/\/$/, '')
+  }
+
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+
+  return envClient || 'http://localhost:5173'
+}
+
 async function countProfiles() {
   const { count, error } = await supabaseAdmin
     .from('profiles')
@@ -437,14 +470,7 @@ router.post('/forgot-password', async (req, res) => {
       })
     }
 
-    const siteUrl =
-      process.env.CLIENT_URL ||
-      (process.env.VERCEL_PROJECT_PRODUCTION_URL
-        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-        : null) ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-      'http://localhost:5173'
-
+    const siteUrl = resolveClientSiteUrl(req)
     const redirectTo = `${siteUrl.replace(/\/$/, '')}/reset-password`
 
     const { error } = await supabaseAdmin.auth.resetPasswordForEmail(normalized, {

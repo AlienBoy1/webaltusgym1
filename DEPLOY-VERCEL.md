@@ -11,24 +11,40 @@ El frontend Vite se sirve desde `client/dist`. Todo en el mismo dominio → logi
 - Build / Output: ya definidos en `vercel.json`
 - Si en el dashboard hay Override de Install/Build Command, **desactívalo** para usar `vercel.json`
 
-## Auth URLs (obligatorio para reset de contraseña)
+## Auth URLs + correo de reset (obligatorio)
 
-En Supabase → Authentication → URL Configuration:
+App en producción: `https://qyntagymweb.vercel.app`
 
-- **Site URL:** `https://TU-APP.vercel.app`
-- **Redirect URLs** (añade):
-  - `https://TU-APP.vercel.app/**`
-  - `https://*-tu-usuario.vercel.app/**`
+### 1) Supabase → Authentication → URL Configuration
+
+- **Site URL:** `https://qyntagymweb.vercel.app`  ← no dejes localhost ni la URL de supabase.co
+- **Redirect URLs** (añade exactamente):
+  - `https://qyntagymweb.vercel.app/**`
+  - `https://qyntagymweb-*.vercel.app/**`
   - `http://localhost:5173/**`
 
-Sin esto, el correo de recovery puede no enviarse bien o el link falla al abrir.
+Sin el path `/reset-password` permitido (vía `/**`), el enlace del correo cae en Site URL genérica o falla.
+
+### 2) Plantilla del correo (diseño Qyntra)
+
+Supabase → Authentication → Email Templates → **Reset Password**
+
+- **Subject:** `Restablece tu contraseña — Qyntra Gym`
+- **Body:** pega el HTML de `docs/supabase-email-reset.html`  
+  (el botón debe usar `{{ .ConfirmationURL }}`)
+
+El texto/diseño del email **solo** se cambia ahí; la app no controla el HTML del correo de Auth.
+
+### 3) Variable en Vercel
 
 ```
 SUPABASE_URL=https://bmzaoaeykfmmppwrsrxn.supabase.co
 SUPABASE_ANON_KEY=<anon>
 SUPABASE_SERVICE_ROLE_KEY=<service_role>
-CLIENT_URL=https://TU-PROYECTO.vercel.app
+CLIENT_URL=https://qyntagymweb.vercel.app
 ```
+
+**Importante:** `CLIENT_URL` no debe ser `http://localhost:5173` en Vercel (si lo es, el enlace del correo apunta a localhost).
 
 Opcional en client build:
 ```
