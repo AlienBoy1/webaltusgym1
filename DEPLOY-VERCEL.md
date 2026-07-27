@@ -11,7 +11,17 @@ El frontend Vite se sirve desde `client/dist`. Todo en el mismo dominio → logi
 - Build / Output: ya definidos en `vercel.json`
 - Si en el dashboard hay Override de Install/Build Command, **desactívalo** para usar `vercel.json`
 
-## 2. Variables de entorno (Production + Preview)
+## Auth URLs (obligatorio para reset de contraseña)
+
+En Supabase → Authentication → URL Configuration:
+
+- **Site URL:** `https://TU-APP.vercel.app`
+- **Redirect URLs** (añade):
+  - `https://TU-APP.vercel.app/**`
+  - `https://*-tu-usuario.vercel.app/**`
+  - `http://localhost:5173/**`
+
+Sin esto, el correo de recovery puede no enviarse bien o el link falla al abrir.
 
 ```
 SUPABASE_URL=https://bmzaoaeykfmmppwrsrxn.supabase.co

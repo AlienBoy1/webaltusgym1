@@ -420,15 +420,75 @@ router.post('/forgot-password', async (req, res) => {
     const { email } = req.body
     if (!email) return res.status(400).json({ message: 'El correo es requerido' })
 
-    const redirectTo = `${process.env.CLIENT_URL || 'http://localhost:5173'}/login`
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email.toLowerCase(), {
+    const normalized = email.toLowerCase().trim()
+
+    // Gym app: clearer UX if account does not exist in Supabase yet
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email')
+      .eq('email', normalized)
+      .maybeSingle()
+
+    if (!profile) {
+      return res.status(404).json({
+        message:
+          'No hay una cuenta con ese correo en Qyntra. Regístrate primero (el primer usuario será admin) o ejecuta la migración desde Mongo.',
+        code: 'USER_NOT_FOUND'
+      })
+    }
+
+    const siteUrl =
+      process.env.CLIENT_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : null) ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+      'http://localhost:5173'
+
+    const redirectTo = `${siteUrl.replace(/\/$/, '')}/reset-password`
+
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(normalized, {
       redirectTo
     })
     if (error) throw error
 
-    res.json({ message: 'Si el correo existe, recibirás instrucciones para restablecer tu contraseña' })
+    res.json({
+      message: 'Te enviamos un enlace para restablecer tu contraseña. Revisa bandeja y spam.'
+    })
   } catch (error) {
+    console.error('Forgot password error:', error)
     res.status(500).json({ message: 'Error al enviar correo', error: error.message })
+  }
+})
+
+router.post('/update-password', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '')
+    const { password } = req.body
+    if (!token) return res.status(401).json({ message: 'Sesión de recuperación inválida' })
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' })
+    }
+
+    const { data: authData, error: userError } = await supabaseAdmin.auth.getUser(token)
+    if (userError || !authData?.user) {
+      return res.status(401).json({ message: 'Sesión de recuperación inválida o expirada' })
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
+      password
+    })
+    if (error) throw error
+
+    await supabaseAdmin
+      .from('profiles')
+      .update({ must_reset_password: false, updated_at: new Date().toISOString() })
+      .eq('id', authData.user.id)
+
+    res.json({ message: 'Contraseña actualizada correctamente' })
+  } catch (error) {
+    console.error('Update password error:', error)
+    res.status(500).json({ message: 'Error al actualizar contraseña', error: error.message })
   }
 })
 

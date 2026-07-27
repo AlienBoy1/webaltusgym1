@@ -46,8 +46,10 @@ export default function ForgotPassword() {
               <div className="w-16 h-16 bg-accent-green/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FiCheck className="text-accent-green" size={32} />
               </div>
-              <h2 className="font-display text-2xl mb-2">¡Email Enviado!</h2>
-              <p className="text-gray-400 mb-6">Revisa tu bandeja de entrada para restablecer tu contraseña.</p>
+              <h2 className="font-display text-2xl mb-2">¡EMAIL ENVIADO!</h2>
+              <p className="text-gray-400 mb-6">
+                Revisa tu bandeja de entrada y spam. El enlace abre la página para crear tu nueva contraseña.
+              </p>
               <Link to="/login" className="btn-primary inline-block">Volver al Login</Link>
             </div>
           ) : (
