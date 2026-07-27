@@ -459,7 +459,21 @@ router.post('/forgot-password', async (req, res) => {
     const { error } = await supabaseAdmin.auth.resetPasswordForEmail(normalized, {
       redirectTo
     })
-    if (error) throw error
+    if (error) {
+      const code = error.code || error.status
+      if (
+        error.status === 429 ||
+        code === 'over_email_send_rate_limit' ||
+        /rate limit/i.test(error.message || '')
+      ) {
+        return res.status(429).json({
+          message:
+            'Supabase limitó el envío de correos (demasiadas solicitudes). Espera ~1 hora o usa el último correo que ya te llegó. En plan free el SMTP de prueba es muy restrictivo.',
+          code: 'EMAIL_RATE_LIMIT'
+        })
+      }
+      throw error
+    }
 
     res.json({
       message: 'Te enviamos un enlace para restablecer tu contraseña. Revisa bandeja y spam.',

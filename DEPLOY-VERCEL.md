@@ -33,6 +33,10 @@ El texto/diseño del email **no** sale del código de la app: se edita en Supaba
 3. Pega el HTML de `docs/email-recovery-qyntra.html` (debe conservar `{{ .ConfirmationURL }}`)
 4. Save
 
+### Límite de correos (plan free)
+
+Si `/api/auth/forgot-password` falla con **rate limit**, Supabase Auth (SMTP de prueba) bloqueó más envíos. Espera ~1 h o configura SMTP propio en Authentication → Emails → SMTP Settings (Resend, Brevo, etc.).
+
 ### Variables en Vercel (proyecto `qyntagymweb`)
 
 ```
