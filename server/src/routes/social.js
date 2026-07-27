@@ -1,30 +1,151 @@
 import express from 'express'
-import Post from '../models/Post.js'
-import User from '../models/User.js'
-import Notification from '../models/Notification.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { mapPost } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
 
+function mapComment(row, userMap = {}) {
+  const u = userMap[row.user_id]
+  return {
+    _id: row.id,
+    id: row.id,
+    user: u
+      ? { _id: u.id, id: u.id, name: u.name, avatar: u.avatar }
+      : row.user_id,
+    content: row.content,
+    createdAt: row.created_at
+  }
+}
+
+async function getProfilesMap(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))]
+  if (!unique.length) return {}
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('id, name, avatar, stats, email')
+    .in('id', unique)
+  return Object.fromEntries((data || []).map((p) => [p.id, p]))
+}
+
+async function enrichPosts(posts) {
+  if (!posts?.length) return []
+
+  const postIds = posts.map((p) => p.id)
+  const sharedIds = [...new Set(posts.map((p) => p.shared_from).filter(Boolean))]
+
+  const [{ data: likes }, { data: comments }, { data: sharedRows }] = await Promise.all([
+    supabaseAdmin.from('post_likes').select('post_id, user_id').in('post_id', postIds),
+    supabaseAdmin
+      .from('post_comments')
+      .select('*')
+      .in('post_id', postIds)
+      .order('created_at', { ascending: true }),
+    sharedIds.length
+      ? supabaseAdmin.from('posts').select('*').in('id', sharedIds)
+      : Promise.resolve({ data: [] })
+  ])
+
+  const authorIds = [
+    ...posts.map((p) => p.user_id),
+    ...(sharedRows || []).map((p) => p.user_id),
+    ...(comments || []).map((c) => c.user_id)
+  ]
+  const userMap = await getProfilesMap(authorIds)
+
+  const likesByPost = {}
+  for (const l of likes || []) {
+    if (!likesByPost[l.post_id]) likesByPost[l.post_id] = []
+    likesByPost[l.post_id].push(l.user_id)
+  }
+
+  const commentsByPost = {}
+  for (const c of comments || []) {
+    if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = []
+    commentsByPost[c.post_id].push(mapComment(c, userMap))
+  }
+
+  const sharedMap = Object.fromEntries((sharedRows || []).map((p) => [p.id, p]))
+
+  return posts.map((row) => {
+    const author = userMap[row.user_id]
+    const mappedAuthor = author
+      ? { _id: author.id, id: author.id, name: author.name, avatar: author.avatar, stats: author.stats }
+      : row.user_id
+
+    let sharedFrom = null
+    if (row.shared_from && sharedMap[row.shared_from]) {
+      const s = sharedMap[row.shared_from]
+      const sAuthor = userMap[s.user_id]
+      sharedFrom = {
+        _id: s.id,
+        id: s.id,
+        user: sAuthor
+          ? { _id: sAuthor.id, id: sAuthor.id, name: sAuthor.name, avatar: sAuthor.avatar }
+          : s.user_id,
+        content: s.content,
+        images: s.images || []
+      }
+    }
+
+    return {
+      ...mapPost(row, {
+        user: mappedAuthor,
+        likes: likesByPost[row.id] || [],
+        comments: commentsByPost[row.id] || []
+      }),
+      sharedFrom
+    }
+  })
+}
+
+async function bumpSocialInteractions(userId) {
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('stats')
+    .eq('id', userId)
+    .single()
+  if (!profile) return
+
+  const stats = { ...(profile.stats || {}) }
+  stats.socialInteractions = (stats.socialInteractions || 0) + 1
+  await supabaseAdmin
+    .from('profiles')
+    .update({ stats, updated_at: new Date().toISOString() })
+    .eq('id', userId)
+
+  try {
+    const { checkBadgeUnlocks } = await import('../services/xpService.js')
+    await checkBadgeUnlocks(userId, true)
+  } catch (err) {
+    console.error('Badge check error:', err)
+  }
+}
+
 // Get feed (posts from users you follow)
 router.get('/feed', authenticate, async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user._id)
-    const followingIds = currentUser.social?.following || []
-    
-    // Get posts from users you follow, or all if no following
-    const query = followingIds.length > 0 
-      ? { user: { $in: followingIds } }
-      : {}
-    
-    const posts = await Post.find(query)
-      .populate('user', 'name avatar stats')
-      .populate('sharedFrom', 'user content images')
-      .populate('sharedFrom.user', 'name avatar')
-      .sort({ createdAt: -1 })
+    const { data: following } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', req.user.id)
+
+    const followingIds = (following || []).map((f) => f.following_id)
+
+    let query = supabaseAdmin
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false })
       .limit(50)
-    
-    res.json(posts)
+
+    if (followingIds.length > 0) {
+      query = query.in('user_id', followingIds)
+    }
+
+    const { data: posts, error } = await query
+    if (error) throw error
+
+    res.json(await enrichPosts(posts || []))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener feed', error: error.message })
   }
@@ -33,14 +154,15 @@ router.get('/feed', authenticate, async (req, res) => {
 // Get user posts (for profile view)
 router.get('/user/:userId/posts', authenticate, async (req, res) => {
   try {
-    const posts = await Post.find({ user: req.params.userId })
-      .populate('user', 'name avatar stats')
-      .populate('sharedFrom', 'user content images')
-      .populate('sharedFrom.user', 'name avatar')
-      .sort({ createdAt: -1 })
+    const { data: posts, error } = await supabaseAdmin
+      .from('posts')
+      .select('*')
+      .eq('user_id', req.params.userId)
+      .order('created_at', { ascending: false })
       .limit(50)
-    
-    res.json(posts)
+
+    if (error) throw error
+    res.json(await enrichPosts(posts || []))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener publicaciones', error: error.message })
   }
@@ -50,8 +172,7 @@ router.get('/user/:userId/posts', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { content, images, mood, poll, postType, badgeData } = req.body
-    
-    // Determine post type
+
     let finalPostType = postType || 'text'
     if (badgeData) {
       finalPostType = 'badge'
@@ -64,37 +185,32 @@ router.post('/', authenticate, async (req, res) => {
     } else if (mood) {
       finalPostType = 'mood'
     }
-    
-    const post = new Post({
-      user: req.user._id,
-      content: content || '',
-      images: images || [],
-      mood: mood || null,
-      poll: poll ? {
-        question: poll.question,
-        options: poll.options.map(opt => ({ text: opt, votes: [] })),
-        endsAt: poll.endsAt ? new Date(poll.endsAt) : null
-      } : null,
-      badgeData: badgeData || null,
-      postType: finalPostType
-    })
-    
-    await post.save()
-    await post.populate('user', 'name avatar stats')
-    
-    // Update user social interactions count
-    const user = await User.findById(req.user._id)
-    if (user) {
-      user.stats = user.stats || {}
-      user.stats.socialInteractions = (user.stats.socialInteractions || 0) + 1
-      await user.save()
-      
-      // Check for badge unlocks
-      const { checkBadgeUnlocks } = await import('../services/xpService.js')
-      await checkBadgeUnlocks(req.user._id, true) // Skip XP badges to prevent loops
-    }
-    
-    res.status(201).json(post)
+
+    const { data: post, error } = await supabaseAdmin
+      .from('posts')
+      .insert({
+        user_id: req.user.id,
+        content: content || '',
+        images: images || [],
+        mood: mood || null,
+        poll: poll
+          ? {
+              question: poll.question,
+              options: poll.options.map((opt) => ({ text: opt, votes: [] })),
+              endsAt: poll.endsAt || null
+            }
+          : null,
+        badge_data: badgeData || null,
+        post_type: finalPostType
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+
+    await bumpSocialInteractions(req.user.id)
+    const [enriched] = await enrichPosts([post])
+    res.status(201).json(enriched)
   } catch (error) {
     res.status(500).json({ message: 'Error al crear publicación', error: error.message })
   }
@@ -104,24 +220,33 @@ router.post('/', authenticate, async (req, res) => {
 router.post('/:id/poll/vote', authenticate, async (req, res) => {
   try {
     const { optionIndex } = req.body
-    const post = await Post.findById(req.params.id)
-    
+    const { data: post, error } = await supabaseAdmin
+      .from('posts')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (error) throw error
     if (!post || !post.poll) {
       return res.status(404).json({ message: 'Encuesta no encontrada' })
     }
-    
-    // Remove user from all options first
-    post.poll.options.forEach(option => {
-      option.votes = option.votes.filter(v => v.toString() !== req.user._id.toString())
+
+    const poll = { ...post.poll, options: (post.poll.options || []).map((o) => ({ ...o, votes: [...(o.votes || [])] })) }
+    poll.options.forEach((option) => {
+      option.votes = (option.votes || []).filter((v) => String(v) !== String(req.user.id))
     })
-    
-    // Add vote to selected option
-    if (post.poll.options[optionIndex]) {
-      post.poll.options[optionIndex].votes.push(req.user._id)
+
+    if (poll.options[optionIndex]) {
+      poll.options[optionIndex].votes.push(req.user.id)
     }
-    
-    await post.save()
-    res.json(post.poll)
+
+    const { error: updateError } = await supabaseAdmin
+      .from('posts')
+      .update({ poll, updated_at: new Date().toISOString() })
+      .eq('id', post.id)
+
+    if (updateError) throw updateError
+    res.json(poll)
   } catch (error) {
     res.status(500).json({ message: 'Error al votar', error: error.message })
   }
@@ -130,24 +255,42 @@ router.post('/:id/poll/vote', authenticate, async (req, res) => {
 // Like/Unlike post
 router.post('/:id/like', authenticate, async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id)
-    
+    const { data: post } = await supabaseAdmin
+      .from('posts')
+      .select('id')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
     if (!post) {
       return res.status(404).json({ message: 'Publicación no encontrada' })
     }
-    
-    const userIndex = post.likes.indexOf(req.user._id)
-    const liked = userIndex === -1
-    
-    if (liked) {
-      post.likes.push(req.user._id)
+
+    const { data: existing } = await supabaseAdmin
+      .from('post_likes')
+      .select('*')
+      .eq('post_id', post.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    let liked
+    if (existing) {
+      await supabaseAdmin
+        .from('post_likes')
+        .delete()
+        .eq('post_id', post.id)
+        .eq('user_id', req.user.id)
+      liked = false
     } else {
-      post.likes.splice(userIndex, 1)
+      await supabaseAdmin.from('post_likes').insert({ post_id: post.id, user_id: req.user.id })
+      liked = true
     }
-    
-    await post.save()
-    
-    res.json({ liked, likesCount: post.likes.length })
+
+    const { count } = await supabaseAdmin
+      .from('post_likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('post_id', post.id)
+
+    res.json({ liked, likesCount: count || 0 })
   } catch (error) {
     res.status(500).json({ message: 'Error al dar like', error: error.message })
   }
@@ -157,35 +300,34 @@ router.post('/:id/like', authenticate, async (req, res) => {
 router.post('/:id/comment', authenticate, async (req, res) => {
   try {
     const { content } = req.body
-    
-    const post = await Post.findById(req.params.id)
-    
+
+    const { data: post } = await supabaseAdmin
+      .from('posts')
+      .select('id')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
     if (!post) {
       return res.status(404).json({ message: 'Publicación no encontrada' })
     }
-    
-    post.comments.push({
-      user: req.user._id,
-      content,
-      createdAt: new Date()
+
+    const { error: insertError } = await supabaseAdmin.from('post_comments').insert({
+      post_id: post.id,
+      user_id: req.user.id,
+      content
     })
-    
-    await post.save()
-    await post.populate('comments.user', 'name avatar')
-    
-    // Update user social interactions count
-    const user = await User.findById(req.user._id)
-    if (user) {
-      user.stats = user.stats || {}
-      user.stats.socialInteractions = (user.stats.socialInteractions || 0) + 1
-      await user.save()
-      
-      // Check for badge unlocks
-      const { checkBadgeUnlocks } = await import('../services/xpService.js')
-      await checkBadgeUnlocks(req.user._id, true) // Skip XP badges
-    }
-    
-    res.json(post.comments)
+    if (insertError) throw insertError
+
+    await bumpSocialInteractions(req.user.id)
+
+    const { data: comments } = await supabaseAdmin
+      .from('post_comments')
+      .select('*')
+      .eq('post_id', post.id)
+      .order('created_at', { ascending: true })
+
+    const userMap = await getProfilesMap((comments || []).map((c) => c.user_id))
+    res.json((comments || []).map((c) => mapComment(c, userMap)))
   } catch (error) {
     res.status(500).json({ message: 'Error al comentar', error: error.message })
   }
@@ -195,39 +337,39 @@ router.post('/:id/comment', authenticate, async (req, res) => {
 router.post('/:id/share', authenticate, async (req, res) => {
   try {
     const { content } = req.body
-    const originalPost = await Post.findById(req.params.id)
-      .populate('user', 'name avatar')
-    
+    const { data: originalPost } = await supabaseAdmin
+      .from('posts')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
     if (!originalPost) {
       return res.status(404).json({ message: 'Publicación no encontrada' })
     }
-    
-    const sharedPost = new Post({
-      user: req.user._id,
-      content: content || `Compartido de ${originalPost.user?.name || 'usuario'}`,
-      images: originalPost.images || [],
-      sharedFrom: originalPost._id,
-      postType: 'mixed'
-    })
-    
-    await sharedPost.save()
-    await sharedPost.populate('user', 'name avatar stats')
-    await sharedPost.populate('sharedFrom', 'user content images')
-    await sharedPost.populate('sharedFrom.user', 'name avatar')
-    
-    // Update user social interactions count
-    const user = await User.findById(req.user._id)
-    if (user) {
-      user.stats = user.stats || {}
-      user.stats.socialInteractions = (user.stats.socialInteractions || 0) + 1
-      await user.save()
-      
-      // Check for badge unlocks
-      const { checkBadgeUnlocks } = await import('../services/xpService.js')
-      await checkBadgeUnlocks(req.user._id, true) // Skip XP badges
-    }
-    
-    res.status(201).json(sharedPost)
+
+    const { data: author } = await supabaseAdmin
+      .from('profiles')
+      .select('name')
+      .eq('id', originalPost.user_id)
+      .maybeSingle()
+
+    const { data: sharedPost, error } = await supabaseAdmin
+      .from('posts')
+      .insert({
+        user_id: req.user.id,
+        content: content || `Compartido de ${author?.name || 'usuario'}`,
+        images: originalPost.images || [],
+        shared_from: originalPost.id,
+        post_type: 'mixed'
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+
+    await bumpSocialInteractions(req.user.id)
+    const [enriched] = await enrichPosts([sharedPost])
+    res.status(201).json(enriched)
   } catch (error) {
     res.status(500).json({ message: 'Error al compartir publicación', error: error.message })
   }
@@ -237,64 +379,61 @@ router.post('/:id/share', authenticate, async (req, res) => {
 router.post('/:id/follow', authenticate, async (req, res) => {
   try {
     const targetUserId = req.params.id
-    const currentUserId = req.user._id
-    
-    if (targetUserId === currentUserId.toString()) {
+    const currentUserId = req.user.id
+
+    if (targetUserId === currentUserId) {
       return res.status(400).json({ message: 'No puedes seguirte a ti mismo' })
     }
-    
-    const targetUser = await User.findById(targetUserId)
-    const currentUser = await User.findById(currentUserId)
-    
+
+    const { data: targetUser } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name')
+      .eq('id', targetUserId)
+      .maybeSingle()
+
     if (!targetUser) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
-    
-    // Check if already following
-    const isFollowing = targetUser.social?.followers?.some(f => f.toString() === currentUserId.toString())
-    if (isFollowing) {
+
+    const { data: existingFollow } = await supabaseAdmin
+      .from('follows')
+      .select('*')
+      .eq('follower_id', currentUserId)
+      .eq('following_id', targetUserId)
+      .maybeSingle()
+
+    if (existingFollow) {
       return res.status(400).json({ message: 'Ya sigues a este usuario' })
     }
-    
-    // Check if request already pending
-    const hasPendingRequest = targetUser.social?.followRequests?.some(
-      req => req.user.toString() === currentUserId.toString()
-    )
-    if (hasPendingRequest) {
+
+    const { data: pending } = await supabaseAdmin
+      .from('follow_requests')
+      .select('id')
+      .eq('from_user_id', currentUserId)
+      .eq('to_user_id', targetUserId)
+      .maybeSingle()
+
+    if (pending) {
       return res.status(400).json({ message: 'Ya hay una solicitud pendiente' })
     }
-    
-    // Add to pending requests
-    if (!targetUser.social) {
-      targetUser.social = { followers: [], following: [], followRequests: [], pendingRequests: [] }
-    }
-    
-    targetUser.social.followRequests.push({
-      user: currentUserId,
-      requestedAt: new Date()
+
+    const { error } = await supabaseAdmin.from('follow_requests').insert({
+      from_user_id: currentUserId,
+      to_user_id: targetUserId
     })
-    
-    if (!currentUser.social) {
-      currentUser.social = { followers: [], following: [], followRequests: [], pendingRequests: [] }
-    }
-    
-    currentUser.social.pendingRequests.push(targetUserId)
-    
-    await targetUser.save()
-    await currentUser.save()
-    
-    // Create notification
-    await Notification.create({
-      user: targetUserId,
+    if (error) throw error
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: targetUserId,
       type: 'follow_request',
       title: 'Nueva solicitud de seguimiento',
-      body: `${currentUser.name} quiere seguirte`,
+      body: `${req.user.name} quiere seguirte`,
       icon: '👤',
-      relatedUser: currentUserId,
+      related_user_id: currentUserId,
       priority: 'normal'
     })
-    
-    res.json({ 
+
+    res.json({
       message: 'Solicitud enviada',
       status: 'pending'
     })
@@ -307,59 +446,40 @@ router.post('/:id/follow', authenticate, async (req, res) => {
 router.post('/:id/accept-follow', authenticate, async (req, res) => {
   try {
     const requesterId = req.params.id
-    const currentUserId = req.user._id
-    
-    const currentUser = await User.findById(currentUserId)
-    const requester = await User.findById(requesterId)
-    
+    const currentUserId = req.user.id
+
+    const { data: requester } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', requesterId)
+      .maybeSingle()
+
     if (!requester) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
-    
-    // Remove from follow requests
-    if (currentUser.social?.followRequests) {
-      currentUser.social.followRequests = currentUser.social.followRequests.filter(
-        req => req.user.toString() !== requesterId
-      )
-    }
-    
-    // Add to followers
-    if (!currentUser.social) {
-      currentUser.social = { followers: [], following: [], followRequests: [], pendingRequests: [] }
-    }
-    if (!currentUser.social.followers.includes(requesterId)) {
-      currentUser.social.followers.push(requesterId)
-    }
-    
-    // Add to requester's following
-    if (!requester.social) {
-      requester.social = { followers: [], following: [], followRequests: [], pendingRequests: [] }
-    }
-    if (!requester.social.following.includes(currentUserId)) {
-      requester.social.following.push(currentUserId)
-    }
-    
-    // Remove from requester's pending requests
-    if (requester.social.pendingRequests) {
-      requester.social.pendingRequests = requester.social.pendingRequests.filter(
-        id => id.toString() !== currentUserId.toString()
-      )
-    }
-    
-    await currentUser.save()
-    await requester.save()
-    
-    // Create notification
-    await Notification.create({
-      user: requesterId,
+
+    await supabaseAdmin
+      .from('follow_requests')
+      .delete()
+      .eq('from_user_id', requesterId)
+      .eq('to_user_id', currentUserId)
+
+    const { error: followError } = await supabaseAdmin.from('follows').upsert({
+      follower_id: requesterId,
+      following_id: currentUserId
+    })
+    if (followError) throw followError
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: requesterId,
       type: 'follow_accepted',
       title: 'Solicitud aceptada',
-      body: `${currentUser.name} aceptó tu solicitud de seguimiento`,
+      body: `${req.user.name} aceptó tu solicitud de seguimiento`,
       icon: '✅',
-      relatedUser: currentUserId,
+      related_user_id: currentUserId,
       priority: 'normal'
     })
-    
+
     res.json({ message: 'Solicitud aceptada' })
   } catch (error) {
     res.status(500).json({ message: 'Error al aceptar solicitud', error: error.message })
@@ -370,32 +490,24 @@ router.post('/:id/accept-follow', authenticate, async (req, res) => {
 router.post('/:id/reject-follow', authenticate, async (req, res) => {
   try {
     const requesterId = req.params.id
-    const currentUserId = req.user._id
-    
-    const currentUser = await User.findById(currentUserId)
-    const requester = await User.findById(requesterId)
-    
+    const currentUserId = req.user.id
+
+    const { data: requester } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', requesterId)
+      .maybeSingle()
+
     if (!requester) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
-    
-    // Remove from follow requests
-    if (currentUser.social?.followRequests) {
-      currentUser.social.followRequests = currentUser.social.followRequests.filter(
-        req => req.user.toString() !== requesterId
-      )
-    }
-    
-    // Remove from requester's pending requests
-    if (requester.social?.pendingRequests) {
-      requester.social.pendingRequests = requester.social.pendingRequests.filter(
-        id => id.toString() !== currentUserId.toString()
-      )
-    }
-    
-    await currentUser.save()
-    await requester.save()
-    
+
+    await supabaseAdmin
+      .from('follow_requests')
+      .delete()
+      .eq('from_user_id', requesterId)
+      .eq('to_user_id', currentUserId)
+
     res.json({ message: 'Solicitud rechazada' })
   } catch (error) {
     res.status(500).json({ message: 'Error al rechazar solicitud', error: error.message })
@@ -406,32 +518,24 @@ router.post('/:id/reject-follow', authenticate, async (req, res) => {
 router.post('/:id/unfollow', authenticate, async (req, res) => {
   try {
     const targetUserId = req.params.id
-    const currentUserId = req.user._id
-    
-    const targetUser = await User.findById(targetUserId)
-    const currentUser = await User.findById(currentUserId)
-    
+    const currentUserId = req.user.id
+
+    const { data: targetUser } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', targetUserId)
+      .maybeSingle()
+
     if (!targetUser) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
-    
-    // Remove from target's followers
-    if (targetUser.social?.followers) {
-      targetUser.social.followers = targetUser.social.followers.filter(
-        f => f.toString() !== currentUserId.toString()
-      )
-    }
-    
-    // Remove from current user's following
-    if (currentUser.social?.following) {
-      currentUser.social.following = currentUser.social.following.filter(
-        f => f.toString() !== targetUserId
-      )
-    }
-    
-    await targetUser.save()
-    await currentUser.save()
-    
+
+    await supabaseAdmin
+      .from('follows')
+      .delete()
+      .eq('follower_id', currentUserId)
+      .eq('following_id', targetUserId)
+
     res.json({ message: 'Dejaste de seguir a este usuario' })
   } catch (error) {
     res.status(500).json({ message: 'Error al dejar de seguir', error: error.message })
@@ -441,11 +545,28 @@ router.post('/:id/unfollow', authenticate, async (req, res) => {
 // Get follow requests
 router.get('/follow-requests', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
-      .populate('social.followRequests.user', 'name avatar email')
-    
-    const requests = user.social?.followRequests || []
-    res.json(requests)
+    const { data: requests, error } = await supabaseAdmin
+      .from('follow_requests')
+      .select('*')
+      .eq('to_user_id', req.user.id)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    const userMap = await getProfilesMap((requests || []).map((r) => r.from_user_id))
+    res.json(
+      (requests || []).map((r) => {
+        const u = userMap[r.from_user_id]
+        return {
+          _id: r.id,
+          id: r.id,
+          user: u
+            ? { _id: u.id, id: u.id, name: u.name, avatar: u.avatar, email: u.email }
+            : r.from_user_id,
+          requestedAt: r.created_at
+        }
+      })
+    )
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener solicitudes', error: error.message })
   }
@@ -454,10 +575,30 @@ router.get('/follow-requests', authenticate, async (req, res) => {
 // Get following list
 router.get('/following', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
-      .populate('social.following', 'name avatar email stats')
-    
-    res.json(user.social?.following || [])
+    const { data: following, error } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', req.user.id)
+
+    if (error) throw error
+    const ids = (following || []).map((f) => f.following_id)
+    if (!ids.length) return res.json([])
+
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, avatar, email, stats')
+      .in('id', ids)
+
+    res.json(
+      (profiles || []).map((p) => ({
+        _id: p.id,
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        email: p.email,
+        stats: p.stats
+      }))
+    )
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener seguidos', error: error.message })
   }
@@ -466,10 +607,30 @@ router.get('/following', authenticate, async (req, res) => {
 // Get followers list
 router.get('/followers', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
-      .populate('social.followers', 'name avatar email stats')
-    
-    res.json(user.social?.followers || [])
+    const { data: followers, error } = await supabaseAdmin
+      .from('follows')
+      .select('follower_id')
+      .eq('following_id', req.user.id)
+
+    if (error) throw error
+    const ids = (followers || []).map((f) => f.follower_id)
+    if (!ids.length) return res.json([])
+
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, avatar, email, stats')
+      .in('id', ids)
+
+    res.json(
+      (profiles || []).map((p) => ({
+        _id: p.id,
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        email: p.email,
+        stats: p.stats
+      }))
+    )
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener seguidores', error: error.message })
   }
@@ -479,26 +640,46 @@ router.get('/followers', authenticate, async (req, res) => {
 router.get('/:id/follow-status', authenticate, async (req, res) => {
   try {
     const targetUserId = req.params.id
-    const currentUser = await User.findById(req.user._id)
-    const targetUser = await User.findById(targetUserId)
-    
+
+    const { data: targetUser } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', targetUserId)
+      .maybeSingle()
+
     if (!targetUser) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
-    
-    const isFollowing = targetUser.social?.followers?.some(
-      f => f.toString() === req.user._id.toString()
-    )
-    
-    const hasPendingRequest = targetUser.social?.followRequests?.some(
-      req => req.user.toString() === req.user._id.toString()
-    )
-    
+
+    const [{ data: follow }, { data: pending }, { count: followersCount }, { count: followingCount }] =
+      await Promise.all([
+        supabaseAdmin
+          .from('follows')
+          .select('*')
+          .eq('follower_id', req.user.id)
+          .eq('following_id', targetUserId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from('follow_requests')
+          .select('id')
+          .eq('from_user_id', req.user.id)
+          .eq('to_user_id', targetUserId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('following_id', targetUserId),
+        supabaseAdmin
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('follower_id', targetUserId)
+      ])
+
     res.json({
-      isFollowing,
-      hasPendingRequest,
-      followersCount: targetUser.social?.followers?.length || 0,
-      followingCount: targetUser.social?.following?.length || 0
+      isFollowing: !!follow,
+      hasPendingRequest: !!pending,
+      followersCount: followersCount || 0,
+      followingCount: followingCount || 0
     })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener estado', error: error.message })
@@ -508,13 +689,21 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
 // Delete post
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const post = await Post.findOne({ _id: req.params.id, user: req.user._id })
-    
+    const { data: post } = await supabaseAdmin
+      .from('posts')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
     if (!post) {
       return res.status(404).json({ message: 'Publicación no encontrada o no tienes permiso' })
     }
-    
-    await post.deleteOne()
+
+    await supabaseAdmin.from('post_likes').delete().eq('post_id', post.id)
+    await supabaseAdmin.from('post_comments').delete().eq('post_id', post.id)
+    await supabaseAdmin.from('posts').delete().eq('id', post.id)
+
     res.json({ message: 'Publicación eliminada' })
   } catch (error) {
     res.status(500).json({ message: 'Error al eliminar', error: error.message })

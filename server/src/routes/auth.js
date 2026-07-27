@@ -1,53 +1,106 @@
 import express from 'express'
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
-import User from '../models/User.js'
-import Notification from '../models/Notification.js'
-import RegistrationRequest from '../models/RegistrationRequest.js'
-import AccessCode from '../models/AccessCode.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { mapProfile, attachSocial } from '../lib/mappers.js'
 
 const router = express.Router()
 
-// Request access (new registration flow)
+async function countProfiles() {
+  const { count, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+  if (error) throw error
+  return count || 0
+}
+
+async function getProfileByEmail(email) {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', email.toLowerCase())
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+async function createAuthAndProfile({ email, password, name, role, phone, profile, membership, stats }) {
+  const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+    email: email.toLowerCase(),
+    password,
+    email_confirm: true,
+    user_metadata: { name },
+    app_metadata: { role }
+  })
+
+  if (createError) throw createError
+
+  const userId = created.user.id
+  const { data: upserted, error: upsertError } = await supabaseAdmin
+    .from('profiles')
+    .upsert({
+      id: userId,
+      name: name || 'Usuario',
+      email: email.toLowerCase(),
+      phone: phone || null,
+      role,
+      membership: membership || { plan: 'basic', status: 'active', startDate: new Date().toISOString() },
+      stats: stats || { totalWorkouts: 0, currentStreak: 0, longestStreak: 0, level: 1, xp: 0 },
+      profile: profile || {},
+      onboarding_completed: false,
+      updated_at: new Date().toISOString()
+    })
+    .select('*')
+    .single()
+
+  if (upsertError) throw upsertError
+  return upserted
+}
+
+async function sessionFor(email, password) {
+  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    email: email.toLowerCase(),
+    password
+  })
+  if (error) throw error
+  return data
+}
+
+// Request access
 router.post('/request-access', async (req, res) => {
   try {
     const { email } = req.body
-    
-    if (!email) {
-      return res.status(400).json({ message: 'El correo es requerido' })
-    }
-    
-    // Check if email already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() })
+    if (!email) return res.status(400).json({ message: 'El correo es requerido' })
+
+    const existingUser = await getProfileByEmail(email)
     if (existingUser) {
       return res.status(400).json({ message: 'Este correo ya está registrado' })
     }
-    
-    // Check if request already exists
-    const existingRequest = await RegistrationRequest.findOne({ 
-      email: email.toLowerCase(),
-      status: { $in: ['pending', 'approved'] }
-    })
-    
+
+    const { data: existingRequest } = await supabaseAdmin
+      .from('registration_requests')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .in('status', ['pending', 'approved'])
+      .maybeSingle()
+
     if (existingRequest) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Ya existe una solicitud pendiente para este correo',
-        requestId: existingRequest._id
+        requestId: existingRequest.id
       })
     }
-    
-    // Create registration request
-    const request = new RegistrationRequest({
-      email: email.toLowerCase(),
-      status: 'pending'
-    })
-    
-    await request.save()
-    
+
+    const { data: request, error } = await supabaseAdmin
+      .from('registration_requests')
+      .insert({ email: email.toLowerCase(), status: 'pending' })
+      .select('*')
+      .single()
+
+    if (error) throw error
+
     res.status(201).json({
       message: 'Solicitud enviada exitosamente',
-      requestId: request._id
+      requestId: request.id
     })
   } catch (error) {
     console.error('Request access error:', error)
@@ -55,77 +108,80 @@ router.post('/request-access', async (req, res) => {
   }
 })
 
-// Complete registration with access code
 router.post('/complete-registration', async (req, res) => {
   try {
     const { email, accessCode, password, confirmPassword } = req.body
-    
+
     if (!email || !accessCode || !password) {
       return res.status(400).json({ message: 'Todos los campos son requeridos' })
     }
-    
     if (password !== confirmPassword) {
       return res.status(400).json({ message: 'Las contraseñas no coinciden' })
     }
-    
     if (password.length < 6) {
       return res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' })
     }
-    
-    // Find registration request
-    const request = await RegistrationRequest.findOne({ 
-      email: email.toLowerCase(),
-      status: 'approved'
-    })
-    
+
+    const { data: request } = await supabaseAdmin
+      .from('registration_requests')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .eq('status', 'approved')
+      .maybeSingle()
+
     if (!request) {
       return res.status(404).json({ message: 'Solicitud no encontrada o no aprobada' })
     }
-    
-    // Check access code
-    const code = await AccessCode.findOne({
-      email: email.toLowerCase(),
-      code: accessCode.toUpperCase(),
-      used: false
-    })
-    
+
+    const { data: code } = await supabaseAdmin
+      .from('access_codes')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .eq('code', accessCode.toUpperCase())
+      .eq('used', false)
+      .maybeSingle()
+
     if (!code) {
-      request.accessCodeAttempts = (request.accessCodeAttempts || 0) + 1
-      
-      if (request.accessCodeAttempts >= request.maxAttempts) {
-        request.status = 'rejected'
-        await request.save()
-        await AccessCode.deleteMany({ registrationRequest: request._id })
-        return res.status(400).json({ 
-          message: 'Máximo de intentos alcanzado. La solicitud ha sido cancelada.' 
+      const attempts = (request.access_code_attempts || 0) + 1
+      const maxAttempts = request.max_attempts || 3
+
+      if (attempts >= maxAttempts) {
+        await supabaseAdmin
+          .from('registration_requests')
+          .update({ status: 'rejected', access_code_attempts: attempts })
+          .eq('id', request.id)
+        await supabaseAdmin
+          .from('access_codes')
+          .delete()
+          .eq('registration_request_id', request.id)
+        return res.status(400).json({
+          message: 'Máximo de intentos alcanzado. La solicitud ha sido cancelada.'
         })
       }
-      
-      await request.save()
-      return res.status(400).json({ 
-        message: `Código inválido. Intentos restantes: ${request.maxAttempts - request.accessCodeAttempts}` 
+
+      await supabaseAdmin
+        .from('registration_requests')
+        .update({ access_code_attempts: attempts })
+        .eq('id', request.id)
+
+      return res.status(400).json({
+        message: `Código inválido. Intentos restantes: ${maxAttempts - attempts}`
       })
     }
-    
-    // Check if code is expired
-    if (new Date() > code.expiresAt) {
+
+    if (new Date() > new Date(code.expires_at)) {
       return res.status(400).json({ message: 'El código de acceso ha expirado' })
     }
-    
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() })
-    if (existingUser) {
+
+    if (await getProfileByEmail(email)) {
       return res.status(400).json({ message: 'Este correo ya está registrado' })
     }
-    
-    // Get user data from request (stored by admin)
-    const userData = request.userData || {}
-    
-    // Create user
-    const user = new User({
-      name: userData.name || 'Usuario',
-      email: email.toLowerCase(),
+
+    const userData = request.user_data || {}
+    const profile = await createAuthAndProfile({
+      email,
       password,
+      name: userData.name || 'Usuario',
       role: 'user',
       phone: userData.phone,
       profile: {
@@ -136,59 +192,47 @@ router.post('/complete-registration', async (req, res) => {
       membership: {
         plan: userData.membershipPlan || 'basic',
         status: 'active',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + (userData.membershipDuration || 30) * 24 * 60 * 60 * 1000)
-      },
-      stats: {
-        totalWorkouts: 0,
-        currentStreak: 0,
-        longestStreak: 0,
-        level: 1,
-        xp: 0
-      },
-      onboardingCompleted: false
+        startDate: new Date().toISOString(),
+        endDate: new Date(
+          Date.now() + (userData.membershipDuration || 30) * 24 * 60 * 60 * 1000
+        ).toISOString()
+      }
     })
-    
-    await user.save()
-    
-    // Mark code as used
-    code.used = true
-    code.usedAt = new Date()
-    code.usedBy = user._id
-    await code.save()
-    
-    // Update request
-    request.status = 'completed'
-    request.completedAt = new Date()
-    await request.save()
-    
-    // Create welcome notification
-    await Notification.create({
-      user: user._id,
+
+    await supabaseAdmin
+      .from('access_codes')
+      .update({ used: true, used_at: new Date().toISOString(), used_by: profile.id })
+      .eq('id', code.id)
+
+    await supabaseAdmin
+      .from('registration_requests')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', request.id)
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: profile.id,
       type: 'welcome',
       title: '¡Bienvenido a QYNTRA GYM!',
       body: '¡Comienza tu viaje fitness hoy! Explora las funciones de la app.',
       icon: '🏋️',
       priority: 'high'
     })
-    
-    // Generate token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'qyntra_secret_key_2024',
-      { expiresIn: '30d' }
-    )
-    
+
+    const session = await sessionFor(email, password)
+    const mapped = mapProfile(profile)
+
     res.status(201).json({
       message: 'Registro completado exitosamente',
-      token,
+      token: session.session.access_token,
+      refreshToken: session.session.refresh_token,
       user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        membership: user.membership,
-        stats: user.stats
+        _id: mapped._id,
+        id: mapped.id,
+        name: mapped.name,
+        email: mapped.email,
+        role: mapped.role,
+        membership: mapped.membership,
+        stats: mapped.stats
       }
     })
   } catch (error) {
@@ -197,131 +241,124 @@ router.post('/complete-registration', async (req, res) => {
   }
 })
 
-// Verify access code
 router.post('/verify-code', async (req, res) => {
   try {
     const { email, accessCode } = req.body
-    
     if (!email || !accessCode) {
       return res.status(400).json({ message: 'Correo y código son requeridos' })
     }
-    
-    const request = await RegistrationRequest.findOne({ 
-      email: email.toLowerCase(),
-      status: 'approved'
-    })
-    
+
+    const { data: request } = await supabaseAdmin
+      .from('registration_requests')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .eq('status', 'approved')
+      .maybeSingle()
+
     if (!request) {
       return res.status(404).json({ message: 'Solicitud no encontrada o no aprobada' })
     }
-    
-    const code = await AccessCode.findOne({
-      email: email.toLowerCase(),
-      code: accessCode.toUpperCase(),
-      used: false
-    })
-    
+
+    const { data: code } = await supabaseAdmin
+      .from('access_codes')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .eq('code', accessCode.toUpperCase())
+      .eq('used', false)
+      .maybeSingle()
+
     if (!code) {
-      request.accessCodeAttempts = (request.accessCodeAttempts || 0) + 1
-      
-      if (request.accessCodeAttempts >= request.maxAttempts) {
-        request.status = 'rejected'
-        await request.save()
-        await AccessCode.deleteMany({ registrationRequest: request._id })
-        return res.status(400).json({ 
+      const attempts = (request.access_code_attempts || 0) + 1
+      const maxAttempts = request.max_attempts || 3
+
+      if (attempts >= maxAttempts) {
+        await supabaseAdmin
+          .from('registration_requests')
+          .update({ status: 'rejected', access_code_attempts: attempts })
+          .eq('id', request.id)
+        await supabaseAdmin
+          .from('access_codes')
+          .delete()
+          .eq('registration_request_id', request.id)
+        return res.status(400).json({
           message: 'Máximo de intentos alcanzado. La solicitud ha sido cancelada.',
           attemptsExceeded: true
         })
       }
-      
-      await request.save()
-      return res.status(400).json({ 
-        message: `Código inválido. Intentos restantes: ${request.maxAttempts - request.accessCodeAttempts}`,
-        attemptsRemaining: request.maxAttempts - request.accessCodeAttempts
+
+      await supabaseAdmin
+        .from('registration_requests')
+        .update({ access_code_attempts: attempts })
+        .eq('id', request.id)
+
+      return res.status(400).json({
+        message: `Código inválido. Intentos restantes: ${maxAttempts - attempts}`,
+        attemptsRemaining: maxAttempts - attempts
       })
     }
-    
-    if (new Date() > code.expiresAt) {
+
+    if (new Date() > new Date(code.expires_at)) {
       return res.status(400).json({ message: 'El código de acceso ha expirado' })
     }
-    
-    res.json({ 
-      message: 'Código válido',
-      valid: true
-    })
+
+    res.json({ message: 'Código válido', valid: true })
   } catch (error) {
     res.status(500).json({ message: 'Error al verificar código', error: error.message })
   }
 })
 
-// Register (legacy - keep for backwards compatibility)
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body
-    
-    // Check if user exists
-    const existingUser = await User.findOne({ email })
-    if (existingUser) {
+    if (await getProfileByEmail(email)) {
       return res.status(400).json({ message: 'El email ya está registrado' })
     }
-    
-    // Check if it's the first user (becomes admin)
-    const userCount = await User.countDocuments()
+
+    const userCount = await countProfiles()
     const isFirstUser = userCount === 0
-    
-    // Create user (password will be hashed by the model's pre-save middleware)
-    const user = new User({
-      name,
+    const role = isFirstUser ? 'admin' : 'user'
+
+    const profile = await createAuthAndProfile({
       email,
       password,
-      role: isFirstUser ? 'admin' : 'user',
+      name,
+      role,
       membership: {
         plan: isFirstUser ? 'elite' : 'basic',
         status: 'active',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + (isFirstUser ? 365 : 30) * 24 * 60 * 60 * 1000)
-      },
-      stats: {
-        totalWorkouts: 0,
-        currentStreak: 0,
-        longestStreak: 0,
-        level: 1,
-        xp: 0
+        startDate: new Date().toISOString(),
+        endDate: new Date(
+          Date.now() + (isFirstUser ? 365 : 30) * 24 * 60 * 60 * 1000
+        ).toISOString()
       }
     })
-    
-    await user.save()
-    
-    // Create welcome notification
-    const notification = new Notification({
-      user: user._id,
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: profile.id,
       type: 'welcome',
       title: isFirstUser ? '¡Bienvenido Administrador!' : '¡Bienvenido a QYNTRA GYM!',
-      body: isFirstUser 
+      body: isFirstUser
         ? 'Eres el primer usuario y administrador. Tienes acceso completo al panel de administración.'
         : '¡Comienza tu viaje fitness hoy! Explora las funciones de la app.',
       icon: '🏋️',
       priority: 'high'
     })
-    await notification.save()
-    
-    // Generate token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'qyntra_secret_key_2024',
-      { expiresIn: '30d' }
-    )
-    
+
+    const session = await sessionFor(email, password)
+    const mapped = mapProfile(profile)
+
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
-      token,
+      token: session.session.access_token,
+      refreshToken: session.session.refresh_token,
       user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        membership: user.membership,
-        stats: user.stats
+        _id: mapped._id,
+        id: mapped.id,
+        name: mapped.name,
+        email: mapped.email,
+        role: mapped.role,
+        membership: mapped.membership,
+        stats: mapped.stats
       },
       isFirstUser
     })
@@ -331,80 +368,95 @@ router.post('/register', async (req, res) => {
   }
 })
 
-// Login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body
-    
-    console.log('Login attempt:', email)
-    
-    // Find user
-    const user = await User.findOne({ email })
-    if (!user) {
-      console.log('User not found:', email)
+    const session = await sessionFor(email, password)
+
+    // Profile read first; last_login update in background (faster login)
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single()
+
+    if (profileError || !profile) {
       return res.status(401).json({ message: 'Credenciales inválidas' })
     }
-    
-    console.log('User found:', user.email, 'Has password:', !!user.password)
-    
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password)
-    console.log('Password match:', isMatch)
-    
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Credenciales inválidas' })
-    }
-    
-    // Update last login
-    user.lastLogin = new Date()
-    await user.save()
-    
-    // Generate token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'qyntra_secret_key_2024',
-      { expiresIn: '30d' }
-    )
-    
+
+    supabaseAdmin
+      .from('profiles')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', session.user.id)
+      .then(() => {})
+      .catch(() => {})
+
+    const mapped = mapProfile(profile)
+
     res.json({
       message: 'Login exitoso',
-      token,
+      token: session.session.access_token,
+      refreshToken: session.session.refresh_token,
       user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-        membership: user.membership,
-        stats: user.stats
+        _id: mapped._id,
+        id: mapped.id,
+        name: mapped.name,
+        email: mapped.email,
+        role: mapped.role,
+        avatar: mapped.avatar,
+        membership: mapped.membership,
+        stats: mapped.stats,
+        mustResetPassword: mapped.mustResetPassword
       }
     })
   } catch (error) {
     console.error('Login error:', error)
-    res.status(500).json({ message: 'Error al iniciar sesión', error: error.message })
+    res.status(401).json({ message: 'Credenciales inválidas' })
   }
 })
 
-// Get current user
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body
+    if (!email) return res.status(400).json({ message: 'El correo es requerido' })
+
+    const redirectTo = `${process.env.CLIENT_URL || 'http://localhost:5173'}/login`
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email.toLowerCase(), {
+      redirectTo
+    })
+    if (error) throw error
+
+    res.json({ message: 'Si el correo existe, recibirás instrucciones para restablecer tu contraseña' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al enviar correo', error: error.message })
+  }
+})
+
 router.get('/me', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '')
-    
-    if (!token) {
-      return res.status(401).json({ message: 'No autorizado' })
-    }
-    
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'qyntra_secret_key_2024')
-    const user = await User.findById(decoded.userId).select('-password')
-    
-    if (!user) {
-      return res.status(404).json({ message: 'Usuario no encontrado' })
-    }
-    
-    res.json({ user })
+    if (!token) return res.status(401).json({ message: 'No autorizado' })
+
+    const { data: authData, error } = await supabaseAdmin.auth.getUser(token)
+    if (error || !authData?.user) return res.status(401).json({ message: 'Token inválido' })
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single()
+
+    if (!profile) return res.status(404).json({ message: 'Usuario no encontrado' })
+
+    const withSocial = await attachSocial(supabaseAdmin, profile)
+    res.json({ user: mapProfile(withSocial) })
   } catch (error) {
     res.status(401).json({ message: 'Token inválido' })
   }
 })
+
+export function generateAccessCode() {
+  return crypto.randomBytes(4).toString('hex').toUpperCase()
+}
 
 export default router

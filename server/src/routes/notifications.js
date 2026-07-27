@@ -1,125 +1,128 @@
 import express from 'express'
-import Notification from '../models/Notification.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { mapNotification } from '../lib/mappers.js'
 import { authenticate, isAdmin } from '../middleware/auth.js'
 
 const router = express.Router()
 
-// Get user notifications
 router.get('/', authenticate, async (req, res) => {
   try {
-    const notifications = await Notification.find({ user: req.user._id })
-      .sort({ createdAt: -1 })
+    const { data: notifications, error } = await supabaseAdmin
+      .from('notifications')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
       .limit(50)
-    
-    const unreadCount = await Notification.countDocuments({ user: req.user._id, read: false })
-    
-    res.json({ notifications, unreadCount })
+
+    if (error) throw error
+
+    const { count } = await supabaseAdmin
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', req.user.id)
+      .eq('read', false)
+
+    res.json({
+      notifications: (notifications || []).map(mapNotification),
+      unreadCount: count || 0
+    })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener notificaciones', error: error.message })
   }
 })
 
-// Mark as read
 router.put('/:id/read', authenticate, async (req, res) => {
   try {
-    const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
-      { read: true },
-      { new: true }
-    )
-    
-    if (!notification) {
-      return res.status(404).json({ message: 'Notificación no encontrada' })
-    }
-    
-    res.json(notification)
+    const { data, error } = await supabaseAdmin
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('*')
+      .single()
+
+    if (error || !data) return res.status(404).json({ message: 'Notificación no encontrada' })
+    res.json(mapNotification(data))
   } catch (error) {
     res.status(500).json({ message: 'Error al marcar como leída', error: error.message })
   }
 })
 
-// Mark all as read
 router.put('/read-all', authenticate, async (req, res) => {
   try {
-    await Notification.updateMany(
-      { user: req.user._id, read: false },
-      { read: true }
-    )
-    
+    await supabaseAdmin
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', req.user.id)
+      .eq('read', false)
     res.json({ message: 'Todas las notificaciones marcadas como leídas' })
   } catch (error) {
     res.status(500).json({ message: 'Error al marcar como leídas', error: error.message })
   }
 })
 
-// Delete notification
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const notification = await Notification.findOneAndDelete({
-      _id: req.params.id,
-      user: req.user._id
-    })
-    
-    if (!notification) {
-      return res.status(404).json({ message: 'Notificación no encontrada' })
-    }
-    
+    const { data, error } = await supabaseAdmin
+      .from('notifications')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('id')
+      .maybeSingle()
+
+    if (error || !data) return res.status(404).json({ message: 'Notificación no encontrada' })
     res.json({ message: 'Notificación eliminada' })
   } catch (error) {
     res.status(500).json({ message: 'Error al eliminar', error: error.message })
   }
 })
 
-// Clear read notifications
 router.delete('/clear/read', authenticate, async (req, res) => {
   try {
-    await Notification.deleteMany({ user: req.user._id, read: true })
+    await supabaseAdmin
+      .from('notifications')
+      .delete()
+      .eq('user_id', req.user.id)
+      .eq('read', true)
     res.json({ message: 'Notificaciones leídas eliminadas' })
   } catch (error) {
     res.status(500).json({ message: 'Error al limpiar', error: error.message })
   }
 })
 
-// Send notification to user (admin)
 router.post('/send', authenticate, isAdmin, async (req, res) => {
   try {
     const { userId, title, body, type = 'general' } = req.body
-    
-    const notification = new Notification({
-      user: userId,
-      title,
-      body,
-      type,
-      icon: '📢'
-    })
-    
-    await notification.save()
-    res.status(201).json(notification)
+    const { data, error } = await supabaseAdmin
+      .from('notifications')
+      .insert({ user_id: userId, title, body, type, icon: '📢' })
+      .select('*')
+      .single()
+    if (error) throw error
+    res.status(201).json(mapNotification(data))
   } catch (error) {
     res.status(500).json({ message: 'Error al enviar notificación', error: error.message })
   }
 })
 
-// Broadcast to all users (admin)
 router.post('/broadcast', authenticate, isAdmin, async (req, res) => {
   try {
     const { title, body, type = 'admin' } = req.body
-    const User = (await import('../models/User.js')).default
-    
-    const users = await User.find({}, '_id')
-    
-    const notifications = users.map(user => ({
-      user: user._id,
+    const { data: users } = await supabaseAdmin.from('profiles').select('id')
+    const rows = (users || []).map((u) => ({
+      user_id: u.id,
       title,
       body,
       type,
       icon: '📢',
       priority: 'high'
     }))
-    
-    await Notification.insertMany(notifications)
-    
-    res.json({ message: `Notificación enviada a ${users.length} usuarios` })
+    if (rows.length) {
+      const { error } = await supabaseAdmin.from('notifications').insert(rows)
+      if (error) throw error
+    }
+    res.json({ message: `Notificación enviada a ${rows.length} usuarios` })
   } catch (error) {
     res.status(500).json({ message: 'Error al enviar broadcast', error: error.message })
   }

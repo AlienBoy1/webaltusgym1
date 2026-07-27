@@ -1,24 +1,42 @@
-import jwt from 'jsonwebtoken'
-import User from '../models/User.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { mapProfile, attachSocial } from '../lib/mappers.js'
 
 export const authenticate = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '')
-    
+
     if (!token) {
       return res.status(401).json({ message: 'No autorizado' })
     }
-    
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'qyntra_secret_key_2024')
-    const user = await User.findById(decoded.userId).select('-password')
-    
-    if (!user) {
+
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token)
+
+    if (authError || !authData?.user) {
+      return res.status(401).json({ message: 'Token inválido' })
+    }
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single()
+
+    if (profileError || !profile) {
       return res.status(401).json({ message: 'Usuario no encontrado' })
     }
-    
-    req.user = user
+
+    const withSocial = await attachSocial(supabaseAdmin, profile)
+    const roleFromMeta = authData.user.app_metadata?.role
+    if (roleFromMeta && roleFromMeta !== withSocial.role) {
+      withSocial.role = roleFromMeta
+    }
+
+    req.accessToken = token
+    req.authUser = authData.user
+    req.user = mapProfile(withSocial)
     next()
   } catch (error) {
+    console.error('Auth error:', error)
     res.status(401).json({ message: 'Token inválido' })
   }
 }

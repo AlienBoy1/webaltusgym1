@@ -1,11 +1,10 @@
 import express from 'express'
-import Workout from '../models/Workout.js'
-import User from '../models/User.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { mapWorkout, mapProfile } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
 
-// Default workout templates
 const defaultTemplates = [
   {
     id: 1,
@@ -15,7 +14,7 @@ const defaultTemplates = [
       { name: 'Press Inclinado', sets: 3, reps: 12 },
       { name: 'Aperturas', sets: 3, reps: 15 },
       { name: 'Fondos', sets: 3, reps: 12 },
-      { name: 'Extensiones Tríceps', sets: 3, reps: 15 },
+      { name: 'Extensiones Tríceps', sets: 3, reps: 15 }
     ]
   },
   {
@@ -26,7 +25,7 @@ const defaultTemplates = [
       { name: 'Remo con Barra', sets: 4, reps: 10 },
       { name: 'Jalón al Pecho', sets: 3, reps: 12 },
       { name: 'Curl con Barra', sets: 3, reps: 12 },
-      { name: 'Curl Martillo', sets: 3, reps: 12 },
+      { name: 'Curl Martillo', sets: 3, reps: 12 }
     ]
   },
   {
@@ -37,7 +36,7 @@ const defaultTemplates = [
       { name: 'Prensa', sets: 4, reps: 12 },
       { name: 'Peso Muerto Rumano', sets: 3, reps: 10 },
       { name: 'Extensiones', sets: 3, reps: 15 },
-      { name: 'Curl Femoral', sets: 3, reps: 12 },
+      { name: 'Curl Femoral', sets: 3, reps: 12 }
     ]
   },
   {
@@ -48,101 +47,106 @@ const defaultTemplates = [
       { name: 'Elevaciones Laterales', sets: 3, reps: 15 },
       { name: 'Pájaros', sets: 3, reps: 15 },
       { name: 'Plancha', sets: 3, reps: '60s' },
-      { name: 'Crunch', sets: 3, reps: 20 },
+      { name: 'Crunch', sets: 3, reps: 20 }
     ]
   }
 ]
 
-// Get templates
 router.get('/templates/all', authenticate, async (req, res) => {
-  try {
-    // Return default templates for now
-    res.json(defaultTemplates)
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener rutinas', error: error.message })
-  }
+  res.json(defaultTemplates)
 })
 
-// Get user workouts history
 router.get('/history', authenticate, async (req, res) => {
   try {
-    const workouts = await Workout.find({ user: req.user._id })
-      .sort({ createdAt: -1 })
+    const { data, error } = await supabaseAdmin
+      .from('workouts')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
       .limit(50)
-    
-    res.json(workouts)
+    if (error) throw error
+    res.json((data || []).map(mapWorkout))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener historial', error: error.message })
   }
 })
 
-// Log workout
 router.post('/', authenticate, async (req, res) => {
   try {
     const { name, exercises, duration, notes } = req.body
-    
-    const workout = new Workout({
-      user: req.user._id,
-      name,
-      exercises,
-      duration,
-      notes,
-      completedAt: new Date()
-    })
-    
-    await workout.save()
-    
-    // Update user stats using xpService
-    const user = await User.findById(req.user._id)
-    
-    // Update total workouts
-    user.stats = user.stats || {}
-    user.stats.totalWorkouts = (user.stats.totalWorkouts || 0) + 1
-    
-    // Update streak
-    const lastWorkout = await Workout.findOne({ 
-      user: req.user._id,
-      _id: { $ne: workout._id }
-    }).sort({ createdAt: -1 })
-    
-    const now = new Date()
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    
-    if (!lastWorkout || new Date(lastWorkout.createdAt) >= yesterday) {
-      user.stats.currentStreak = (user.stats.currentStreak || 0) + 1
-      if (user.stats.currentStreak > (user.stats.longestStreak || 0)) {
-        user.stats.longestStreak = user.stats.currentStreak
+
+    const { data: workout, error } = await supabaseAdmin
+      .from('workouts')
+      .insert({
+        user_id: req.user.id,
+        name,
+        exercises: exercises || [],
+        duration,
+        notes,
+        completed_at: new Date().toISOString()
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', req.user.id)
+      .single()
+
+    const stats = { ...(profile.stats || {}) }
+    stats.totalWorkouts = (stats.totalWorkouts || 0) + 1
+
+    const { data: lastWorkouts } = await supabaseAdmin
+      .from('workouts')
+      .select('created_at')
+      .eq('user_id', req.user.id)
+      .neq('id', workout.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const lastWorkout = lastWorkouts?.[0]
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
+    if (!lastWorkout || new Date(lastWorkout.created_at) >= yesterday) {
+      stats.currentStreak = (stats.currentStreak || 0) + 1
+      if (stats.currentStreak > (stats.longestStreak || 0)) {
+        stats.longestStreak = stats.currentStreak
       }
     } else {
-      user.stats.currentStreak = 1
+      stats.currentStreak = 1
     }
-    
-    await user.save()
-    
-    // Award XP using xpService (50 XP per workout)
+
+    await supabaseAdmin
+      .from('profiles')
+      .update({ stats, updated_at: new Date().toISOString() })
+      .eq('id', req.user.id)
+
     const { awardXP, checkBadgeUnlocks } = await import('../services/xpService.js')
     let xpResult = null
     let unlockedBadges = []
-    
     try {
-      xpResult = await awardXP(req.user._id, 50, `Completaste el entrenamiento: ${name}`, false)
-      
-      // Check for badge unlocks after XP is awarded
-      unlockedBadges = await checkBadgeUnlocks(req.user._id, false)
+      xpResult = await awardXP(req.user.id, 50, `Completaste el entrenamiento: ${name}`, false)
+      unlockedBadges = await checkBadgeUnlocks(req.user.id, false)
     } catch (xpError) {
       console.error('Error awarding XP:', xpError)
     }
-    
-    // Refresh user to get updated stats
-    const updatedUser = await User.findById(req.user._id)
-    
-    res.status(201).json({ 
-      workout, 
+
+    const { data: updatedUser } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', req.user.id)
+      .single()
+
+    res.status(201).json({
+      workout: mapWorkout(workout),
       stats: updatedUser.stats,
       xpAwarded: 50,
       leveledUp: xpResult?.leveledUp || false,
-      unlockedBadges: unlockedBadges.map(b => ({ id: b.id, name: b.name, icon: b.icon })),
-      message: '¡Entrenamiento registrado!' 
+      unlockedBadges: unlockedBadges.map((b) => ({ id: b.id, name: b.name, icon: b.icon })),
+      message: '¡Entrenamiento registrado!'
     })
   } catch (error) {
     console.error('Workout error:', error)
@@ -150,30 +154,33 @@ router.post('/', authenticate, async (req, res) => {
   }
 })
 
-// Get single workout
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const workout = await Workout.findOne({ _id: req.params.id, user: req.user._id })
-    
-    if (!workout) {
-      return res.status(404).json({ message: 'Entrenamiento no encontrado' })
-    }
-    
-    res.json(workout)
+    const { data, error } = await supabaseAdmin
+      .from('workouts')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single()
+
+    if (error || !data) return res.status(404).json({ message: 'Entrenamiento no encontrado' })
+    res.json(mapWorkout(data))
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
   }
 })
 
-// Delete workout
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const workout = await Workout.findOneAndDelete({ _id: req.params.id, user: req.user._id })
-    
-    if (!workout) {
-      return res.status(404).json({ message: 'Entrenamiento no encontrado' })
-    }
-    
+    const { data, error } = await supabaseAdmin
+      .from('workouts')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('id')
+      .maybeSingle()
+
+    if (error || !data) return res.status(404).json({ message: 'Entrenamiento no encontrado' })
     res.json({ message: 'Entrenamiento eliminado' })
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
