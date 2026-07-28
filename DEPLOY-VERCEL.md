@@ -17,21 +17,19 @@ Sin esto, el enlace del correo te manda a la página genérica de Supabase en ve
 
 En Supabase → Authentication → **URL Configuration** (proyecto `bmzaoaeykfmmppwrsrxn`):
 
-- **Site URL:** `https://qyntagymweb.vercel.app`
+- **Site URL:** `https://qyntagymweb.vercel.app` ← **no** `localhost:3000`
 - **Redirect URLs** (añade todas):
   - `https://qyntagymweb.vercel.app/**`
+  - `https://qyntagymweb.vercel.app/reset-password`
   - `https://qyntagymweb-*.vercel.app/**`
-  - `https://webaltusgym1.vercel.app/**` (si usas ese proyecto también)
   - `http://localhost:5173/**`
+  - `http://localhost:5173/reset-password`
+
+Si Site URL sigue en `localhost:3000`, el botón del correo abre una página negra vacía.
 
 ### Plantilla del correo (diseño Qyntra)
 
-El texto/diseño del email **no** sale del código de la app: se edita en Supabase.
-
-1. Dashboard → Authentication → **Email Templates** → **Reset password**
-2. **Subject:** `Restablece tu contraseña — Qyntra Gym`
-3. Pega el HTML de `docs/email-recovery-qyntra.html` (debe conservar `{{ .ConfirmationURL }}`)
-4. Save
+El correo de recuperación lo envía **la API** con el HTML de marca Qyntra (ya no depende de la plantilla de Supabase). La plantilla en Supabase solo importa si vuelves a usar el mailer de Auth.
 
 ### Correo de recuperación (envío desde la app)
 

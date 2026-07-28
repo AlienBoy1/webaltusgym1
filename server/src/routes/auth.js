@@ -415,6 +415,40 @@ router.post('/login', async (req, res) => {
   }
 })
 
+function resolvePasswordResetRedirect() {
+  // Always send users to the real SPA reset page — never Site URL / localhost:3000
+  const PRODUCTION = 'https://qyntagymweb.vercel.app'
+  const configured = (process.env.CLIENT_URL || '').trim().replace(/\/$/, '')
+  const onVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV)
+
+  let base
+  if (onVercel) {
+    base =
+      configured && !/localhost|127\.0\.0\.1/i.test(configured) ? configured : PRODUCTION
+  } else if (configured && !/localhost|127\.0\.0\.1/i.test(configured)) {
+    base = configured
+  } else {
+    base = 'http://localhost:5173'
+  }
+
+  // Guard against common misconfig (Supabase Site URL / wrong CLIENT_URL)
+  if (/localhost:3000/i.test(base) || !base) {
+    base = onVercel ? PRODUCTION : 'http://localhost:5173'
+  }
+
+  return `${base.replace(/\/$/, '')}/reset-password`
+}
+
+function forceRedirectInActionLink(actionLink, redirectTo) {
+  try {
+    const url = new URL(actionLink)
+    url.searchParams.set('redirect_to', redirectTo)
+    return url.toString()
+  } catch {
+    return actionLink
+  }
+}
+
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body
@@ -437,24 +471,7 @@ router.post('/forgot-password', async (req, res) => {
       })
     }
 
-    // Prefer real public URL on Vercel; ignore CLIENT_URL if it is still localhost
-    const configured = (process.env.CLIENT_URL || '').replace(/\/$/, '')
-    const isLocalClient =
-      !configured || /localhost|127\.0\.0\.1/i.test(configured)
-    const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/\/$/, '')}`
-      : null
-    const vercelPreview = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`
-      : null
-    const siteUrl =
-      (!isLocalClient && configured) ||
-      vercelProd ||
-      vercelPreview ||
-      configured ||
-      'http://localhost:5173'
-
-    const redirectTo = `${siteUrl.replace(/\/$/, '')}/reset-password`
+    const redirectTo = resolvePasswordResetRedirect()
 
     // Generate recovery link via Admin API (does not send email).
     // App sends the branded email itself — avoids broken Supabase custom SMTP 500s.
@@ -465,10 +482,11 @@ router.post('/forgot-password', async (req, res) => {
     })
     if (linkError) throw linkError
 
-    const actionLink = linkData?.properties?.action_link
+    let actionLink = linkData?.properties?.action_link
     if (!actionLink) {
       throw new Error('No se pudo generar el enlace de recuperación')
     }
+    actionLink = forceRedirectInActionLink(actionLink, redirectTo)
 
     const { sendPasswordResetEmail, isSmtpConfigured } = await import('../lib/mailer.js')
 

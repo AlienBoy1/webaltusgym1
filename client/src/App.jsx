@@ -58,6 +58,14 @@ function App() {
       refreshUser()
     }
   }, [isAuthenticated])
+
+  // Recovery links sometimes land on /#access_token=...&type=recovery — send to reset UI
+  useEffect(() => {
+    const hash = window.location.hash || ''
+    if (!hash.includes('type=recovery') && !hash.includes('type%3Drecovery')) return
+    if (window.location.pathname === '/reset-password') return
+    window.location.replace(`/reset-password${hash}`)
+  }, [])
   
   return (
     <BrowserRouter>
