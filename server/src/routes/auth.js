@@ -456,23 +456,40 @@ router.post('/forgot-password', async (req, res) => {
 
     const redirectTo = `${siteUrl.replace(/\/$/, '')}/reset-password`
 
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(normalized, {
-      redirectTo
+    // Generate recovery link via Admin API (does not send email).
+    // App sends the branded email itself — avoids broken Supabase custom SMTP 500s.
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email: normalized,
+      options: { redirectTo }
     })
-    if (error) {
-      const code = error.code || error.status
-      if (
-        error.status === 429 ||
-        code === 'over_email_send_rate_limit' ||
-        /rate limit/i.test(error.message || '')
-      ) {
-        return res.status(429).json({
-          message:
-            'Supabase limitó el envío de correos (demasiadas solicitudes). Espera ~1 hora o usa el último correo que ya te llegó. En plan free el SMTP de prueba es muy restrictivo.',
-          code: 'EMAIL_RATE_LIMIT'
-        })
-      }
-      throw error
+    if (linkError) throw linkError
+
+    const actionLink = linkData?.properties?.action_link
+    if (!actionLink) {
+      throw new Error('No se pudo generar el enlace de recuperación')
+    }
+
+    const { sendPasswordResetEmail, isSmtpConfigured } = await import('../lib/mailer.js')
+
+    if (!isSmtpConfigured()) {
+      return res.status(503).json({
+        message:
+          'Falta configurar SMTP en Vercel (SMTP_USER y SMTP_PASS con la contraseña de aplicación de Gmail). También desactiva el SMTP custom roto en Supabase → Authentication → SMTP.',
+        code: 'SMTP_NOT_CONFIGURED'
+      })
+    }
+
+    try {
+      await sendPasswordResetEmail({ to: normalized, actionLink })
+    } catch (mailErr) {
+      console.error('SMTP send error:', mailErr)
+      return res.status(502).json({
+        message:
+          'No se pudo enviar el correo por Gmail. Revisa SMTP_USER/SMTP_PASS (contraseña de aplicación, no la de la cuenta) y que 2FA esté activo en Google.',
+        code: 'SMTP_SEND_FAILED',
+        error: mailErr.message
+      })
     }
 
     res.json({
@@ -481,7 +498,10 @@ router.post('/forgot-password', async (req, res) => {
     })
   } catch (error) {
     console.error('Forgot password error:', error)
-    res.status(500).json({ message: 'Error al enviar correo', error: error.message })
+    res.status(500).json({
+      message: error.message || 'Error al enviar correo',
+      error: error.message
+    })
   }
 })
 

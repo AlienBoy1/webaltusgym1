@@ -33,18 +33,28 @@ El texto/diseño del email **no** sale del código de la app: se edita en Supaba
 3. Pega el HTML de `docs/email-recovery-qyntra.html` (debe conservar `{{ .ConfirmationURL }}`)
 4. Save
 
-### Límite de correos (plan free)
+### Correo de recuperación (envío desde la app)
 
-Si `/api/auth/forgot-password` falla con **rate limit**, Supabase Auth (SMTP de prueba) bloqueó más envíos. Espera ~1 h o configura SMTP propio en Authentication → Emails → SMTP Settings (Resend, Brevo, etc.).
+La API genera el enlace con Supabase Admin y **envía el mail por Gmail** (nodemailer). No uses el SMTP custom de Supabase si falla (provoca 500).
 
-### Variables en Vercel (proyecto `qyntagymweb`)
+1. **Supabase → Authentication → Emails → SMTP:** desactiva *Enable custom SMTP* (OFF).
+2. En **Vercel → qyntagymweb → Settings → Environment Variables** (Production + Preview):
 
 ```
 SUPABASE_URL=https://bmzaoaeykfmmppwrsrxn.supabase.co
 SUPABASE_ANON_KEY=<anon>
 SUPABASE_SERVICE_ROLE_KEY=<service_role>
 CLIENT_URL=https://qyntagymweb.vercel.app
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=tingenieriasanchez@gmail.com
+SMTP_PASS=<contraseña de aplicación de 16 caracteres>
+SMTP_FROM=tingenieriasanchez@gmail.com
+SMTP_FROM_NAME=Qyntra Gym
 ```
+
+3. Redeploy tras guardar las variables.
+4. Contraseña de aplicación: https://myaccount.google.com/apppasswords (requiere 2FA).
 
 `CLIENT_URL` **no** debe ser `localhost` en producción (si lo es, el API intenta redirigir al local y Supabase cae al Site URL genérico).
 
