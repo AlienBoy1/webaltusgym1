@@ -25,7 +25,7 @@ export async function sendPushNotification(userId, notification) {
       title: notification.title,
       body: notification.body,
       icon: notification.icon || '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
+      badge: notification.badge || '/badge-96x96.png',
       tag: notification.tag || notification.data?.tag || undefined,
       renotify: notification.renotify === true,
       data: {

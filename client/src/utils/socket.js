@@ -131,8 +131,8 @@ export const showNotification = (title, body, options = {}) => {
   if (Notification.permission === 'granted') {
     const notification = new Notification(title, {
       body,
-      icon: '/favicon.svg',
-      badge: '/favicon.svg',
+      icon: '/pwa-192x192.png',
+      badge: '/badge-96x96.png',
       tag: options.tag || 'qyntra-notification',
       requireInteraction: false,
       ...options

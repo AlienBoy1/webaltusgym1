@@ -1,5 +1,13 @@
-const CACHE_NAME = 'qyntra-gym-runtime-v1'
-const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/favicon.svg', '/version.json']
+const CACHE_NAME = 'qyntra-gym-runtime-v2'
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/favicon.svg',
+  '/version.json',
+  '/badge-96x96.png',
+  '/pwa-192x192.png'
+]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -95,7 +103,8 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || 'Tienes una nueva notificación',
     icon: data.icon || '/pwa-192x192.png',
-    badge: data.badge || '/pwa-192x192.png',
+    // Android status bar requires a monochrome alpha mask (not a full-color icon)
+    badge: data.badge || '/badge-96x96.png',
     vibrate: [100, 50, 100],
     tag: data.tag || data.data?.tag || undefined,
     renotify: data.renotify === true || Boolean(data.tag || data.data?.tag),
