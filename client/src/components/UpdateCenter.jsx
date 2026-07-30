@@ -197,7 +197,7 @@ export default function UpdateCenter() {
                   <FiZap size={12} /> Nueva versión disponible
                 </div>
                 <h2 className="font-display text-2xl sm:text-3xl tracking-wide">
-                  Actualiza QYNTRA
+                  Actualiza QYNTRA APP
                 </h2>
                 <p className="text-gray-400 text-sm sm:text-base leading-relaxed px-1">
                   Hay una versión más nueva lista. Actualiza ahora para obtener mejoras y
