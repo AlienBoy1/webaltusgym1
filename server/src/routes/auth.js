@@ -1,6 +1,6 @@
 import express from 'express'
 import crypto from 'crypto'
-import { supabaseAdmin } from '../lib/supabase.js'
+import { supabaseAdmin, createAuthClient } from '../lib/supabase.js'
 import { mapProfile, attachSocial } from '../lib/mappers.js'
 
 const router = express.Router()
@@ -57,7 +57,9 @@ async function createAuthAndProfile({ email, password, name, role, phone, profil
 }
 
 async function sessionFor(email, password) {
-  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+  // Use a fresh anon client — never sign in on supabaseAdmin (session pollution)
+  const authClient = createAuthClient()
+  const { data, error } = await authClient.auth.signInWithPassword({
     email: email.toLowerCase(),
     password
   })

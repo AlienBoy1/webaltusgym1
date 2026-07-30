@@ -122,7 +122,7 @@ async function bumpSocialInteractions(userId) {
   }
 }
 
-// Get feed (posts from users you follow)
+// Get feed (own posts + posts from users you follow)
 router.get('/feed', authenticate, async (req, res) => {
   try {
     const { data: following } = await supabaseAdmin
@@ -131,18 +131,15 @@ router.get('/feed', authenticate, async (req, res) => {
       .eq('follower_id', req.user.id)
 
     const followingIds = (following || []).map((f) => f.following_id)
+    const feedUserIds = [...new Set([req.user.id, ...followingIds])]
 
-    let query = supabaseAdmin
+    const { data: posts, error } = await supabaseAdmin
       .from('posts')
       .select('*')
+      .in('user_id', feedUserIds)
       .order('created_at', { ascending: false })
       .limit(50)
 
-    if (followingIds.length === 0) {
-      return res.json([])
-    }
-
-    const { data: posts, error } = await query.in('user_id', followingIds)
     if (error) throw error
 
     res.json(await enrichPosts(posts || []))

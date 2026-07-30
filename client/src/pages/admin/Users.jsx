@@ -29,12 +29,19 @@ export default function AdminUsers() {
     membershipDuration: '30'
   })
   
-  useEffect(() => { 
+  useEffect(() => {
     fetchUsers()
+  }, [filter])
+
+  useEffect(() => {
+    fetchRegistrationRequests()
+  }, [])
+
+  useEffect(() => {
     if (activeTab === 'requests') {
       fetchRegistrationRequests()
     }
-  }, [filter, activeTab])
+  }, [activeTab])
   
   const fetchRegistrationRequests = async () => {
     try {
@@ -304,6 +311,8 @@ export default function AdminUsers() {
           </div>
         </div>
       )}
+        </>
+      )}
       
       {/* Edit Modal */}
       {showModal && selectedUser && (
@@ -341,7 +350,7 @@ export default function AdminUsers() {
         </div>
       )}
       
-      {/* Register User from Request Modal */}
+      {/* Register User from Request Modal — outside tab so it works from Solicitudes */}
       <AnimatePresence>
         {showRegisterModal && selectedRequest && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -489,8 +498,6 @@ export default function AdminUsers() {
           </div>
         )}
       </AnimatePresence>
-        </>
-      )}
     </div>
   )
 }
