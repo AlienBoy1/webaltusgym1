@@ -496,6 +496,7 @@ export default function Social() {
             const postComments = post.comments || []
             const showCommentSection = showComments[post._id]
             const postHasVoted = hasVoted(post)
+            const pollTotalVotes = post.poll ? getTotalVotes(post) : 0
             const moodInfo = post.mood ? moods.find(m => m.id === post.mood) : null
             const timeLabel = formatDistanceToNow(new Date(post.createdAt), {
               addSuffix: true,
@@ -625,8 +626,7 @@ export default function Social() {
                     <div className="space-y-2">
                       {post.poll.options.map((option, idx) => {
                         const votes = option.votes?.length || 0
-                        const totalVotes = getTotalVotes(post)
-                        const percentage = totalVotes > 0 ? (votes / totalVotes) * 100 : 0
+                        const percentage = pollTotalVotes > 0 ? (votes / pollTotalVotes) * 100 : 0
                         const userVoted = option.votes?.some(v => (v?._id || v) === user?._id)
 
                         return (
@@ -664,7 +664,7 @@ export default function Social() {
                     </div>
                     {postHasVoted && (
                       <p className="text-xs text-gray-400 mt-2">
-                        Total: {totalVotes} {totalVotes === 1 ? 'voto' : 'votos'}
+                        Total: {pollTotalVotes} {pollTotalVotes === 1 ? 'voto' : 'votos'}
                       </p>
                     )}
                   </div>
