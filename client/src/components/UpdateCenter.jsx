@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiDownloadCloud, FiRefreshCw, FiCheck, FiZap } from 'react-icons/fi'
+import { useAuthStore } from '../store/authStore'
 import QyntraLogo from './QyntraLogo'
 
 const VERSION_KEY = 'qyntra_app_version'
@@ -16,15 +17,58 @@ function delay(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+/** Animate progress from → to over durationMs; resolves when animation ends */
+function animateProgress(from, to, durationMs, setProgress) {
+  return new Promise((resolve) => {
+    const start = performance.now()
+    const delta = to - from
+
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / durationMs)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setProgress(Math.round(from + delta * eased))
+      if (t < 1) requestAnimationFrame(tick)
+      else {
+        setProgress(to)
+        resolve()
+      }
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+/**
+ * Run real work and progress animation together.
+ * Progress reaches `to` only when BOTH the work and the animation have finished.
+ */
+async function runSyncedStep({ from, to, minDurationMs, work, setProgress }) {
+  const workPromise = (async () => {
+    if (!work) return
+    try {
+      await work()
+    } catch {
+      /* continue update flow */
+    }
+  })()
+
+  const animPromise = animateProgress(from, to, minDurationMs, setProgress)
+
+  await Promise.all([workPromise, animPromise])
+  setProgress(to)
+}
+
 export default function UpdateCenter() {
+  const { isAuthenticated } = useAuthStore()
   const [visible, setVisible] = useState(false)
   const [phase, setPhase] = useState('idle')
   const [progress, setProgress] = useState(0)
   const [remoteVersion, setRemoteVersion] = useState(null)
-  const waitingWorkerRef = useRef(null)
   const [statusText, setStatusText] = useState('')
+  const waitingWorkerRef = useRef(null)
+  const updatingRef = useRef(false)
 
   const openPrompt = useCallback((version, worker = null) => {
+    if (updatingRef.current) return
     if (version) setRemoteVersion(version)
     if (worker) waitingWorkerRef.current = worker
     setPhase('prompt')
@@ -32,10 +76,18 @@ export default function UpdateCenter() {
   }, [])
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setVisible(false)
+      setPhase('idle')
+      updatingRef.current = false
+      return
+    }
+
     let cancelled = false
     let pollId
 
     const checkVersion = async () => {
+      if (!isAuthenticated || updatingRef.current) return
       try {
         const remote = await fetchRemoteVersion()
         if (cancelled || !remote?.version) return
@@ -58,7 +110,12 @@ export default function UpdateCenter() {
         const trackWorker = (worker) => {
           if (!worker) return
           worker.addEventListener('statechange', () => {
-            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            if (
+              worker.state === 'installed' &&
+              navigator.serviceWorker.controller &&
+              isAuthenticated &&
+              !updatingRef.current
+            ) {
               openPrompt(null, worker)
             }
           })
@@ -94,19 +151,47 @@ export default function UpdateCenter() {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [openPrompt])
+  }, [isAuthenticated, openPrompt])
 
   const runUpdate = async () => {
+    if (updatingRef.current) return
+    updatingRef.current = true
     setPhase('updating')
     setProgress(0)
 
+    let latestVersion = remoteVersion
+
     const steps = [
-      { p: 20, text: 'Verificando nueva versión…', action: null },
-      { p: 42, text: 'Descargando recursos…', action: null },
       {
-        p: 68,
+        to: 18,
+        text: 'Verificando nueva versión…',
+        minDurationMs: 700,
+        work: async () => {
+          const remote = await fetchRemoteVersion().catch(() => latestVersion)
+          if (remote) {
+            latestVersion = remote
+            setRemoteVersion(remote)
+          }
+          await delay(120)
+        }
+      },
+      {
+        to: 40,
+        text: 'Descargando recursos…',
+        minDurationMs: 900,
+        work: async () => {
+          if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.getRegistration()
+            await reg?.update?.().catch(() => {})
+          }
+          await delay(150)
+        }
+      },
+      {
+        to: 68,
         text: 'Limpiando caché anterior…',
-        action: async () => {
+        minDurationMs: 1100,
+        work: async () => {
           if ('caches' in window) {
             const keys = await caches.keys()
             await Promise.all(keys.map((k) => caches.delete(k)))
@@ -120,37 +205,52 @@ export default function UpdateCenter() {
           }
         }
       },
-      { p: 88, text: 'Aplicando cambios…', action: null },
-      { p: 100, text: '¡Listo!', action: null }
+      {
+        to: 88,
+        text: 'Aplicando cambios…',
+        minDurationMs: 800,
+        work: async () => {
+          try {
+            if (!latestVersion) {
+              latestVersion = await fetchRemoteVersion().catch(() => null)
+            }
+            if (latestVersion?.version) {
+              localStorage.setItem(VERSION_KEY, latestVersion.version)
+            }
+          } catch {
+            /* ignore */
+          }
+          await delay(100)
+        }
+      },
+      {
+        to: 100,
+        text: '¡Listo!',
+        minDurationMs: 500,
+        work: async () => delay(80)
+      }
     ]
 
+    let from = 0
     for (const step of steps) {
       setStatusText(step.text)
-      if (step.action) {
-        try {
-          await step.action()
-        } catch {
-          /* continue */
-        }
-      }
-      setProgress(step.p)
-      await delay(480)
-    }
-
-    try {
-      const remote = remoteVersion || (await fetchRemoteVersion().catch(() => null))
-      if (remote?.version) localStorage.setItem(VERSION_KEY, remote.version)
-    } catch {
-      /* ignore */
+      await runSyncedStep({
+        from,
+        to: step.to,
+        minDurationMs: step.minDurationMs,
+        work: step.work,
+        setProgress
+      })
+      from = step.to
     }
 
     setPhase('done')
     setStatusText('Reiniciando app…')
-    await delay(800)
+    await delay(700)
     window.location.reload()
   }
 
-  if (!visible) return null
+  if (!isAuthenticated || !visible) return null
 
   return (
     <AnimatePresence>
@@ -164,12 +264,16 @@ export default function UpdateCenter() {
           background:
             'radial-gradient(ellipse at top, rgba(255,107,53,0.18), transparent 55%), rgba(10,10,15,0.92)'
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         <motion.div
           initial={{ y: 48, opacity: 0, scale: 0.96 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           transition={{ type: 'spring', damping: 22, stiffness: 280 }}
           className="w-full max-w-md bg-dark-200 border border-white/10 rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="update-title"
         >
           <div className="relative px-5 sm:px-8 pt-8 pb-7">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-orange-400 to-accent-cyan" />
@@ -194,31 +298,25 @@ export default function UpdateCenter() {
             {phase === 'prompt' && (
               <div className="text-center space-y-3">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/15 text-primary-400 text-xs font-medium">
-                  <FiZap size={12} /> Nueva versión disponible
+                  <FiZap size={12} /> Actualización requerida
                 </div>
-                <h2 className="font-display text-2xl sm:text-3xl tracking-wide">
-                  Actualiza QYNTRA APP
+                <h2 id="update-title" className="font-display text-2xl sm:text-3xl tracking-wide">
+                  Actualiza QYNTRA
                 </h2>
                 <p className="text-gray-400 text-sm sm:text-base leading-relaxed px-1">
-                  Hay una versión más nueva lista. Actualiza ahora para obtener mejoras y
-                  correcciones — sin borrar cookies ni datos a mano.
+                  Hay una versión más nueva disponible. Debes actualizar para continuar usando
+                  la app con las últimas mejoras y correcciones.
                 </p>
                 {remoteVersion?.version && (
                   <p className="text-xs text-gray-500">Versión {remoteVersion.version}</p>
                 )}
-                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <div className="pt-4">
                   <button
                     onClick={runUpdate}
-                    className="btn-primary flex-1 py-3.5 flex items-center justify-center gap-2"
+                    className="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
                   >
                     <FiDownloadCloud size={18} />
                     Actualizar ahora
-                  </button>
-                  <button
-                    onClick={() => setVisible(false)}
-                    className="btn-secondary flex-1 py-3.5"
-                  >
-                    Más tarde
                   </button>
                 </div>
               </div>
@@ -234,8 +332,7 @@ export default function UpdateCenter() {
                 <div className="relative h-3 bg-dark-400 rounded-full overflow-hidden">
                   <motion.div
                     className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary-500 to-accent-cyan"
-                    animate={{ width: `${progress}%` }}
-                    transition={{ ease: 'easeOut', duration: 0.4 }}
+                    style={{ width: `${progress}%` }}
                   />
                   {phase === 'updating' && (
                     <motion.div
@@ -261,11 +358,15 @@ export default function UpdateCenter() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 pt-1">
-                  {['Caché', 'Assets', 'App'].map((label, i) => (
+                  {[
+                    { label: 'Caché', at: 40 },
+                    { label: 'Assets', at: 68 },
+                    { label: 'App', at: 100 }
+                  ].map(({ label, at }) => (
                     <div
                       key={label}
                       className={`rounded-xl py-3 text-xs border transition-colors ${
-                        progress >= (i + 1) * 30
+                        progress >= at
                           ? 'border-primary-500/40 bg-primary-500/10 text-primary-300'
                           : 'border-white/5 bg-dark-300 text-gray-500'
                       }`}
