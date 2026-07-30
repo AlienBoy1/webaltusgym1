@@ -81,6 +81,18 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
       
       // Store token and user
       localStorage.setItem('token', data.token)
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      try {
+        const { supabase } = await import('../lib/supabase')
+        if (data.token && data.refreshToken) {
+          await supabase.auth.setSession({
+            access_token: data.token,
+            refresh_token: data.refreshToken
+          })
+        }
+      } catch {
+        /* ignore */
+      }
       
       toast.success('¡Bienvenido a Qyntra Gym! Tu membresía está lista.', {
         duration: 4000

@@ -138,11 +138,11 @@ router.get('/feed', authenticate, async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(50)
 
-    if (followingIds.length > 0) {
-      query = query.in('user_id', followingIds)
+    if (followingIds.length === 0) {
+      return res.json([])
     }
 
-    const { data: posts, error } = await query
+    const { data: posts, error } = await query.in('user_id', followingIds)
     if (error) throw error
 
     res.json(await enrichPosts(posts || []))
@@ -458,11 +458,17 @@ router.post('/:id/accept-follow', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
 
-    await supabaseAdmin
+    const { data: deletedRequests, error: deleteError } = await supabaseAdmin
       .from('follow_requests')
       .delete()
       .eq('from_user_id', requesterId)
       .eq('to_user_id', currentUserId)
+      .select('id')
+
+    if (deleteError) throw deleteError
+    if (!deletedRequests?.length) {
+      return res.status(404).json({ message: 'No hay solicitud pendiente de este usuario' })
+    }
 
     const { error: followError } = await supabaseAdmin.from('follows').upsert({
       follower_id: requesterId,
@@ -536,9 +542,40 @@ router.post('/:id/unfollow', authenticate, async (req, res) => {
       .eq('follower_id', currentUserId)
       .eq('following_id', targetUserId)
 
+    // Also cancel any pending follow request
+    await supabaseAdmin
+      .from('follow_requests')
+      .delete()
+      .eq('from_user_id', currentUserId)
+      .eq('to_user_id', targetUserId)
+
     res.json({ message: 'Dejaste de seguir a este usuario' })
   } catch (error) {
     res.status(500).json({ message: 'Error al dejar de seguir', error: error.message })
+  }
+})
+
+// Cancel pending follow request
+router.post('/:id/cancel-follow', authenticate, async (req, res) => {
+  try {
+    const targetUserId = req.params.id
+    const currentUserId = req.user.id
+
+    const { data: deleted, error } = await supabaseAdmin
+      .from('follow_requests')
+      .delete()
+      .eq('from_user_id', currentUserId)
+      .eq('to_user_id', targetUserId)
+      .select('id')
+
+    if (error) throw error
+    if (!deleted?.length) {
+      return res.status(404).json({ message: 'No hay solicitud pendiente' })
+    }
+
+    res.json({ message: 'Solicitud cancelada' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al cancelar solicitud', error: error.message })
   }
 })
 
@@ -572,13 +609,14 @@ router.get('/follow-requests', authenticate, async (req, res) => {
   }
 })
 
-// Get following list
+// Get following list (?userId= optional, defaults to current user)
 router.get('/following', authenticate, async (req, res) => {
   try {
+    const userId = req.query.userId || req.user.id
     const { data: following, error } = await supabaseAdmin
       .from('follows')
       .select('following_id')
-      .eq('follower_id', req.user.id)
+      .eq('follower_id', userId)
 
     if (error) throw error
     const ids = (following || []).map((f) => f.following_id)
@@ -604,13 +642,14 @@ router.get('/following', authenticate, async (req, res) => {
   }
 })
 
-// Get followers list
+// Get followers list (?userId= optional, defaults to current user)
 router.get('/followers', authenticate, async (req, res) => {
   try {
+    const userId = req.query.userId || req.user.id
     const { data: followers, error } = await supabaseAdmin
       .from('follows')
       .select('follower_id')
-      .eq('following_id', req.user.id)
+      .eq('following_id', userId)
 
     if (error) throw error
     const ids = (followers || []).map((f) => f.follower_id)

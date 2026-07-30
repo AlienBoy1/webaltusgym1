@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useParams, Link } from 'react-router-dom'
-import { FiAward, FiUsers, FiCalendar, FiTrendingUp, FiArrowLeft, FiUserCheck, FiUserPlus, FiUserX, FiCheck, FiX } from 'react-icons/fi'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import {
+  FiAward,
+  FiUsers,
+  FiCalendar,
+  FiTrendingUp,
+  FiArrowLeft,
+  FiUserPlus,
+  FiUserX,
+  FiCheck,
+  FiX,
+  FiMessageCircle,
+  FiClock
+} from 'react-icons/fi'
 import api from '../../utils/api'
 import { useAuthStore } from '../../store/authStore'
 import BadgesModal from '../../components/BadgesModal'
@@ -12,6 +24,7 @@ import { es } from 'date-fns/locale'
 
 export default function UserProfile() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { user: currentUser } = useAuthStore()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -25,13 +38,25 @@ export default function UserProfile() {
   const [posts, setPosts] = useState([])
   const [showPosts, setShowPosts] = useState(false)
   const [loadingPosts, setLoadingPosts] = useState(false)
+  const [listModal, setListModal] = useState(null) // 'followers' | 'following' | null
+  const [listUsers, setListUsers] = useState([])
+  const [loadingList, setLoadingList] = useState(false)
+  const [followRequests, setFollowRequests] = useState([])
+  const [loadingRequests, setLoadingRequests] = useState(false)
+
+  const isOwnProfile = currentUser?._id === id
 
   useEffect(() => {
     if (id) {
       fetchUser()
       checkFollowStatus()
+      if (currentUser?._id === id) {
+        fetchFollowRequests()
+      } else {
+        setFollowRequests([])
+      }
     }
-  }, [id])
+  }, [id, currentUser?._id])
 
   const fetchUser = async () => {
     try {
@@ -47,24 +72,21 @@ export default function UserProfile() {
   }
 
   const checkFollowStatus = async () => {
-    if (!currentUser?._id || !id || currentUser._id === id) return
-    
+    if (!currentUser?._id || !id) return
+
     try {
       const { data } = await api.get(`/social/${id}/follow-status`)
       setFollowStatus(data)
-      
-      // If following, fetch posts
-      if (data.isFollowing) {
-        fetchUserPosts()
+
+      if (data.isFollowing && currentUser._id !== id) {
+        loadUserPosts()
       }
     } catch (error) {
       console.error('Error checking follow status:', error)
     }
   }
 
-  const fetchUserPosts = async () => {
-    if (!followStatus.isFollowing) return
-    
+  const loadUserPosts = async () => {
     setLoadingPosts(true)
     try {
       const { data } = await api.get(`/social/user/${id}/posts`)
@@ -77,16 +99,48 @@ export default function UserProfile() {
     }
   }
 
+  const fetchFollowRequests = async () => {
+    setLoadingRequests(true)
+    try {
+      const { data } = await api.get('/social/follow-requests')
+      setFollowRequests(data || [])
+    } catch (error) {
+      console.error('Error fetching follow requests:', error)
+    } finally {
+      setLoadingRequests(false)
+    }
+  }
+
+  const openList = async (type) => {
+    setListModal(type)
+    setLoadingList(true)
+    setListUsers([])
+    try {
+      const { data } = await api.get(`/social/${type}?userId=${id}`)
+      setListUsers(data || [])
+    } catch (error) {
+      toast.error('Error al cargar lista')
+      setListModal(null)
+    } finally {
+      setLoadingList(false)
+    }
+  }
+
   const handleFollow = async () => {
     try {
       const { data } = await api.post(`/social/${id}/follow`)
       if (data.status === 'pending') {
-        setFollowStatus(prev => ({ ...prev, hasPendingRequest: true }))
+        setFollowStatus((prev) => ({ ...prev, hasPendingRequest: true }))
         toast.success('Solicitud enviada')
       } else {
-        setFollowStatus(prev => ({ ...prev, isFollowing: true, hasPendingRequest: false }))
+        setFollowStatus((prev) => ({
+          ...prev,
+          isFollowing: true,
+          hasPendingRequest: false,
+          followersCount: (prev.followersCount || 0) + 1
+        }))
         toast.success('Ahora sigues a este usuario')
-        fetchUserPosts()
+        loadUserPosts()
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al seguir usuario')
@@ -96,7 +150,11 @@ export default function UserProfile() {
   const handleUnfollow = async () => {
     try {
       await api.post(`/social/${id}/unfollow`)
-      setFollowStatus(prev => ({ ...prev, isFollowing: false }))
+      setFollowStatus((prev) => ({
+        ...prev,
+        isFollowing: false,
+        followersCount: Math.max(0, (prev.followersCount || 0) - 1)
+      }))
       setPosts([])
       setShowPosts(false)
       toast.success('Dejaste de seguir a este usuario')
@@ -105,13 +163,27 @@ export default function UserProfile() {
     }
   }
 
+  const handleCancelRequest = async () => {
+    try {
+      await api.post(`/social/${id}/cancel-follow`)
+      setFollowStatus((prev) => ({ ...prev, hasPendingRequest: false }))
+      toast.success('Solicitud cancelada')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Error al cancelar')
+    }
+  }
+
   const handleAcceptFollowRequest = async (requesterId) => {
     try {
       await api.post(`/social/${requesterId}/accept-follow`)
       toast.success('Solicitud aceptada')
-      // Refresh follow requests if viewing own profile
+      setFollowRequests((prev) => prev.filter((r) => (r.user?._id || r.user) !== requesterId))
+      setFollowStatus((prev) => ({
+        ...prev,
+        followersCount: (prev.followersCount || 0) + 1
+      }))
     } catch (error) {
-      toast.error('Error al aceptar solicitud')
+      toast.error(error.response?.data?.message || 'Error al aceptar solicitud')
     }
   }
 
@@ -119,14 +191,19 @@ export default function UserProfile() {
     try {
       await api.post(`/social/${requesterId}/reject-follow`)
       toast.success('Solicitud rechazada')
+      setFollowRequests((prev) => prev.filter((r) => (r.user?._id || r.user) !== requesterId))
     } catch (error) {
       toast.error('Error al rechazar solicitud')
     }
   }
 
+  const handleMessage = () => {
+    navigate('/chat', { state: { startWith: { _id: id, name: user?.name, avatar: user?.avatar } } })
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-[40vh]">
         <div className="w-8 h-8 border-4 border-dark-100 border-t-primary-500 rounded-full animate-spin" />
       </div>
     )
@@ -136,27 +213,23 @@ export default function UserProfile() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-400">Usuario no encontrado</p>
-        <Link to="/" className="btn-primary mt-4 inline-block">
+        <Link to="/dashboard" className="btn-primary mt-4 inline-block">
           Volver al inicio
         </Link>
       </div>
     )
   }
 
-  const isOwnProfile = currentUser?._id === id
-
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Back Button */}
       <Link
-        to="/"
+        to="/dashboard"
         className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
       >
         <FiArrowLeft size={20} />
         Volver
       </Link>
 
-      {/* Profile Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -165,74 +238,165 @@ export default function UserProfile() {
         <div className="relative inline-block mb-4">
           <Avatar avatar={user.avatar} name={user.name} size="xl" />
         </div>
-        
+
         <h1 className="font-display text-2xl mb-1">{user.name}</h1>
-        <p className="text-gray-400 mb-4">{user.email}</p>
-        
-        {/* Follow Stats */}
+        <p className="text-gray-400 mb-4 break-all text-sm sm:text-base">{user.email}</p>
+
         <div className="flex items-center justify-center gap-6 mb-4">
-          <div className="text-center">
-            <div className="font-semibold text-lg">{followStatus.followersCount || user.social?.followers?.length || 0}</div>
+          <button
+            type="button"
+            onClick={() => openList('followers')}
+            className="text-center hover:text-primary-400 transition-colors"
+          >
+            <div className="font-semibold text-lg">
+              {followStatus.followersCount || user.social?.followers?.length || 0}
+            </div>
             <div className="text-sm text-gray-400">Seguidores</div>
-          </div>
-          <div className="text-center">
-            <div className="font-semibold text-lg">{followStatus.followingCount || user.social?.following?.length || 0}</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => openList('following')}
+            className="text-center hover:text-primary-400 transition-colors"
+          >
+            <div className="font-semibold text-lg">
+              {followStatus.followingCount || user.social?.following?.length || 0}
+            </div>
             <div className="text-sm text-gray-400">Seguidos</div>
-          </div>
+          </button>
         </div>
-        
+
         {!isOwnProfile && (
-          <div className="flex gap-2 justify-center">
+          <div className="flex flex-wrap gap-2 justify-center">
             {followStatus.isFollowing ? (
               <button
                 onClick={handleUnfollow}
-                className="btn-secondary py-2 px-6 flex items-center gap-2"
+                className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
               >
                 <FiUserX size={18} />
                 Dejar de seguir
               </button>
             ) : followStatus.hasPendingRequest ? (
               <button
-                disabled
-                className="btn-secondary py-2 px-6 flex items-center gap-2 opacity-50 cursor-not-allowed"
+                onClick={handleCancelRequest}
+                className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
               >
-                <FiUserPlus size={18} />
-                Solicitud pendiente
+                <FiClock size={18} />
+                Cancelar solicitud
               </button>
             ) : (
               <button
                 onClick={handleFollow}
-                className="btn-primary py-2 px-6 flex items-center gap-2"
+                className="btn-primary py-2 px-4 sm:px-6 flex items-center gap-2"
               >
                 <FiUserPlus size={18} />
                 Seguir
               </button>
             )}
+            <button
+              onClick={handleMessage}
+              className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
+            >
+              <FiMessageCircle size={18} />
+              Mensaje
+            </button>
           </div>
         )}
       </motion.div>
 
-      {/* Stats */}
+      {isOwnProfile && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="card"
+        >
+          <h2 className="font-display text-xl flex items-center gap-2 mb-4">
+            <FiUserPlus className="text-primary-500" />
+            Solicitudes de seguimiento
+            {followRequests.length > 0 && (
+              <span className="text-sm bg-primary-500 text-white px-2 py-0.5 rounded-full">
+                {followRequests.length}
+              </span>
+            )}
+          </h2>
+          {loadingRequests ? (
+            <div className="text-center py-6">
+              <div className="w-6 h-6 border-2 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
+            </div>
+          ) : followRequests.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-4">No hay solicitudes pendientes</p>
+          ) : (
+            <div className="space-y-3">
+              {followRequests.map((req) => {
+                const requester = typeof req.user === 'object' ? req.user : { _id: req.user }
+                const requesterId = requester._id || requester.id
+                return (
+                  <div
+                    key={req.id || req._id}
+                    className="flex items-center gap-3 p-3 bg-dark-200 rounded-xl"
+                  >
+                    <Link to={`/user/${requesterId}`} className="flex-shrink-0">
+                      <Avatar avatar={requester.avatar} name={requester.name} size="md" />
+                    </Link>
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        to={`/user/${requesterId}`}
+                        className="font-medium hover:text-primary-400 truncate block"
+                      >
+                        {requester.name || 'Usuario'}
+                      </Link>
+                      {req.requestedAt && (
+                        <p className="text-xs text-gray-500">
+                          {formatDistanceToNow(new Date(req.requestedAt), {
+                            addSuffix: true,
+                            locale: es
+                          })}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleAcceptFollowRequest(requesterId)}
+                        className="p-2 bg-primary-500 rounded-lg text-white hover:bg-primary-600"
+                        aria-label="Aceptar"
+                      >
+                        <FiCheck size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleRejectFollowRequest(requesterId)}
+                        className="p-2 bg-dark-100 rounded-lg text-gray-300 hover:text-red-400"
+                        aria-label="Rechazar"
+                      >
+                        <FiX size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </motion.div>
+      )}
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="grid grid-cols-3 gap-4"
+        className="grid grid-cols-3 gap-2 sm:gap-4"
       >
         {[
           { label: 'Entrenamientos', value: user.stats?.totalWorkouts || 0, icon: FiTrendingUp },
           { label: 'Días Activo', value: user.stats?.longestStreak || 0, icon: FiCalendar },
-          { label: 'Nivel', value: user.stats?.level || 1, icon: FiAward },
+          { label: 'Nivel', value: user.stats?.level || 1, icon: FiAward }
         ].map((stat) => (
-          <div key={stat.label} className="card text-center">
-            <stat.icon className="mx-auto mb-2 text-primary-500" size={24} />
-            <div className="font-display text-2xl text-primary-500">{stat.value}</div>
-            <div className="text-gray-400 text-sm">{stat.label}</div>
+          <div key={stat.label} className="card text-center p-3 sm:p-4">
+            <stat.icon className="mx-auto mb-2 text-primary-500" size={22} />
+            <div className="font-display text-xl sm:text-2xl text-primary-500">{stat.value}</div>
+            <div className="text-gray-400 text-xs sm:text-sm">{stat.label}</div>
           </div>
         ))}
       </motion.div>
 
-      {/* XP Total */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -246,7 +410,7 @@ export default function UserProfile() {
         <div className="h-3 bg-dark-300 rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-accent-yellow to-orange-500 rounded-full transition-all"
-            style={{ width: `${Math.min(100, ((user.stats?.xp || 0) % 100))}%` }}
+            style={{ width: `${Math.min(100, (user.stats?.xp || 0) % 100)}%` }}
           />
         </div>
         <div className="text-xs text-gray-500 mt-1">
@@ -254,7 +418,6 @@ export default function UserProfile() {
         </div>
       </motion.div>
 
-      {/* Badges */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -275,16 +438,16 @@ export default function UserProfile() {
             </button>
           )}
         </div>
-        
+
         {user.badges && user.badges.length > 0 ? (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-2 sm:gap-3">
             {user.badges.slice(0, 8).map((badge, index) => (
               <div
                 key={badge.id || badge._id || index}
-                className="text-center p-3 bg-dark-200 rounded-xl hover:bg-dark-100 transition-colors cursor-pointer"
+                className="text-center p-2 sm:p-3 bg-dark-200 rounded-xl hover:bg-dark-100 transition-colors cursor-pointer"
                 onClick={() => setShowBadges(true)}
               >
-                <div className="text-3xl mb-1">{badge.icon}</div>
+                <div className="text-2xl sm:text-3xl mb-1">{badge.icon}</div>
                 <div className="text-xs text-gray-400 truncate">{badge.name}</div>
               </div>
             ))}
@@ -305,7 +468,6 @@ export default function UserProfile() {
         )}
       </motion.div>
 
-      {/* User Posts (if following) */}
       {!isOwnProfile && followStatus.isFollowing && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -321,7 +483,7 @@ export default function UserProfile() {
             <button
               onClick={() => {
                 if (!showPosts && posts.length === 0) {
-                  fetchUserPosts()
+                  loadUserPosts()
                 } else {
                   setShowPosts(!showPosts)
                 }
@@ -351,9 +513,7 @@ export default function UserProfile() {
                 ) : (
                   posts.map((post) => (
                     <div key={post._id} className="p-4 bg-dark-200 rounded-xl">
-                      {post.content && (
-                        <p className="text-gray-100 mb-3">{post.content}</p>
-                      )}
+                      {post.content && <p className="text-gray-100 mb-3">{post.content}</p>}
                       {post.images && post.images.length > 0 && (
                         <div className="grid grid-cols-2 gap-2 mb-3">
                           {post.images.slice(0, 2).map((img, idx) => (
@@ -367,7 +527,10 @@ export default function UserProfile() {
                         </div>
                       )}
                       <div className="text-xs text-gray-500">
-                        {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true, locale: es })}
+                        {formatDistanceToNow(new Date(post.createdAt), {
+                          addSuffix: true,
+                          locale: es
+                        })}
                       </div>
                     </div>
                   ))
@@ -378,11 +541,55 @@ export default function UserProfile() {
         </motion.div>
       )}
 
-      <BadgesModal
-        isOpen={showBadges}
-        onClose={() => setShowBadges(false)}
-        userId={id}
-      />
+      <AnimatePresence>
+        {listModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="card max-w-md w-full rounded-b-none sm:rounded-2xl max-h-[80dvh] flex flex-col"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-display text-xl">
+                  {listModal === 'followers' ? 'Seguidores' : 'Seguidos'}
+                </h2>
+                <button onClick={() => setListModal(null)} aria-label="Cerrar">
+                  <FiX size={24} />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 min-h-0">
+                {loadingList ? (
+                  <div className="text-center py-8">
+                    <div className="w-6 h-6 border-2 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
+                  </div>
+                ) : listUsers.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">Lista vacía</p>
+                ) : (
+                  listUsers.map((u) => (
+                    <Link
+                      key={u._id || u.id}
+                      to={`/user/${u._id || u.id}`}
+                      onClick={() => setListModal(null)}
+                      className="flex items-center gap-3 p-3 hover:bg-dark-200 rounded-xl"
+                    >
+                      <Avatar avatar={u.avatar} name={u.name} size="md" />
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{u.name}</div>
+                        {u.email && (
+                          <div className="text-sm text-gray-400 truncate">{u.email}</div>
+                        )}
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <BadgesModal isOpen={showBadges} onClose={() => setShowBadges(false)} userId={id} />
     </div>
   )
 }

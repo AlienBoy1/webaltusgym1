@@ -479,8 +479,8 @@ export default function Social() {
       ) : posts.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <div className="text-6xl mb-4">📝</div>
-          <p>No hay publicaciones aún</p>
-          <p className="text-sm">¡Sé el primero en compartir!</p>
+          <p>Tu feed está vacío</p>
+          <p className="text-sm mt-2">Sigue a otros usuarios para ver sus publicaciones aquí</p>
         </div>
       ) : (
         <div className="space-y-4">

@@ -20,7 +20,7 @@ router.get('/conversations', authenticate, async (req, res) => {
       const partnerId = msg.from_user_id === userId ? msg.to_user_id : msg.from_user_id
       if (!conversationMap.has(partnerId)) {
         conversationMap.set(partnerId, {
-          oderId: partnerId,
+          otherId: partnerId,
           lastMessage: msg.content,
           lastMessageTime: msg.created_at,
           unread: msg.to_user_id === userId && !msg.read ? 1 : 0
@@ -31,16 +31,16 @@ router.get('/conversations', authenticate, async (req, res) => {
     }
 
     const conversations = []
-    for (const [oderId, conv] of conversationMap) {
+    for (const [otherId, conv] of conversationMap) {
       const { data: user } = await supabaseAdmin
         .from('profiles')
         .select('name, avatar')
-        .eq('id', oderId)
+        .eq('id', otherId)
         .single()
       if (user) {
         conversations.push({
-          id: oderId,
-          oderId,
+          id: otherId,
+          otherId,
           name: user.name,
           avatar: user.avatar || user.name?.charAt(0) || '👤',
           lastMessage: conv.lastMessage,
@@ -59,13 +59,13 @@ router.get('/conversations', authenticate, async (req, res) => {
 router.get('/messages/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
-    const oderId = req.params.userId
+    const otherId = req.params.userId
 
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
       .select('*')
       .or(
-        `and(from_user_id.eq.${myId},to_user_id.eq.${oderId}),and(from_user_id.eq.${oderId},to_user_id.eq.${myId})`
+        `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
       )
       .order('created_at', { ascending: true })
 
@@ -74,7 +74,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
     await supabaseAdmin
       .from('messages')
       .update({ read: true })
-      .eq('from_user_id', oderId)
+      .eq('from_user_id', otherId)
       .eq('to_user_id', myId)
       .eq('read', false)
 
@@ -94,12 +94,31 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 router.post('/send', authenticate, async (req, res) => {
   try {
     const { to, content } = req.body
+    if (!to || !content?.trim()) {
+      return res.status(400).json({ message: 'Destinatario y contenido requeridos' })
+    }
+
+    const { data: recipient, error: recipientError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, settings')
+      .eq('id', to)
+      .single()
+
+    if (recipientError || !recipient) {
+      return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+
+    const allowMessages = recipient.settings?.privacy?.allowMessages
+    if (allowMessages === false) {
+      return res.status(403).json({ message: 'Este usuario no acepta mensajes' })
+    }
+
     const { data: message, error } = await supabaseAdmin
       .from('messages')
       .insert({
         from_user_id: req.user.id,
         to_user_id: to,
-        content
+        content: content.trim()
       })
       .select('*')
       .single()
@@ -109,7 +128,7 @@ router.post('/send', authenticate, async (req, res) => {
     res.status(201).json({
       id: message.id,
       sender: 'me',
-      text: content,
+      text: message.content,
       time: new Date(message.created_at).toLocaleTimeString('es', {
         hour: '2-digit',
         minute: '2-digit'

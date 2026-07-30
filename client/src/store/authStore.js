@@ -3,6 +3,19 @@ import api from '../utils/api'
 import { withIdAlias } from '../utils/ids'
 import { supabase } from '../lib/supabase'
 
+/** Sync JWT into Supabase client so Realtime/RLS see auth.uid() */
+async function syncSupabaseSession(accessToken, refreshToken) {
+  if (!accessToken || !refreshToken) return
+  try {
+    await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken
+    })
+  } catch (err) {
+    console.warn('Supabase setSession failed:', err?.message || err)
+  }
+}
+
 export const useAuthStore = create((set, get) => ({
   user: null,
   token: localStorage.getItem('token'),
@@ -15,6 +28,7 @@ export const useAuthStore = create((set, get) => ({
       const { data } = await api.post('/auth/login', { email, password })
       localStorage.setItem('token', data.token)
       if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       set({
         user,
@@ -38,6 +52,7 @@ export const useAuthStore = create((set, get) => ({
       const { data } = await api.post('/auth/register', { name, email, password })
       localStorage.setItem('token', data.token)
       if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       set({
         user,
@@ -93,6 +108,8 @@ export const useAuthStore = create((set, get) => ({
     }
 
     try {
+      const refreshToken = localStorage.getItem('refreshToken')
+      await syncSupabaseSession(token, refreshToken)
       const { data } = await api.get('/auth/me')
       set({ user: withIdAlias(data.user), isAuthenticated: true })
       return true

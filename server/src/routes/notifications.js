@@ -31,6 +31,33 @@ router.get('/', authenticate, async (req, res) => {
   }
 })
 
+router.put('/read-all', authenticate, async (req, res) => {
+  try {
+    await supabaseAdmin
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', req.user.id)
+      .eq('read', false)
+    res.json({ message: 'Todas las notificaciones marcadas como leídas' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al marcar como leídas', error: error.message })
+  }
+})
+
+// Must be before /:id routes
+router.delete('/clear/read', authenticate, async (req, res) => {
+  try {
+    await supabaseAdmin
+      .from('notifications')
+      .delete()
+      .eq('user_id', req.user.id)
+      .eq('read', true)
+    res.json({ message: 'Notificaciones leídas eliminadas' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al limpiar', error: error.message })
+  }
+})
+
 router.put('/:id/read', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -48,19 +75,6 @@ router.put('/:id/read', authenticate, async (req, res) => {
   }
 })
 
-router.put('/read-all', authenticate, async (req, res) => {
-  try {
-    await supabaseAdmin
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', req.user.id)
-      .eq('read', false)
-    res.json({ message: 'Todas las notificaciones marcadas como leídas' })
-  } catch (error) {
-    res.status(500).json({ message: 'Error al marcar como leídas', error: error.message })
-  }
-})
-
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -75,19 +89,6 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.json({ message: 'Notificación eliminada' })
   } catch (error) {
     res.status(500).json({ message: 'Error al eliminar', error: error.message })
-  }
-})
-
-router.delete('/clear/read', authenticate, async (req, res) => {
-  try {
-    await supabaseAdmin
-      .from('notifications')
-      .delete()
-      .eq('user_id', req.user.id)
-      .eq('read', true)
-    res.json({ message: 'Notificaciones leídas eliminadas' })
-  } catch (error) {
-    res.status(500).json({ message: 'Error al limpiar', error: error.message })
   }
 })
 

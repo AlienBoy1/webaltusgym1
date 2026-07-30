@@ -36,15 +36,15 @@ export default function Landing() {
             >
               <QyntraLogo size="lg" withGlow />
             </motion.div>
-            <span className="font-display text-3xl tracking-wider">QYNTRA</span>
+            <span className="font-display text-xl sm:text-3xl tracking-wider">QYNTRA</span>
           </div>
           
-          <div className="flex items-center gap-4">
-            <Link to="/login" className="text-gray-300 hover:text-white transition-colors">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Link to="/login" className="text-gray-300 hover:text-white transition-colors text-sm sm:text-base">
               Ingresar
             </Link>
-            <Link to="/register" className="btn-primary flex items-center gap-2">
-              Comenzar <FiArrowRight />
+            <Link to="/register" className="btn-primary flex items-center gap-2 text-sm sm:text-base px-3 sm:px-4 py-2">
+              Comenzar <FiArrowRight className="hidden sm:inline" />
             </Link>
           </div>
         </nav>
@@ -67,7 +67,7 @@ export default function Landing() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="font-display text-6xl md:text-8xl lg:text-9xl tracking-tight mb-6"
+            className="font-display text-4xl sm:text-6xl md:text-8xl lg:text-9xl tracking-tight mb-6"
           >
             <span className="gradient-text">SUPERA</span>
             <br />
@@ -103,7 +103,7 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.7 }}
-            className="mt-20 grid grid-cols-3 gap-8 max-w-3xl mx-auto"
+            className="mt-20 grid grid-cols-3 gap-4 sm:gap-8 max-w-3xl mx-auto"
           >
             {[
               { value: '10K+', label: 'Usuarios Activos' },
@@ -111,8 +111,8 @@ export default function Landing() {
               { value: '1M+', label: 'Entrenamientos' },
             ].map((stat, i) => (
               <div key={i} className="text-center">
-                <div className="font-display text-4xl md:text-5xl text-primary-500">{stat.value}</div>
-                <div className="text-gray-500 text-sm">{stat.label}</div>
+                <div className="font-display text-2xl sm:text-4xl md:text-5xl text-primary-500">{stat.value}</div>
+                <div className="text-gray-500 text-xs sm:text-sm">{stat.label}</div>
               </div>
             ))}
           </motion.div>

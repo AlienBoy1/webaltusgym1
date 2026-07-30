@@ -30,7 +30,7 @@ export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { unreadCount, fetchNotifications } = useNotificationStore()
+  const { unreadCount, fetchNotifications, subscribeRealtime, unsubscribeRealtime } = useNotificationStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [showSearch, setShowSearch] = useState(false)
@@ -44,8 +44,12 @@ export default function MainLayout() {
     const id = user?.id || user?._id
     if (id) {
       initSocket(id)
+      subscribeRealtime(id)
     }
-    return () => disconnectSocket()
+    return () => {
+      disconnectSocket()
+      unsubscribeRealtime()
+    }
   }, [user])
   
   useEffect(() => {
@@ -178,42 +182,55 @@ export default function MainLayout() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
             {/* Mobile Search Button */}
             <button
               onClick={() => setShowSearch(!showSearch)}
               className="md:hidden p-2 rounded-lg text-gray-400 hover:text-white transition-colors"
+              aria-label="Buscar"
             >
               <FiSearch size={20} />
             </button>
             
             {headerIcons.map((item) => (
-              <NavLink key={item.path} to={item.path} className={({ isActive }) => `p-2 rounded-lg transition-colors relative ${isActive ? 'text-primary-500' : 'text-gray-400 hover:text-white'}`}>
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  `p-1.5 sm:p-2 rounded-lg transition-colors relative ${
+                    isActive ? 'text-primary-500' : 'text-gray-400 hover:text-white'
+                  } ${item.path === '/settings' ? 'hidden sm:inline-flex' : ''}`
+                }
+              >
                 <item.icon size={20} />
                 {item.path === '/notifications' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary-500 rounded-full text-xs flex items-center justify-center">{unreadCount}</span>
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-0.5 bg-primary-500 rounded-full text-[10px] flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
                 )}
               </NavLink>
             ))}
             
-            <div className="flex items-center gap-3 ml-2 pl-2 border-l border-white/10">
+            <div className="flex items-center gap-1.5 sm:gap-3 ml-1 sm:ml-2 pl-1.5 sm:pl-2 border-l border-white/10">
               <NavLink to="/profile" className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-primary-500 font-medium overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-primary-500 font-medium overflow-hidden relative">
                   {user?.avatar && (user.avatar.startsWith('data:') || user.avatar.startsWith('http')) ? (
                     <img src={user.avatar} alt={user.name} className="w-full h-full object-cover rounded-full" />
                   ) : (
                     user?.name?.charAt(0) || 'U'
                   )}
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-primary-500 rounded-full sm:hidden" />
+                  )}
                 </div>
                 <span className="hidden md:block text-sm">{user?.name}</span>
               </NavLink>
               {user?.role === 'admin' && (
-                <NavLink to="/admin" className="px-2 py-1 bg-accent-purple/20 text-accent-purple text-xs rounded-full">Admin</NavLink>
+                <NavLink to="/admin" className="hidden sm:inline-flex px-2 py-1 bg-accent-purple/20 text-accent-purple text-xs rounded-full">Admin</NavLink>
               )}
-              <button onClick={logout} className="p-2 text-gray-400 hover:text-red-500"><FiLogOut size={18} /></button>
+              <button onClick={logout} className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500" aria-label="Cerrar sesión"><FiLogOut size={18} /></button>
             </div>
-          </div>
-        </div>
+          </div>        </div>
         
         {/* Mobile Search Bar */}
         <AnimatePresence>
@@ -285,8 +302,8 @@ export default function MainLayout() {
       </header>
       
       {/* Main Content */}
-      <main className="pt-16 pb-20 md:pb-6">
-        <div className="max-w-7xl mx-auto px-4 py-6">
+      <main className="pt-16 pb-24 md:pb-6 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
           <motion.div key={location.pathname} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
             <Outlet />
           </motion.div>

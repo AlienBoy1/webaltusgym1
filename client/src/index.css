@@ -9,7 +9,7 @@
 
 @layer base {
   body {
-    @apply bg-dark-500 text-white antialiased;
+    @apply bg-dark-500 text-white antialiased overflow-x-hidden;
     font-family: 'Inter', system-ui, sans-serif;
   }
   

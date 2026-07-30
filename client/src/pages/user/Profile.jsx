@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
+import { useNotificationStore } from '../../store/notificationStore'
 import { Link } from 'react-router-dom'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -268,6 +269,7 @@ function MembershipSection({ user }) {
 
 export default function Profile() {
   const { user, logout, updateUser, refreshUser } = useAuthStore()
+  const { unreadCount } = useNotificationStore()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(user?.name || '')
   const [saving, setSaving] = useState(false)
@@ -371,7 +373,15 @@ export default function Profile() {
         ) : (
           <>
             <h1 className="font-display text-2xl mb-1">{user?.name || 'Usuario'}</h1>
-            <p className="text-gray-400 mb-4">{user?.email}</p>
+            <p className="text-gray-400 mb-4 break-all text-sm sm:text-base">{user?.email}</p>
+            {user?._id && (
+              <Link
+                to={`/user/${user._id}`}
+                className="text-primary-500 text-sm hover:text-primary-400 mb-4 inline-block"
+              >
+                Ver perfil público y solicitudes
+              </Link>
+            )}
           </>
         )}
 
@@ -534,8 +544,13 @@ export default function Profile() {
               i !== menuItems.length - 1 ? 'border-b border-white/5' : ''
             }`}
           >
-            <div className="w-10 h-10 bg-dark-300 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-dark-300 rounded-xl flex items-center justify-center relative">
               <item.icon size={20} className="text-gray-400" />
+              {item.badge && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-4 px-1 bg-primary-500 rounded-full text-[10px] flex items-center justify-center text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </div>
             <span className="flex-1 text-left">{item.label}</span>
             <FiChevronRight className="text-gray-500" />

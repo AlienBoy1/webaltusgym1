@@ -43,8 +43,8 @@ En Vercel (Production + Preview):
 - [ ] Login / logout / /auth/me (debe ser rápido vs Render free)
 - [ ] Request access → admin approve → access code → complete registration
 - [ ] Workouts CRUD + XP
-- [ ] Social post/like/comment/follow
-- [ ] Chat send + realtime receive
+- [x] Social post/like/comment/follow
+- [x] Chat send + realtime receive
 - [ ] Classes enroll
 - [ ] Challenges join
 - [ ] Admin attendance / reports

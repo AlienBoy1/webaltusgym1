@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase'
-import { uid } from './ids'
 
 let messageChannel = null
 let presenceChannel = null
@@ -27,11 +26,16 @@ export function onChatEvent(event, handler) {
   return () => listeners[event].delete(handler)
 }
 
+export function offChatEvent(event, handler) {
+  if (!listeners[event]) return
+  if (handler) listeners[event].delete(handler)
+  else listeners[event].clear()
+}
+
 export function initSocket(userId) {
   cleanupSocket()
   if (!userId) return null
 
-  // Realtime messages where current user is recipient
   messageChannel = supabase
     .channel(`messages:${userId}`)
     .on(
@@ -104,12 +108,6 @@ function cleanupSocket() {
   }
 }
 
-export async function sendRealtimeMessage({ to, message, from, fromName }) {
-  // Persistence goes through API; realtime notify via DB insert trigger
-  // This helper exists for typing broadcast
-  return { to, message, from, fromName }
-}
-
 export function sendTyping(to, from) {
   if (!presenceChannel) return
   presenceChannel.send({
@@ -150,20 +148,15 @@ export const showNotification = (title, body, options = {}) => {
   return null
 }
 
-/** @deprecated use initSocket + onChatEvent — kept for import compatibility */
+/** @deprecated Prefer onChatEvent / offChatEvent. Typing only — never use for sendMessage. */
 export function getSocket() {
   return {
-    on: (event, handler) => {
-      onChatEvent(event, handler)
-      return undefined
-    },
+    connected: false,
+    on: (event, handler) => onChatEvent(event, handler),
     emit: (event, data) => {
       if (event === 'typing') sendTyping(data.to, data.from)
-      if (event === 'sendMessage') {
-        emit('messageSent', { success: true })
-      }
     },
-    off: () => {},
+    off: (event, handler) => offChatEvent(event, handler),
     disconnect: disconnectSocket
   }
 }
@@ -173,6 +166,7 @@ export default {
   disconnectSocket,
   getSocket,
   onChatEvent,
+  offChatEvent,
   sendTyping,
   requestNotificationPermission,
   showNotification
