@@ -5,6 +5,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import { onChatEvent, sendTyping, showNotification, requestNotificationPermission } from '../../utils/socket'
+import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
 
 export default function Chat() {
@@ -326,17 +327,7 @@ export default function Chat() {
                   className="relative flex-shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-xl overflow-hidden">
-                    {conv.avatar?.startsWith('data:') || conv.avatar?.startsWith('http') ? (
-                      <img
-                        src={conv.avatar}
-                        alt={conv.name}
-                        className="w-full h-full object-cover rounded-full"
-                      />
-                    ) : (
-                      conv.avatar
-                    )}
-                  </div>
+                  <Avatar avatar={conv.avatar} name={conv.name} size="md" />
                   {isOnline(conv.otherId) && (
                     <div className="absolute bottom-0 right-0 w-3 h-3 bg-accent-green rounded-full border-2 border-dark-200" />
                   )}
@@ -374,18 +365,7 @@ export default function Chat() {
               <FiArrowLeft size={20} />
             </button>
             <Link to={`/user/${selectedChat.otherId}`} className="relative flex-shrink-0">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-xl overflow-hidden">
-                {selectedChat.avatar?.startsWith('data:') ||
-                selectedChat.avatar?.startsWith('http') ? (
-                  <img
-                    src={selectedChat.avatar}
-                    alt={selectedChat.name}
-                    className="w-full h-full object-cover rounded-full"
-                  />
-                ) : (
-                  selectedChat.avatar
-                )}
-              </div>
+              <Avatar avatar={selectedChat.avatar} name={selectedChat.name} size="sm" />
               {isOnline(selectedChat.otherId) && (
                 <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-accent-green rounded-full border-2 border-dark-200" />
               )}
@@ -545,39 +525,19 @@ export default function Chat() {
                     : 'Selecciona un filtro o busca un usuario'}
                 </p>
               ) : (
-                searchResults.map((u) => {
-                  const getAvatarDisplay = () => {
-                    if (u.avatar) {
-                      if (u.avatar.startsWith('data:') || u.avatar.startsWith('http')) {
-                        return (
-                          <img
-                            src={u.avatar}
-                            alt={u.name}
-                            className="w-full h-full object-cover rounded-full"
-                          />
-                        )
-                      }
-                      return u.avatar
-                    }
-                    return u.name?.charAt(0) || '👤'
-                  }
-
-                  return (
+                searchResults.map((u) => (
                     <button
                       key={u._id}
                       onClick={() => startConversation(u)}
                       className="w-full flex items-center gap-3 p-3 hover:bg-dark-200 rounded-xl"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-primary-500 font-medium overflow-hidden flex-shrink-0">
-                        {getAvatarDisplay()}
-                      </div>
+                      <Avatar avatar={u.avatar} name={u.name} size="sm" className="flex-shrink-0" />
                       <div className="text-left flex-1 min-w-0">
                         <div className="font-medium truncate">{u.name}</div>
                         <div className="text-gray-400 text-sm truncate">{u.email}</div>
                       </div>
                     </button>
-                  )
-                })
+                  ))
               )}
             </div>
           </motion.div>

@@ -265,13 +265,18 @@ export default function Social() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl">Comunidad</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl sm:text-3xl tracking-wide">Comunidad</h1>
+          <p className="text-gray-500 text-xs sm:text-sm mt-0.5 hidden sm:block">
+            Comparte tu progreso con quienes sigues
+          </p>
+        </div>
         <button
           onClick={() => setShowCompose(!showCompose)}
-          className="btn-primary py-2 px-4 text-sm"
+          className="btn-primary py-2 sm:py-2.5 px-4 text-sm flex-shrink-0 shadow-lg shadow-primary-500/20"
         >
           Publicar
         </button>
@@ -284,10 +289,10 @@ export default function Social() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="card overflow-hidden"
+            className="card overflow-hidden p-4 sm:p-5"
           >
             {/* Post Type Selector */}
-            <div className="flex gap-2 mb-4 pb-4 border-b border-white/10">
+            <div className="flex gap-1.5 sm:gap-2 mb-4 pb-4 border-b border-white/10 overflow-x-auto -mx-1 px-1">
               {[
                 { id: 'text', label: 'Texto', icon: FiSend },
                 { id: 'image', label: 'Imagen', icon: FiImage },
@@ -305,14 +310,14 @@ export default function Social() {
                     }
                     if (type.id !== 'mood') setSelectedMood(null)
                   }}
-                  className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors ${
+                  className={`flex-1 min-w-[4.5rem] py-2 px-2 sm:px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors ${
                     postType === type.id
                       ? 'bg-primary-500 text-white'
-                      : 'bg-dark-200 text-gray-400 hover:text-white'
+                      : 'bg-dark-300 text-gray-400 hover:text-white'
                   }`}
                 >
-                  <type.icon size={18} />
-                  {type.label}
+                  <type.icon size={16} />
+                  <span>{type.label}</span>
                 </button>
               ))}
             </div>
@@ -483,7 +488,7 @@ export default function Social() {
           <p className="text-sm mt-2">Sigue a otros usuarios para ver sus publicaciones aquí</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {posts.map((post, i) => {
             const isOwner = post.user?._id === user?._id
             const isLiked = post.likes?.some(id => (id?._id || id) === user?._id)
@@ -491,53 +496,55 @@ export default function Social() {
             const postComments = post.comments || []
             const showCommentSection = showComments[post._id]
             const postHasVoted = hasVoted(post)
+            const moodInfo = post.mood ? moods.find(m => m.id === post.mood) : null
+            const timeLabel = formatDistanceToNow(new Date(post.createdAt), {
+              addSuffix: true,
+              locale: es
+            })
 
             return (
               <motion.div
                 key={post._id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="card"
+                transition={{ delay: Math.min(i * 0.05, 0.25) }}
+                className="card p-4 sm:p-5"
               >
                 {/* Post Header */}
-                <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-start gap-3 mb-3 sm:mb-4">
                   <Link to={`/user/${post.user?._id}`} className="flex-shrink-0">
                     <Avatar avatar={post.user?.avatar} name={post.user?.name} size="md" />
                   </Link>
                   <div className="flex-1 min-w-0">
-                    <Link to={`/user/${post.user?._id}`} className="block">
-                      <div className="font-semibold hover:text-primary-500 transition-colors truncate">
-                        {post.user?.name || 'Usuario'}
-                      </div>
-                    </Link>
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${badge.class}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <Link to={`/user/${post.user?._id}`} className="min-w-0">
+                        <div className="font-semibold hover:text-primary-500 transition-colors truncate text-sm sm:text-base">
+                          {post.user?.name || 'Usuario'}
+                        </div>
+                      </Link>
+                      {isOwner && (
+                        <button
+                          onClick={() => handleDelete(post._id)}
+                          className="p-1.5 -mr-1 text-gray-500 hover:text-red-500 flex-shrink-0 rounded-lg hover:bg-dark-100"
+                          aria-label="Eliminar"
+                        >
+                          <FiTrash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-gray-400">
+                      <span className={`px-2 py-0.5 rounded-full whitespace-nowrap ${badge.class}`}>
                         {badge.label}
                       </span>
-                      <span>•</span>
-                      <span>
-                        {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true, locale: es })}
-                      </span>
-                      {post.mood && (
-                        <>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            {moods.find(m => m.id === post.mood)?.emoji}
-                            {moods.find(m => m.id === post.mood)?.label}
-                          </span>
-                        </>
+                      <span className="whitespace-nowrap text-gray-500">{timeLabel}</span>
+                      {moodInfo && (
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full bg-dark-300 text-gray-300">
+                          <span>{moodInfo.emoji}</span>
+                          <span>{moodInfo.label}</span>
+                        </span>
                       )}
                     </div>
                   </div>
-                  {isOwner && (
-                    <button
-                      onClick={() => handleDelete(post._id)}
-                      className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0"
-                    >
-                      <FiTrash2 size={18} />
-                    </button>
-                  )}
                 </div>
 
                 {/* Shared Post Indicator */}
@@ -592,9 +599,8 @@ export default function Social() {
 
                 {/* Post Images */}
                 {post.images && post.images.length > 0 && (
-                  <div className={`mb-4 grid gap-2 ${
+                  <div className={`mb-3 sm:mb-4 grid gap-1.5 sm:gap-2 ${
                     post.images.length === 1 ? 'grid-cols-1' :
-                    post.images.length === 2 ? 'grid-cols-2' :
                     'grid-cols-2'
                   }`}>
                     {post.images.map((img, idx) => (
@@ -602,8 +608,11 @@ export default function Social() {
                         key={idx}
                         src={img}
                         alt={`Post ${idx + 1}`}
-                        className="w-full rounded-lg object-cover"
-                        style={{ height: post.images.length === 1 ? '400px' : '200px' }}
+                        className={`w-full rounded-xl object-cover ${
+                          post.images.length === 1
+                            ? 'max-h-[280px] sm:max-h-[400px]'
+                            : 'h-36 sm:h-48'
+                        }`}
                       />
                     ))}
                   </div>
@@ -662,23 +671,23 @@ export default function Social() {
                 )}
 
                 {/* Post Actions */}
-                <div className="flex items-center gap-6 pt-4 border-t border-white/5">
+                <div className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-white/5">
                   <button
                     onClick={() => handleLike(post._id)}
-                    className={`flex items-center gap-2 transition-colors ${
+                    className={`flex items-center gap-1.5 sm:gap-2 transition-colors min-h-[40px] ${
                       isLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'
                     }`}
                   >
-                    <FiHeart size={20} className={isLiked ? 'fill-current' : ''} />
-                    <span>{post.likes?.length || 0}</span>
+                    <FiHeart size={18} className={isLiked ? 'fill-current' : ''} />
+                    <span className="text-sm tabular-nums">{post.likes?.length || 0}</span>
                   </button>
 
                   <button
                     onClick={() => setShowComments({ ...showComments, [post._id]: !showCommentSection })}
-                    className="flex items-center gap-2 text-gray-400 hover:text-primary-500 transition-colors"
+                    className="flex items-center gap-1.5 sm:gap-2 text-gray-400 hover:text-primary-500 transition-colors min-h-[40px]"
                   >
-                    <FiMessageCircle size={20} />
-                    <span>{postComments.length}</span>
+                    <FiMessageCircle size={18} />
+                    <span className="text-sm tabular-nums">{postComments.length}</span>
                   </button>
 
                   <button
@@ -688,9 +697,9 @@ export default function Social() {
                         handleShare(post._id, shareText)
                       }
                     }}
-                    className="flex items-center gap-2 text-gray-400 hover:text-accent-cyan transition-colors"
+                    className="flex items-center gap-2 text-gray-400 hover:text-accent-cyan transition-colors min-h-[40px] ml-auto"
                   >
-                    <FiShare2 size={20} />
+                    <FiShare2 size={18} />
                   </button>
                 </div>
 

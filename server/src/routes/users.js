@@ -162,7 +162,7 @@ router.get('/search', authenticate, async (req, res) => {
     const { q, filter } = req.query
     let query = supabaseAdmin
       .from('profiles')
-      .select('id, name, email, avatar')
+      .select('id, name, email, avatar, stats, membership, role')
       .neq('id', req.user.id)
       .limit(50)
 
@@ -203,7 +203,18 @@ router.get('/search', authenticate, async (req, res) => {
 
     const { data, error } = await query
     if (error) throw error
-    res.json((data || []).map((u) => ({ _id: u.id, id: u.id, name: u.name, email: u.email, avatar: u.avatar })))
+    res.json(
+      (data || []).map((u) => ({
+        _id: u.id,
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar || null,
+        stats: u.stats || null,
+        membership: u.membership || null,
+        role: u.role || 'user'
+      }))
+    )
   } catch (error) {
     console.error('Error searching users:', error)
     res.status(500).json({ message: 'Error al buscar usuarios', error: error.message })

@@ -1,60 +1,41 @@
-const CACHE_NAME = 'qyntra-gym-v3'
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.svg'
-]
+const CACHE_NAME = 'qyntra-gym-runtime-v1'
+const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/favicon.svg', '/version.json']
 
-// Install event
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS)
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => undefined))
   )
-  self.skipWaiting()
+  // Do not skipWaiting — the app prompts the user via UpdateCenter
 })
 
-// Activate event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      )
-    })
+    (async () => {
+      const keys = await caches.keys()
+      await Promise.all(keys.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)))
+      await self.clients.claim()
+    })()
   )
-  self.clients.claim()
 })
 
-// Fetch: network-first for app shell (HTML/JS/CSS), cache fallback offline
-self.addEventListener('fetch', (event) => {
-  if (!event.request.url.startsWith(self.location.origin)) {
-    return
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
   }
-
-  if (event.request.method !== 'GET') {
-    return
-  }
-
-  // API: network only with cache fallback
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (event.request.method === 'GET' && response.ok) {
-            const responseClone = response.clone()
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone)
-            })
-          }
-          return response
-        })
-        .catch(() => caches.match(event.request))
+  if (event.data?.type === 'CLEAR_CACHES') {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
     )
+  }
+})
+
+self.addEventListener('fetch', (event) => {
+  if (!event.request.url.startsWith(self.location.origin)) return
+  if (event.request.method !== 'GET') return
+
+  // Never cache version checks or API
+  if (event.request.url.includes('/api/') || event.request.url.includes('/version.json')) {
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)))
     return
   }
 
@@ -62,9 +43,8 @@ self.addEventListener('fetch', (event) => {
   const isDocument =
     event.request.mode === 'navigate' ||
     accept.includes('text/html') ||
-    event.request.url.match(/\.(js|css|html)(\?|$)/)
+    /\.(js|css|html)(\?|$)/.test(event.request.url)
 
-  // App shell: always prefer network so rebrands appear immediately
   if (isDocument) {
     event.respondWith(
       fetch(event.request)
@@ -80,7 +60,6 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Images/icons/fonts: cache first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -93,7 +72,6 @@ self.addEventListener('fetch', (event) => {
           .catch(() => {})
         return cachedResponse
       }
-
       return fetch(event.request).then((response) => {
         if (response.ok) {
           const clone = response.clone()
@@ -105,83 +83,24 @@ self.addEventListener('fetch', (event) => {
   )
 })
 
-// Push notification event
 self.addEventListener('push', (event) => {
   const data = event.data?.json() || {}
-  
   const options = {
     body: data.body || '¡Es hora de entrenar!',
     icon: '/pwa-192x192.png',
     badge: '/pwa-192x192.png',
     vibrate: [100, 50, 100],
-    data: {
-      url: data.url || '/'
-    },
+    data: { url: data.url || '/' },
     actions: [
       { action: 'open', title: 'Abrir' },
       { action: 'close', title: 'Cerrar' }
     ]
   }
-  
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'QYNTRA GYM', options)
-  )
+  event.waitUntil(self.registration.showNotification(data.title || 'QYNTRA GYM', options))
 })
 
-// Notification click event
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  
   if (event.action === 'close') return
-  
-  event.waitUntil(
-    clients.openWindow(event.notification.data.url || '/')
-  )
+  event.waitUntil(clients.openWindow(event.notification.data.url || '/'))
 })
-
-// Background sync for offline workouts
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-workouts') {
-    event.waitUntil(syncWorkouts())
-  }
-})
-
-async function syncWorkouts() {
-  // Get pending workouts from IndexedDB and sync
-  try {
-    const db = await openDB()
-    const tx = db.transaction('workouts', 'readonly')
-    const store = tx.objectStore('workouts')
-    const index = store.index('synced')
-    const pendingWorkouts = await index.getAll(false)
-    
-    for (const workout of pendingWorkouts) {
-      try {
-        await fetch('/api/workouts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(workout)
-        })
-        
-        // Mark as synced
-        const updateTx = db.transaction('workouts', 'readwrite')
-        const updateStore = updateTx.objectStore('workouts')
-        workout.synced = true
-        await updateStore.put(workout)
-      } catch (error) {
-        console.error('Error syncing workout:', error)
-      }
-    }
-  } catch (error) {
-    console.error('Error in syncWorkouts:', error)
-  }
-}
-
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('qyntra-gym-db', 1)
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => resolve(request.result)
-  })
-}
-

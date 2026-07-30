@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 import { useEffect } from 'react'
+import UpdateCenter from './components/UpdateCenter'
 
 // Layouts
 import MainLayout from './layouts/MainLayout'
@@ -87,6 +88,8 @@ function App() {
         }}
       />
       
+      <UpdateCenter />
+
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Landing />} />

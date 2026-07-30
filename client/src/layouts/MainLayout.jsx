@@ -9,6 +9,7 @@ import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
 import QyntraLogo from '../components/QyntraLogo'
+import { Avatar } from '../utils/avatarUtils'
 
 const navItems = [
   { path: '/dashboard', icon: FiHome, label: 'Inicio' },
@@ -81,15 +82,35 @@ export default function MainLayout() {
     }
   }
   
-  const getAvatarDisplay = (user) => {
-    if (user?.avatar) {
-      if (user.avatar.startsWith('data:') || user.avatar.startsWith('http')) {
-        return <img src={user.avatar} alt={user.name} className="w-full h-full object-cover rounded-full" />
-      }
-      return user.avatar
-    }
-    return user?.name?.charAt(0) || '👤'
+  const planLabel = (result) => {
+    const plan = result.membership?.plan
+    if (!plan) return null
+    return String(plan).charAt(0).toUpperCase() + String(plan).slice(1)
   }
+
+  const SearchResultRow = ({ result, onSelect }) => (
+    <Link
+      to={`/user/${result._id || result.id}`}
+      onClick={onSelect}
+      className="flex items-center gap-3 p-3 hover:bg-dark-100 transition-colors border-b border-white/5 last:border-0"
+    >
+      <Avatar avatar={result.avatar} name={result.name} size="sm" className="flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate">{result.name}</div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+          {result.stats?.level != null && (
+            <span className="text-primary-400">Nv. {result.stats.level}</span>
+          )}
+          {planLabel(result) && (
+            <span className="px-1.5 py-0.5 rounded bg-dark-300 text-gray-300">
+              {planLabel(result)}
+            </span>
+          )}
+          <span className="truncate">{result.email}</span>
+        </div>
+      </div>
+    </Link>
+  )
   
   return (
     <div className="min-h-screen bg-dark-500">
@@ -156,24 +177,15 @@ export default function MainLayout() {
                       </div>
                     ) : (
                       searchResults.map((result) => (
-                        <Link
-                          key={result._id}
-                          to={`/user/${result._id}`}
-                          onClick={() => {
+                        <SearchResultRow
+                          key={result._id || result.id}
+                          result={result}
+                          onSelect={() => {
                             setSearchQuery('')
                             setSearchResults([])
                             setShowSearch(false)
                           }}
-                          className="flex items-center gap-3 p-3 hover:bg-dark-100 transition-colors border-b border-white/5 last:border-0"
-                        >
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-primary-500 font-medium overflow-hidden flex-shrink-0">
-                            {getAvatarDisplay(result)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{result.name}</div>
-                            <div className="text-sm text-gray-400 truncate">{result.email}</div>
-                          </div>
-                        </Link>
+                        />
                       ))
                     )}
                   </motion.div>
@@ -213,12 +225,8 @@ export default function MainLayout() {
             
             <div className="flex items-center gap-1.5 sm:gap-3 ml-1 sm:ml-2 pl-1.5 sm:pl-2 border-l border-white/10">
               <NavLink to="/profile" className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-primary-500 font-medium overflow-hidden relative">
-                  {user?.avatar && (user.avatar.startsWith('data:') || user.avatar.startsWith('http')) ? (
-                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover rounded-full" />
-                  ) : (
-                    user?.name?.charAt(0) || 'U'
-                  )}
+                <div className="relative">
+                  <Avatar avatar={user?.avatar} name={user?.name} size="sm" />
                   {unreadCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-primary-500 rounded-full sm:hidden" />
                   )}
@@ -274,24 +282,15 @@ export default function MainLayout() {
                     </div>
                   ) : (
                     searchResults.map((result) => (
-                      <Link
-                        key={result._id}
-                        to={`/user/${result._id}`}
-                        onClick={() => {
+                      <SearchResultRow
+                        key={result._id || result.id}
+                        result={result}
+                        onSelect={() => {
                           setSearchQuery('')
                           setSearchResults([])
                           setShowSearch(false)
                         }}
-                        className="flex items-center gap-3 p-3 hover:bg-dark-100 transition-colors border-b border-white/5 last:border-0"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-primary-500 font-medium overflow-hidden flex-shrink-0">
-                          {getAvatarDisplay(result)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{result.name}</div>
-                          <div className="text-sm text-gray-400 truncate">{result.email}</div>
-                        </div>
-                      </Link>
+                      />
                     ))
                   )}
                 </div>

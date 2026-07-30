@@ -1,12 +1,45 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { writeFileSync, mkdirSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+function versionJsonPlugin() {
+  const writeVersion = (outDir) => {
+    const payload = {
+      version: `${Date.now()}`,
+      builtAt: new Date().toISOString()
+    }
+    mkdirSync(outDir, { recursive: true })
+    writeFileSync(resolve(outDir, 'version.json'), JSON.stringify(payload, null, 2))
+    // Keep public in sync for local preview
+    writeFileSync(resolve(__dirname, 'public/version.json'), JSON.stringify(payload, null, 2))
+  }
+
+  return {
+    name: 'qyntra-version-json',
+    buildStart() {
+      writeVersion(resolve(__dirname, 'public'))
+    },
+    closeBundle() {
+      writeVersion(resolve(__dirname, 'dist'))
+    }
+  }
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    versionJsonPlugin(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Custom SW lives in public/sw.js (UpdateCenter registers it)
+      injectRegister: false,
+      strategies: 'generateSW',
+      filename: 'sw-workbox.js',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
         name: 'QYNTRA GYM',
