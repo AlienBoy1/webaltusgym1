@@ -141,15 +141,22 @@ export default function UserSettings() {
   }, [settings, user?._id])
   
   const handlePushToggle = async (enabled) => {
-    if (enabled && 'Notification' in window) {
-      const permission = await Notification.requestPermission()
-      if (permission === 'granted') {
+    if (enabled) {
+      try {
+        const { subscribeToPush } = await import('../../utils/push')
+        await subscribeToPush()
         updateSetting('notifications', 'push', true)
         toast.success('Notificaciones push activadas')
-      } else {
-        toast.error('Permiso denegado')
+      } catch (error) {
+        toast.error(error.message || 'Permiso denegado')
       }
     } else {
+      try {
+        const { unsubscribeFromPush } = await import('../../utils/push')
+        await unsubscribeFromPush()
+      } catch {
+        /* ignore */
+      }
       updateSetting('notifications', 'push', false)
     }
   }

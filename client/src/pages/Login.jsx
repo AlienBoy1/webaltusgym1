@@ -12,6 +12,7 @@ import QyntraLogo from '../components/QyntraLogo'
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [showRequestAccess, setShowRequestAccess] = useState(false)
   const [requestEmail, setRequestEmail] = useState('')
   const [requesting, setRequesting] = useState(false)
@@ -28,11 +29,17 @@ export default function Login() {
       return
     }
     
-    const result = await login(email, password)
+    const result = await login(email, password, { remember: rememberMe })
     
     if (result.success) {
       toast.success('¡Bienvenido!')
-      navigate('/dashboard')
+      const params = new URLSearchParams(window.location.search)
+      const redirect = params.get('redirect')
+      const safeRedirect =
+        redirect && redirect.startsWith('/') && !redirect.startsWith('//')
+          ? redirect
+          : '/dashboard'
+      navigate(safeRedirect)
     } else {
       toast.error(result.message)
     }
@@ -116,8 +123,13 @@ export default function Login() {
             </div>
             
             <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-gray-400">
-                <input type="checkbox" className="rounded bg-dark-200 border-dark-100" />
+              <label className="flex items-center gap-2 text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded bg-dark-200 border-dark-100"
+                />
                 Recordarme
               </label>
               <Link to="/forgot-password" className="text-primary-500 hover:text-primary-400">

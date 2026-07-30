@@ -2,6 +2,12 @@ import { create } from 'zustand'
 import api from '../utils/api'
 import { withIdAlias } from '../utils/ids'
 import { supabase } from '../lib/supabase'
+import {
+  getStoredToken,
+  getStoredRefreshToken,
+  setAuthTokens,
+  clearAuthTokens
+} from '../utils/tokenStorage'
 
 /** Sync JWT into Supabase client so Realtime/RLS see auth.uid() */
 async function syncSupabaseSession(accessToken, refreshToken) {
@@ -16,18 +22,19 @@ async function syncSupabaseSession(accessToken, refreshToken) {
   }
 }
 
+const initialToken = getStoredToken()
+
 export const useAuthStore = create((set, get) => ({
   user: null,
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  token: initialToken,
+  isAuthenticated: !!initialToken,
   loading: false,
 
-  login: async (email, password) => {
+  login: async (email, password, { remember = true } = {}) => {
     set({ loading: true })
     try {
       const { data } = await api.post('/auth/login', { email, password })
-      localStorage.setItem('token', data.token)
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       set({
@@ -50,8 +57,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true })
     try {
       const { data } = await api.post('/auth/register', { name, email, password })
-      localStorage.setItem('token', data.token)
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      setAuthTokens(data.token, data.refreshToken, true)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       set({
@@ -72,18 +78,23 @@ export const useAuthStore = create((set, get) => ({
 
   logout: async () => {
     try {
+      const { unsubscribeFromPush } = await import('../utils/push')
+      await unsubscribeFromPush()
+    } catch {
+      /* ignore */
+    }
+    try {
       await supabase.auth.signOut()
     } catch {
       /* ignore */
     }
-    localStorage.removeItem('token')
-    localStorage.removeItem('refreshToken')
+    clearAuthTokens()
     set({ user: null, token: null, isAuthenticated: false })
     window.location.href = '/login'
   },
 
   refreshUser: async () => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     if (!token) return
 
     try {
@@ -101,21 +112,20 @@ export const useAuthStore = create((set, get) => ({
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     if (!token) {
       set({ isAuthenticated: false, user: null })
       return false
     }
 
     try {
-      const refreshToken = localStorage.getItem('refreshToken')
+      const refreshToken = getStoredRefreshToken()
       await syncSupabaseSession(token, refreshToken)
       const { data } = await api.get('/auth/me')
-      set({ user: withIdAlias(data.user), isAuthenticated: true })
+      set({ user: withIdAlias(data.user), isAuthenticated: true, token })
       return true
     } catch (error) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('refreshToken')
+      clearAuthTokens()
       set({ user: null, token: null, isAuthenticated: false })
       return false
     }

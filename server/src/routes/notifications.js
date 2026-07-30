@@ -2,8 +2,70 @@ import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapNotification } from '../lib/mappers.js'
 import { authenticate, isAdmin } from '../middleware/auth.js'
+import { VAPID_PUBLIC_KEY } from '../services/pushService.js'
+import { notifyUser, notifyMany } from '../services/notificationService.js'
 
 const router = express.Router()
+
+router.get('/vapid-public-key', authenticate, (_req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY })
+})
+
+router.post('/subscribe', authenticate, async (req, res) => {
+  try {
+    const { subscription } = req.body
+    if (!subscription?.endpoint || !subscription?.keys) {
+      return res.status(400).json({ message: 'Suscripción inválida' })
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('settings')
+      .eq('id', req.user.id)
+      .single()
+
+    const settings = profile?.settings || {}
+    const notifications = { ...(settings.notifications || {}), push: true }
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        push_subscription: subscription,
+        settings: { ...settings, notifications }
+      })
+      .eq('id', req.user.id)
+
+    if (error) throw error
+    res.json({ message: 'Suscripción guardada', pushEnabled: true })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al guardar suscripción', error: error.message })
+  }
+})
+
+router.delete('/subscribe', authenticate, async (req, res) => {
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('settings')
+      .eq('id', req.user.id)
+      .single()
+
+    const settings = profile?.settings || {}
+    const notifications = { ...(settings.notifications || {}), push: false }
+
+    await supabaseAdmin
+      .from('profiles')
+      .update({
+        push_subscription: null,
+        settings: { ...settings, notifications }
+      })
+      .eq('id', req.user.id)
+
+    res.json({ message: 'Suscripción eliminada' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al eliminar suscripción', error: error.message })
+  }
+})
 
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -44,7 +106,6 @@ router.put('/read-all', authenticate, async (req, res) => {
   }
 })
 
-// Must be before /:id routes
 router.delete('/clear/read', authenticate, async (req, res) => {
   try {
     await supabaseAdmin
@@ -95,13 +156,15 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.post('/send', authenticate, isAdmin, async (req, res) => {
   try {
     const { userId, title, body, type = 'general' } = req.body
-    const { data, error } = await supabaseAdmin
-      .from('notifications')
-      .insert({ user_id: userId, title, body, type, icon: '📢' })
-      .select('*')
-      .single()
-    if (error) throw error
-    res.status(201).json(mapNotification(data))
+    const mapped = await notifyUser({
+      userId,
+      type,
+      title,
+      body,
+      icon: '📢',
+      priority: 'high'
+    })
+    res.status(201).json(mapped)
   } catch (error) {
     res.status(500).json({ message: 'Error al enviar notificación', error: error.message })
   }
@@ -111,19 +174,9 @@ router.post('/broadcast', authenticate, isAdmin, async (req, res) => {
   try {
     const { title, body, type = 'admin' } = req.body
     const { data: users } = await supabaseAdmin.from('profiles').select('id')
-    const rows = (users || []).map((u) => ({
-      user_id: u.id,
-      title,
-      body,
-      type,
-      icon: '📢',
-      priority: 'high'
-    }))
-    if (rows.length) {
-      const { error } = await supabaseAdmin.from('notifications').insert(rows)
-      if (error) throw error
-    }
-    res.json({ message: `Notificación enviada a ${rows.length} usuarios` })
+    const ids = (users || []).map((u) => u.id)
+    await notifyMany(ids, { type, title, body, icon: '📢', priority: 'high' })
+    res.json({ message: `Notificación enviada a ${ids.length} usuarios` })
   } catch (error) {
     res.status(500).json({ message: 'Error al enviar broadcast', error: error.message })
   }

@@ -52,6 +52,26 @@ export default function MainLayout() {
       unsubscribeRealtime()
     }
   }, [user])
+
+  // Re-sync Web Push subscription when permission already granted
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { isPushSupported, subscribeToPush } = await import('../utils/push')
+        if (!(await isPushSupported())) return
+        if (Notification.permission !== 'granted') return
+        if (cancelled) return
+        await subscribeToPush()
+      } catch (err) {
+        console.warn('Push sync skipped:', err?.message || err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id || user?._id])
   
   useEffect(() => {
     if (searchQuery.trim()) {

@@ -2,6 +2,7 @@ import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapClass } from '../lib/mappers.js'
 import { authenticate, isAdmin, isTrainerOrAdmin } from '../middleware/auth.js'
+import { notifyUser, notifyAllUsers, notifyMany } from '../services/notificationService.js'
 
 const router = express.Router()
 
@@ -163,6 +164,19 @@ router.post('/', authenticate, isTrainerOrAdmin, async (req, res) => {
       .single()
 
     if (error) throw error
+
+    notifyAllUsers(
+      {
+        type: 'class_reminder',
+        title: 'Nueva clase disponible',
+        body: `Se abrió la clase "${data.name}". ¡Inscríbete!`,
+        icon: '📅',
+        relatedData: { classId: data.id },
+        priority: 'normal'
+      },
+      { excludeId: req.user.id }
+    )
+
     res.status(201).json(await hydrateClass(data))
   } catch (error) {
     res.status(500).json({ message: 'Error al crear clase', error: error.message })
@@ -268,12 +282,13 @@ router.post('/:id/enroll', authenticate, async (req, res) => {
       user_id: req.user.id
     })
 
-    await supabaseAdmin.from('notifications').insert({
-      user_id: req.user.id,
-      type: 'class_reminder',
+    await notifyUser({
+      userId: req.user.id,
+      type: 'class_registered',
       title: '¡Inscripción confirmada!',
       body: `Te has inscrito en ${classItem.name}`,
-      icon: '📅'
+      icon: '📅',
+      relatedData: { classId: classItem.id }
     })
 
     const hydrated = await hydrateClass(classItem)
@@ -334,13 +349,14 @@ router.delete('/:id/enroll', authenticate, async (req, res) => {
           user_id: nextWait.user_id
         })
 
-        await supabaseAdmin.from('notifications').insert({
-          user_id: nextWait.user_id,
+        await notifyUser({
+          userId: nextWait.user_id,
           type: 'class_reminder',
           title: '¡Tienes un lugar!',
           body: `Se liberó un espacio en ${classItem.name}. Ya estás inscrito.`,
           icon: '🎉',
-          priority: 'high'
+          priority: 'high',
+          relatedData: { classId: classItem.id }
         })
       }
     }
@@ -381,15 +397,16 @@ router.post('/:id/cancel', authenticate, isTrainerOrAdmin, async (req, res) => {
       .eq('class_id', classItem.id)
 
     if (enrollments?.length) {
-      await supabaseAdmin.from('notifications').insert(
-        enrollments.map((e) => ({
-          user_id: e.user_id,
+      await notifyMany(
+        enrollments.map((e) => e.user_id),
+        {
           type: 'class_cancelled',
           title: 'Clase cancelada',
           body: `La clase ${classItem.name} ha sido cancelada. ${reason || ''}`,
           icon: '❌',
-          priority: 'high'
-        }))
+          priority: 'high',
+          relatedData: { classId: classItem.id }
+        }
       )
     }
 

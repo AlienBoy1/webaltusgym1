@@ -1,7 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiBell, FiCheck, FiTrash2, FiCheckCircle, FiX, FiUser } from 'react-icons/fi'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useNotificationStore } from '../../store/notificationStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -26,7 +26,8 @@ const typeIcons = {
   class_reminder: '📅',
   class_cancelled: '📅',
   class_registered: '📅',
-  registration_request: '📝'
+  registration_request: '📝',
+  message: '💬'
 }
 
 function getDeepLink(notification) {
@@ -37,6 +38,8 @@ function getDeepLink(notification) {
     case 'follow_accepted':
     case 'social':
       return related ? `/user/${related}` : null
+    case 'message':
+      return '/chat'
     case 'challenge_invite':
     case 'challenge_completed':
     case 'challenge_update':
@@ -58,6 +61,10 @@ function getDeepLink(notification) {
 
 export default function Notifications() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const highlightId = searchParams.get('highlight')
+  const highlightRef = useRef(null)
+  const [pulseId, setPulseId] = useState(highlightId)
   const {
     notifications,
     unreadCount,
@@ -72,6 +79,28 @@ export default function Notifications() {
   useEffect(() => {
     fetchNotifications()
   }, [])
+
+  useEffect(() => {
+    if (!highlightId || loading) return
+    const target = notifications.find((n) => n._id === highlightId || n.id === highlightId)
+    if (target && !target.read) {
+      markAsRead(target._id)
+    }
+    setPulseId(highlightId)
+    const t = setTimeout(() => {
+      highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 120)
+    const clearPulse = setTimeout(() => {
+      setPulseId(null)
+      const next = new URLSearchParams(searchParams)
+      next.delete('highlight')
+      setSearchParams(next, { replace: true })
+    }, 6000)
+    return () => {
+      clearTimeout(t)
+      clearTimeout(clearPulse)
+    }
+  }, [highlightId, loading, notifications.length])
 
   const handleAcceptFollow = async (notification) => {
     const requesterId = notification.relatedUser
@@ -147,15 +176,27 @@ export default function Notifications() {
       ) : (
         <div className="space-y-3">
           <AnimatePresence>
-            {notifications.map((notification, i) => (
+            {notifications.map((notification, i) => {
+              const isHighlighted =
+                pulseId && (notification._id === pulseId || notification.id === pulseId)
+              return (
               <motion.div
                 key={notification._id}
+                ref={isHighlighted ? highlightRef : null}
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scale: isHighlighted ? [1, 1.02, 1] : 1
+                }}
                 exit={{ opacity: 0, x: -100 }}
                 transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                className={`card flex gap-3 sm:gap-4 ${
-                  !notification.read ? 'border-l-4 border-l-primary-500' : 'opacity-70'
+                className={`card flex gap-3 sm:gap-4 transition-shadow ${
+                  isHighlighted
+                    ? 'border-l-4 border-l-primary-500 ring-2 ring-primary-500/60 bg-primary-500/10 shadow-[0_0_24px_rgba(255,107,53,0.25)]'
+                    : !notification.read
+                      ? 'border-l-4 border-l-primary-500'
+                      : 'opacity-70'
                 }`}
               >
                 <button
@@ -233,7 +274,8 @@ export default function Notifications() {
                   )}
                 </div>
               </motion.div>
-            ))}
+              )
+            })}
           </AnimatePresence>
         </div>
       )}

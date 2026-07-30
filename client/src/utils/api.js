@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getStoredToken, clearAuthTokens } from './tokenStorage'
 
 /**
  * - Local: Vite proxy /api → localhost:3001 (or VITE_API_URL)
@@ -18,7 +19,6 @@ const getApiURL = () => {
     return `http://${hostname}:3001/api`
   }
 
-  // Dev: relative /api so Vite proxy handles it (faster, no CORS)
   return '/api'
 }
 
@@ -32,7 +32,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -45,10 +45,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('refreshToken')
+      clearAuthTokens()
       if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
-        window.location.href = '/login'
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+        window.location.href = `/login?redirect=${redirect}`
       }
     }
     return Promise.reject(error)

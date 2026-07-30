@@ -1,6 +1,7 @@
 import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
+import { notifyUser, notifyNewMessage } from '../services/notificationService.js'
 
 const router = express.Router()
 
@@ -124,6 +125,14 @@ router.post('/send', authenticate, async (req, res) => {
       .single()
 
     if (error) throw error
+
+    // Push + inbox for recipient (non-blocking)
+    notifyNewMessage({
+      toUserId: to,
+      fromUserId: req.user.id,
+      fromName: req.user.name,
+      content: message.content
+    }).catch((err) => console.error('Chat notify error:', err?.message || err))
 
     res.status(201).json({
       id: message.id,

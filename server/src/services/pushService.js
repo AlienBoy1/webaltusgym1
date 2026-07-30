@@ -3,11 +3,12 @@ import { supabaseAdmin } from '../lib/supabase.js'
 
 const VAPID_PUBLIC_KEY =
   process.env.VAPID_PUBLIC_KEY ||
-  'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
+  'BKqhxXi3gF4rBWR0H75ooRvgJoaJ0826CKVCAMMXEIACI3hINjXBxnYM8421YGiMjT9RlwiKOdNhU0uC5mOQTbE'
 const VAPID_PRIVATE_KEY =
-  process.env.VAPID_PRIVATE_KEY || 'UUxI4O8-FbRouAevSmBQ6o18hgE4nSG3qwvJTfKc-ls'
+  process.env.VAPID_PRIVATE_KEY || 'KuPVSKnlqggpS3kmd-Gfnwmdez6c6JJ-DBZaPl-IqcY'
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@qyntragym.com'
 
-webpush.setVapidDetails('mailto:admin@qyntragym.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
 export async function sendPushNotification(userId, notification) {
   try {
@@ -25,27 +26,26 @@ export async function sendPushNotification(userId, notification) {
       body: notification.body,
       icon: notification.icon || '/pwa-192x192.png',
       badge: '/pwa-192x192.png',
-      data: notification.data || {},
-      actions: notification.actions || []
+      tag: notification.tag || notification.data?.tag || undefined,
+      renotify: notification.renotify === true,
+      data: {
+        url: notification.data?.url || '/notifications',
+        notificationId: notification.data?.notificationId || notification.id || null,
+        type: notification.data?.type || null
+      }
     })
 
     await webpush.sendNotification(user.push_subscription, payload)
 
-    if (notification._id || notification.id) {
-      await supabaseAdmin
-        .from('notifications')
-        .update({ pushed: true })
-        .eq('id', notification._id || notification.id)
+    if (notification.id) {
+      await supabaseAdmin.from('notifications').update({ pushed: true }).eq('id', notification.id)
     }
 
     return true
   } catch (error) {
     console.error('Error enviando push notification:', error.message)
     if (error.statusCode === 410 || error.statusCode === 404) {
-      await supabaseAdmin
-        .from('profiles')
-        .update({ push_subscription: null })
-        .eq('id', userId)
+      await supabaseAdmin.from('profiles').update({ push_subscription: null }).eq('id', userId)
     }
     return false
   }

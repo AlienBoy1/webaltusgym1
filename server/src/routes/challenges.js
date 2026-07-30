@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { mapChallenge } from '../lib/mappers.js'
 import { authenticate, isAdmin } from '../middleware/auth.js'
 import { awardXP } from '../services/xpService.js'
+import { notifyUser, notifyAllUsers } from '../services/notificationService.js'
 
 const router = express.Router()
 
@@ -232,26 +233,19 @@ router.post('/', authenticate, async (req, res) => {
       if (uniqueUserIds.length > 0) {
         process.nextTick(async () => {
           try {
-            const batchSize = 10
-            for (let i = 0; i < uniqueUserIds.length; i += batchSize) {
-              const batch = uniqueUserIds.slice(i, i + batchSize)
-              await Promise.all(
-                batch.map(async (userId) => {
-                  try {
-                    await supabaseAdmin.from('notifications').insert({
-                      user_id: userId,
-                      type: 'challenge_invite',
-                      title: '¡Nuevo reto disponible!',
-                      body: `${req.user.name} te ha invitado a "${title}"`,
-                      icon: '🎯',
-                      priority: 'medium'
-                    })
-                  } catch (err) {
-                    console.error(`Error creating notification for user ${userId}:`, err)
-                  }
+            await Promise.all(
+              uniqueUserIds.map((userId) =>
+                notifyUser({
+                  userId,
+                  type: 'challenge_invite',
+                  title: '¡Nuevo reto disponible!',
+                  body: `${req.user.name} te ha invitado a "${title}"`,
+                  icon: '🎯',
+                  relatedData: { challengeId: challenge.id },
+                  priority: 'normal'
                 })
               )
-            }
+            )
           } catch (err) {
             console.error('Error sending challenge notifications:', err)
           }
@@ -273,6 +267,18 @@ router.post('/', authenticate, async (req, res) => {
         createdBy: req.user.id,
         isPublic: true
       })
+
+      notifyAllUsers(
+        {
+          type: 'challenge_invite',
+          title: '¡Nuevo reto disponible!',
+          body: `${req.user.name} creó el reto "${title}"`,
+          icon: '🎯',
+          relatedData: { challengeId: challenge.id },
+          priority: 'normal'
+        },
+        { excludeId: req.user.id }
+      )
 
       res.status(201).json(await hydrateChallenge(challenge))
     }
@@ -316,12 +322,13 @@ router.post('/:id/join', authenticate, async (req, res) => {
       completed: false
     })
 
-    await supabaseAdmin.from('notifications').insert({
-      user_id: req.user.id,
+    await notifyUser({
+      userId: req.user.id,
       type: 'challenge_invite',
       title: '¡Te uniste al reto!',
       body: `Ahora participas en "${challenge.title}"`,
-      icon: '🎯'
+      icon: '🎯',
+      relatedData: { challengeId: challenge.id }
     })
 
     res.json({
@@ -553,14 +560,14 @@ router.post('/:id/complete', authenticate, async (req, res) => {
 
     process.nextTick(async () => {
       try {
-        await supabaseAdmin.from('notifications').insert({
-          user_id: req.user.id,
-          type: 'challenge_complete',
+        await notifyUser({
+          userId: req.user.id,
+          type: 'challenge_completed',
           title: '🏆 ¡Reto completado!',
           body: `${randomMessage} Completaste "${challenge.title}" y ganaste ${challenge.reward?.xp || 100} XP`,
           icon: '🏆',
           priority: 'high',
-          related_data: {
+          relatedData: {
             challengeId: challenge.id,
             challengeTitle: challenge.title,
             xpAwarded: challenge.reward?.xp || 100,

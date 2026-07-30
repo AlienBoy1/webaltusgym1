@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 import { useEffect } from 'react'
@@ -39,9 +39,11 @@ import Settings from './pages/admin/Settings'
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, isAuthenticated } = useAuthStore()
+  const location = useLocation()
   
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    const redirect = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/login?redirect=${redirect}`} replace />
   }
   
   if (adminOnly && user?.role !== 'admin') {
@@ -49,6 +51,36 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   }
   
   return children
+}
+
+function PushNavigationBridge() {
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuthStore()
+
+  useEffect(() => {
+    const pending = sessionStorage.getItem('pendingPushNav')
+    if (pending && isAuthenticated) {
+      sessionStorage.removeItem('pendingPushNav')
+      navigate(pending)
+    }
+  }, [isAuthenticated, navigate])
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.data?.type !== 'NOTIFICATION_CLICK') return
+      const url = event.data.url || '/notifications'
+      if (isAuthenticated) {
+        navigate(url)
+      } else {
+        sessionStorage.setItem('pendingPushNav', url)
+        navigate(`/login?redirect=${encodeURIComponent(url)}`)
+      }
+    }
+    navigator.serviceWorker?.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
+  }, [navigate, isAuthenticated])
+
+  return null
 }
 
 function App() {
@@ -89,6 +121,7 @@ function App() {
       />
       
       <UpdateCenter />
+      <PushNavigationBridge />
 
       <Routes>
         {/* Public Routes */}

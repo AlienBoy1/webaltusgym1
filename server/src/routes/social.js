@@ -2,6 +2,7 @@ import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapPost } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
+import { notifyUser } from '../services/notificationService.js'
 
 const router = express.Router()
 
@@ -207,6 +208,42 @@ router.post('/', authenticate, async (req, res) => {
 
     await bumpSocialInteractions(req.user.id)
     const [enriched] = await enrichPosts([post])
+
+    // Notify followers of new post (background)
+    process.nextTick(async () => {
+      try {
+        const { data: followers } = await supabaseAdmin
+          .from('follows')
+          .select('follower_id')
+          .eq('following_id', req.user.id)
+
+        const ids = (followers || []).map((f) => f.follower_id)
+        const preview =
+          (content && String(content).trim()) ||
+          (badgeData?.badgeName && `Compartió la insignia ${badgeData.badgeName}`) ||
+          (mood && 'Compartió un estado') ||
+          (poll?.question && `Encuesta: ${poll.question}`) ||
+          'Nueva publicación'
+
+        await Promise.all(
+          ids.map((userId) =>
+            notifyUser({
+              userId,
+              type: 'social',
+              title: `${req.user.name} publicó`,
+              body: preview.length > 100 ? `${preview.slice(0, 97)}…` : preview,
+              icon: '📝',
+              relatedUserId: req.user.id,
+              relatedData: { postId: post.id },
+              priority: 'normal'
+            })
+          )
+        )
+      } catch (err) {
+        console.error('Follower post notify error:', err?.message || err)
+      }
+    })
+
     res.status(201).json(enriched)
   } catch (error) {
     res.status(500).json({ message: 'Error al crear publicación', error: error.message })
@@ -420,13 +457,13 @@ router.post('/:id/follow', authenticate, async (req, res) => {
     })
     if (error) throw error
 
-    await supabaseAdmin.from('notifications').insert({
-      user_id: targetUserId,
+    await notifyUser({
+      userId: targetUserId,
       type: 'follow_request',
       title: 'Nueva solicitud de seguimiento',
       body: `${req.user.name} quiere seguirte`,
       icon: '👤',
-      related_user_id: currentUserId,
+      relatedUserId: currentUserId,
       priority: 'normal'
     })
 
@@ -473,13 +510,13 @@ router.post('/:id/accept-follow', authenticate, async (req, res) => {
     })
     if (followError) throw followError
 
-    await supabaseAdmin.from('notifications').insert({
-      user_id: requesterId,
+    await notifyUser({
+      userId: requesterId,
       type: 'follow_accepted',
       title: 'Solicitud aceptada',
       body: `${req.user.name} aceptó tu solicitud de seguimiento`,
       icon: '✅',
-      related_user_id: currentUserId,
+      relatedUserId: currentUserId,
       priority: 'normal'
     })
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiX, FiKey, FiMail, FiLock, FiCheck } from 'react-icons/fi'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
+import { setAuthTokens } from '../utils/tokenStorage'
 
 export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
   const [step, setStep] = useState(1) // 1: email + code, 2: password
@@ -79,9 +80,7 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
       // Simulate processing (max 5 seconds)
       await new Promise(resolve => setTimeout(resolve, 3000))
       
-      // Store token and user
-      localStorage.setItem('token', data.token)
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      setAuthTokens(data.token, data.refreshToken, true)
       try {
         const { supabase } = await import('../lib/supabase')
         if (data.token && data.refreshToken) {

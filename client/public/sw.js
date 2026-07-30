@@ -5,7 +5,6 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => undefined))
   )
-  // Do not skipWaiting — the app prompts the user via UpdateCenter
 })
 
 self.addEventListener('activate', (event) => {
@@ -23,9 +22,7 @@ self.addEventListener('message', (event) => {
     self.skipWaiting()
   }
   if (event.data?.type === 'CLEAR_CACHES') {
-    event.waitUntil(
-      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-    )
+    event.waitUntil(caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))))
   }
 })
 
@@ -33,7 +30,6 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith(self.location.origin)) return
   if (event.request.method !== 'GET') return
 
-  // Never cache version checks or API
   if (event.request.url.includes('/api/') || event.request.url.includes('/version.json')) {
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)))
     return
@@ -84,23 +80,62 @@ self.addEventListener('fetch', (event) => {
 })
 
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() || {}
+  let data = {}
+  try {
+    data = event.data?.json() || {}
+  } catch {
+    data = { body: event.data?.text() || '' }
+  }
+
+  const notificationId = data.data?.notificationId || data.notificationId || null
+  const targetUrl =
+    data.data?.url ||
+    (notificationId ? `/notifications?highlight=${notificationId}` : '/notifications')
+
   const options = {
-    body: data.body || '¡Es hora de entrenar!',
-    icon: '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
+    body: data.body || 'Tienes una nueva notificación',
+    icon: data.icon || '/pwa-192x192.png',
+    badge: data.badge || '/pwa-192x192.png',
     vibrate: [100, 50, 100],
-    data: { url: data.url || '/' },
+    tag: data.tag || data.data?.tag || undefined,
+    renotify: data.renotify === true || Boolean(data.tag || data.data?.tag),
+    data: {
+      url: targetUrl,
+      notificationId,
+      type: data.data?.type || null
+    },
     actions: [
       { action: 'open', title: 'Abrir' },
       { action: 'close', title: 'Cerrar' }
     ]
   }
+
   event.waitUntil(self.registration.showNotification(data.title || 'QYNTRA GYM', options))
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   if (event.action === 'close') return
-  event.waitUntil(clients.openWindow(event.notification.data.url || '/'))
+
+  const rawUrl = event.notification.data?.url || '/notifications'
+  const absoluteUrl = new URL(rawUrl, self.location.origin).href
+
+  event.waitUntil(
+    (async () => {
+      const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const client of allClients) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          client.postMessage({
+            type: 'NOTIFICATION_CLICK',
+            url: rawUrl,
+            notificationId: event.notification.data?.notificationId || null
+          })
+          return client.focus()
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(absoluteUrl)
+      }
+    })()
+  )
 })
