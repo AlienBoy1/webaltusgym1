@@ -72,11 +72,24 @@ export default function Login() {
   }
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-400 via-dark-300 to-dark-400 p-4">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#07070c] p-4">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/25 via-transparent to-accent-cyan/15" />
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-primary-500/25 blur-[90px]"
+        animate={{ x: [0, 30, 0], opacity: [0.35, 0.55, 0.35] }}
+        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="pointer-events-none absolute -right-20 bottom-1/4 h-80 w-80 rounded-full bg-accent-cyan/15 blur-[100px]"
+        animate={{ x: [0, -24, 0], opacity: [0.25, 0.45, 0.25] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+        className="relative z-10 w-full max-w-md"
       >
         {/* Logo */}
         <div className="text-center mb-8">

@@ -28,6 +28,15 @@ export function mapProfile(row) {
 
 export function mapWorkout(row) {
   if (!row) return null
+  let metrics = row.metrics || {}
+  if ((!metrics || !Object.keys(metrics).length) && row.notes) {
+    try {
+      const parsed = JSON.parse(row.notes)
+      if (parsed?.metrics) metrics = parsed.metrics
+    } catch {
+      /* plain notes */
+    }
+  }
   return {
     _id: row.id,
     id: row.id,
@@ -37,6 +46,7 @@ export function mapWorkout(row) {
     duration: row.duration,
     caloriesBurned: row.calories_burned,
     notes: row.notes,
+    metrics,
     completedAt: row.completed_at,
     createdAt: row.created_at
   }
@@ -54,11 +64,31 @@ export function mapPost(row, extras = {}) {
     poll: row.poll,
     postType: row.post_type,
     badgeData: row.badge_data,
+    workoutData: row.workout_data || extras.workoutData || null,
     sharedFrom: row.shared_from,
     likes: extras.likes || [],
     comments: extras.comments || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  }
+}
+
+export function mapStory(row, extras = {}) {
+  if (!row) return null
+  return {
+    _id: row.id,
+    id: row.id,
+    user: extras.user || row.user_id,
+    mediaType: row.media_type,
+    mediaUrl: row.media_url,
+    caption: row.caption || '',
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    reactions: extras.reactions || [],
+    reactionCounts: extras.reactionCounts || {},
+    myReaction: extras.myReaction || null,
+    viewCount: extras.viewCount || 0,
+    viewed: Boolean(extras.viewed)
   }
 }
 

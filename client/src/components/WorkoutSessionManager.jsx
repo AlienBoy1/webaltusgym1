@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { getWorkoutSession, setWorkoutSession, sendWorkoutNotification, clearWorkoutNotification } from '../utils/workoutSession'
+import {
+  getWorkoutSession,
+  setWorkoutSession,
+  getElapsedSeconds,
+  getRestRemaining,
+  sendWorkoutNotification,
+  clearWorkoutNotification
+} from '../utils/workoutSession'
 
 export default function WorkoutSessionManager() {
   const location = useLocation()
@@ -23,20 +30,10 @@ export default function WorkoutSessionManager() {
       }
 
       const now = Date.now()
-      const startedAt = new Date(session.sessionStart).getTime()
-      const elapsed = Math.max(0, Math.floor((now - startedAt) / 1000))
-      let restRemaining = 0
-      let restActive = false
-      let restEndsAt = session.restEndsAt
-
-      if (session.restEndsAt) {
-        const endsAt = new Date(session.restEndsAt).getTime()
-        restRemaining = Math.max(0, Math.ceil((endsAt - now) / 1000))
-        restActive = restRemaining > 0
-        if (!restActive) {
-          restEndsAt = null
-        }
-      }
+      const elapsed = getElapsedSeconds(session, now)
+      const restRemaining = getRestRemaining(session, now)
+      const restActive = restRemaining > 0
+      const restEndsAt = restActive ? session.restEndsAt : null
 
       const updatedSession = {
         ...session,
@@ -62,7 +59,22 @@ export default function WorkoutSessionManager() {
         updatedSession.notificationSentAt = null
       }
 
-      setWorkoutSession(updatedSession)
+      const prev = lastSession.current
+      const structuralChange =
+        prev?.activeWorkout?.id !== updatedSession.activeWorkout?.id ||
+        prev?.restEndsAt !== updatedSession.restEndsAt ||
+        (prev?.completedExercises?.length || 0) !== (updatedSession.completedExercises?.length || 0) ||
+        prev?.notificationSentAt !== updatedSession.notificationSentAt
+
+      // Soft-update time in storage; notify UI only on structural changes
+      try {
+        window.localStorage.setItem('qyntra:workout_session', JSON.stringify(updatedSession))
+      } catch {
+        // ignore
+      }
+      if (structuralChange) {
+        window.dispatchEvent(new CustomEvent('qyntra:workout-session'))
+      }
       lastSession.current = updatedSession
     }
 

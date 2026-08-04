@@ -94,6 +94,17 @@
   animation: float 3s ease-in-out infinite;
 }
 
+@keyframes story-progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.animate-story-progress {
+  animation-name: story-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
 /* Range input styling */
 input[type="range"] {
   @apply appearance-none bg-dark-300 rounded-full h-2;

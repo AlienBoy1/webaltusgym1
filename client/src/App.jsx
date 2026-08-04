@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import UpdateCenter from './components/UpdateCenter'
 import WorkoutFloatingPanel from './components/WorkoutFloatingPanel'
 import WorkoutSessionManager from './components/WorkoutSessionManager'
+import SessionTheater from './components/SessionTheater'
 
 // Layouts
 import MainLayout from './layouts/MainLayout'
@@ -21,6 +22,7 @@ import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/user/Dashboard'
 import Social from './pages/user/Social'
 import Workouts from './pages/user/Workouts'
+import MyWorkouts from './pages/user/MyWorkouts'
 import Progress from './pages/user/Progress'
 import Profile from './pages/user/Profile'
 import UserProfile from './pages/user/UserProfile'
@@ -86,7 +88,7 @@ function PushNavigationBridge() {
 }
 
 function App() {
-  const { checkAuth, initializing, loading } = useAuthStore()
+  const { checkAuth, initializing, loading, authIntent } = useAuthStore()
 
   useEffect(() => {
     checkAuth()
@@ -102,12 +104,12 @@ function App() {
 
   if (initializing) {
     return (
-      <div className="min-h-screen bg-dark-500 flex items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-dark-300/90 p-8 shadow-2xl">
-          <div className="w-16 h-16 border-4 border-white/15 border-t-white rounded-full animate-spin" />
-          <div className="text-lg font-semibold">Verificando tu sesión...</div>
-        </div>
-      </div>
+      <SessionTheater
+        visible
+        variant="boot"
+        title="QYNTRA"
+        subtitle="Verificando tu sesión…"
+      />
     )
   }
   
@@ -136,14 +138,12 @@ function App() {
       <WorkoutFloatingPanel />
       <PushNavigationBridge />
 
-      {loading && !initializing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-dark-300/95 p-8 shadow-2xl">
-            <div className="w-16 h-16 border-4 border-white/15 border-t-white rounded-full animate-spin" />
-            <div className="text-lg font-semibold">Procesando...</div>
-          </div>
-        </div>
-      )}
+      <SessionTheater
+        visible={loading && !initializing}
+        variant={authIntent === 'logout' ? 'logout' : 'auth'}
+        title={authIntent === 'logout' ? 'Hasta pronto' : 'QYNTRA'}
+        subtitle={authIntent === 'logout' ? 'Cerrando tu sesión…' : 'Entrando a tu cuenta…'}
+      />
 
       <Routes>
         {/* Public Routes */}
@@ -163,6 +163,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="social" element={<Social />} />
           <Route path="workouts" element={<Workouts />} />
+          <Route path="my-workouts" element={<MyWorkouts />} />
           <Route path="progress" element={<Progress />} />
           <Route path="profile" element={<Profile />} />
           <Route path="user/:id" element={<UserProfile />} />

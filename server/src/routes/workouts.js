@@ -73,22 +73,48 @@ router.get('/history', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, exercises, duration, notes } = req.body
+    const { name, exercises, duration, notes, metrics, durationSeconds } = req.body
 
-    const { data: workout, error } = await supabaseAdmin
+    const payload = {
+      user_id: req.user.id,
+      name,
+      exercises: exercises || [],
+      duration: duration ?? (durationSeconds ? Math.max(1, Math.round(durationSeconds / 60)) : 0),
+      notes: notes || null,
+      completed_at: new Date().toISOString()
+    }
+
+    const metricsPayload = metrics || null
+    if (metricsPayload) {
+      payload.metrics = metricsPayload
+      // Fallback if metrics column missing: embed in notes
+      if (!payload.notes) {
+        payload.notes = JSON.stringify({ metrics: metricsPayload })
+      }
+    }
+
+    let workout
+    let { data, error } = await supabaseAdmin
       .from('workouts')
-      .insert({
-        user_id: req.user.id,
-        name,
-        exercises: exercises || [],
-        duration,
-        notes,
-        completed_at: new Date().toISOString()
-      })
+      .insert(payload)
       .select('*')
       .single()
 
+    // Retry without metrics column if schema not migrated yet
+    if (error && String(error.message || '').toLowerCase().includes('metrics')) {
+      const fallback = { ...payload }
+      delete fallback.metrics
+      fallback.notes = JSON.stringify({
+        metrics: metricsPayload || {},
+        note: notes || ''
+      })
+      const retry = await supabaseAdmin.from('workouts').insert(fallback).select('*').single()
+      data = retry.data
+      error = retry.error
+    }
+
     if (error) throw error
+    workout = data
 
     const { data: profile } = await supabaseAdmin
       .from('profiles')

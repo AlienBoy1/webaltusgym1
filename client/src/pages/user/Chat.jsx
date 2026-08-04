@@ -261,11 +261,13 @@ export default function Chat() {
     setSearchResults([])
   }
 
-  // Open chat from profile "Mensaje" button
+  // Open chat from profile "Mensaje" button or story reply
   useEffect(() => {
     const startWith = location.state?.startWith
+    const prefill = location.state?.prefill
     if (!startWith?._id && !startWith?.id) return
     startConversation(startWith)
+    if (prefill) setNewMessage(String(prefill))
     navigate(location.pathname, { replace: true, state: {} })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state?.startWith?._id, location.state?.startWith?.id])

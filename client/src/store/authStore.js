@@ -34,9 +34,10 @@ export const useAuthStore = create((set, get) => ({
   rememberMe: isRememberMeEnabled(),
   loading: false,
   initializing: true,
+  authIntent: null,
 
   login: async (email, password, { remember = true } = {}) => {
-    set({ loading: true })
+    set({ loading: true, authIntent: 'login' })
     try {
       const { data } = await api.post('/auth/login', { email, password })
       setAuthTokens(data.token, data.refreshToken, remember)
@@ -48,11 +49,12 @@ export const useAuthStore = create((set, get) => ({
         refreshToken: data.refreshToken,
         isAuthenticated: true,
         rememberMe: remember,
-        loading: false
+        loading: false,
+        authIntent: null
       })
       return { success: true }
     } catch (error) {
-      set({ loading: false })
+      set({ loading: false, authIntent: null })
       return {
         success: false,
         message: error.response?.data?.message || 'Error al iniciar sesión'
@@ -61,7 +63,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   register: async (name, email, password) => {
-    set({ loading: true })
+    set({ loading: true, authIntent: 'login' })
     try {
       const { data } = await api.post('/auth/register', { name, email, password })
       setAuthTokens(data.token, data.refreshToken, true)
@@ -73,11 +75,12 @@ export const useAuthStore = create((set, get) => ({
         refreshToken: data.refreshToken,
         rememberMe: true,
         isAuthenticated: true,
-        loading: false
+        loading: false,
+        authIntent: null
       })
       return { success: true, isFirstUser: data.isFirstUser }
     } catch (error) {
-      set({ loading: false })
+      set({ loading: false, authIntent: null })
       return {
         success: false,
         message: error.response?.data?.message || 'Error al registrarse'
@@ -86,7 +89,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: async () => {
-    set({ loading: true })
+    set({ loading: true, authIntent: 'logout' })
     try {
       const { unsubscribeFromPush } = await import('../utils/push')
       await unsubscribeFromPush()
@@ -105,9 +108,11 @@ export const useAuthStore = create((set, get) => ({
       refreshToken: null,
       isAuthenticated: false,
       rememberMe: false,
-      loading: false,
+      loading: true,
+      authIntent: 'logout',
       initializing: false
     })
+    await new Promise((resolve) => setTimeout(resolve, 850))
     window.location.href = '/login'
   },
 

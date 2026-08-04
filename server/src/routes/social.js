@@ -89,11 +89,22 @@ async function enrichPosts(posts) {
       }
     }
 
+    let workoutData = row.workout_data || null
+    if (!workoutData && row.content && String(row.content).includes('[workout]')) {
+      try {
+        const match = String(row.content).match(/\[workout\]([\s\S]*?)\[\/workout\]/)
+        if (match) workoutData = JSON.parse(match[1])
+      } catch {
+        /* ignore */
+      }
+    }
+
     return {
       ...mapPost(row, {
         user: mappedAuthor,
         likes: likesByPost[row.id] || [],
-        comments: commentsByPost[row.id] || []
+        comments: commentsByPost[row.id] || [],
+        workoutData
       }),
       sharedFrom
     }
@@ -169,10 +180,12 @@ router.get('/user/:userId/posts', authenticate, async (req, res) => {
 // Create post
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { content, images, mood, poll, postType, badgeData } = req.body
+    const { content, images, mood, poll, postType, badgeData, workoutData } = req.body
 
     let finalPostType = postType || 'text'
-    if (badgeData) {
+    if (workoutData) {
+      finalPostType = 'workout'
+    } else if (badgeData) {
       finalPostType = 'badge'
     } else if (images && images.length > 0 && content) {
       finalPostType = 'mixed'
@@ -184,25 +197,42 @@ router.post('/', authenticate, async (req, res) => {
       finalPostType = 'mood'
     }
 
-    const { data: post, error } = await supabaseAdmin
+    const insertPayload = {
+      user_id: req.user.id,
+      content: content || '',
+      images: images || [],
+      mood: mood || null,
+      poll: poll
+        ? {
+            question: poll.question,
+            options: poll.options.map((opt) => ({ text: opt, votes: [] })),
+            endsAt: poll.endsAt || null
+          }
+        : null,
+      badge_data: badgeData || null,
+      post_type: finalPostType
+    }
+
+    if (workoutData) {
+      insertPayload.workout_data = workoutData
+    }
+
+    let { data: post, error } = await supabaseAdmin
       .from('posts')
-      .insert({
-        user_id: req.user.id,
-        content: content || '',
-        images: images || [],
-        mood: mood || null,
-        poll: poll
-          ? {
-              question: poll.question,
-              options: poll.options.map((opt) => ({ text: opt, votes: [] })),
-              endsAt: poll.endsAt || null
-            }
-          : null,
-        badge_data: badgeData || null,
-        post_type: finalPostType
-      })
+      .insert(insertPayload)
       .select('*')
       .single()
+
+    if (error && String(error.message || '').toLowerCase().includes('workout_data')) {
+      delete insertPayload.workout_data
+      insertPayload.content =
+        (content || '') +
+        `\n\n[workout]${JSON.stringify(workoutData)}[/workout]`
+      const retry = await supabaseAdmin.from('posts').insert(insertPayload).select('*').single()
+      post = retry.data
+      error = retry.error
+      if (post && workoutData) post.workout_data = workoutData
+    }
 
     if (error) throw error
 
@@ -219,7 +249,8 @@ router.post('/', authenticate, async (req, res) => {
 
         const ids = (followers || []).map((f) => f.follower_id)
         const preview =
-          (content && String(content).trim()) ||
+          (content && String(content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()) ||
+          (workoutData?.name && `Completó: ${workoutData.name}`) ||
           (badgeData?.badgeName && `Compartió la insignia ${badgeData.badgeName}`) ||
           (mood && 'Compartió un estado') ||
           (poll?.question && `Encuesta: ${poll.question}`) ||

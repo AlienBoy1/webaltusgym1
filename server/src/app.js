@@ -11,6 +11,7 @@ import notificationRoutes from './routes/notifications.js'
 import chatRoutes from './routes/chat.js'
 import classRoutes from './routes/classes.js'
 import challengeRoutes from './routes/challenges.js'
+import storyRoutes from './routes/stories.js'
 import { isSupabaseConfigured } from './lib/supabase.js'
 
 dotenv.config()
@@ -44,8 +45,8 @@ app.use(
     credentials: true
   })
 )
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '25mb' }))
+app.use(express.urlencoded({ extended: true, limit: '25mb' }))
 
 app.use((req, res, next) => {
   if (!isSupabaseConfigured() && !req.path.endsWith('/health')) {
@@ -66,6 +67,7 @@ app.use('/api/notifications', notificationRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/classes', classRoutes)
 app.use('/api/challenges', challengeRoutes)
+app.use('/api/stories', storyRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({

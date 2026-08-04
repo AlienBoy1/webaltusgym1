@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   FiHeart, FiMessageCircle, FiShare2, FiImage, FiSend, FiTrash2, FiX, 
-  FiSmile, FiBarChart2, FiCheckCircle, FiAward
+  FiSmile, FiBarChart2, FiCheckCircle, FiAward, FiActivity, FiClock
 } from 'react-icons/fi'
 import { Link } from 'react-router-dom'
 import api from '../../utils/api'
@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { formatDistanceToNow, format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Avatar } from '../../utils/avatarUtils'
+import StoriesRail from '../../components/StoriesRail'
 
 const moods = [
   { id: 'happy', label: 'Feliz', emoji: '😊', color: 'from-yellow-400 to-orange-500' },
@@ -281,6 +282,8 @@ export default function Social() {
           Publicar
         </button>
       </div>
+
+      <StoriesRail />
 
       {/* Compose Post */}
       <AnimatePresence>
@@ -593,9 +596,54 @@ export default function Social() {
                   </div>
                 )}
 
+                {/* Workout share card */}
+                {(post.postType === 'workout' || post.workoutData) && post.workoutData && (
+                  <div className="mb-4 overflow-hidden rounded-2xl border border-primary-500/25 bg-gradient-to-br from-primary-500/15 to-accent-cyan/10 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-primary-300">
+                      <FiActivity size={16} />
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em]">Entrenamiento</span>
+                    </div>
+                    <h4 className="font-display text-xl text-white">{post.workoutData.name}</h4>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl bg-black/25 p-2">
+                        <p className="text-lg font-semibold text-white">
+                          {post.workoutData.completedExercises}/{post.workoutData.totalExercises}
+                        </p>
+                        <p className="text-[10px] text-gray-400">Ejercicios</p>
+                      </div>
+                      <div className="rounded-xl bg-black/25 p-2">
+                        <p className="text-lg font-semibold text-white">{post.workoutData.totalSets || '—'}</p>
+                        <p className="text-[10px] text-gray-400">Series</p>
+                      </div>
+                      <div className="rounded-xl bg-black/25 p-2">
+                        <p className="inline-flex items-center justify-center gap-1 text-lg font-semibold text-white">
+                          <FiClock size={12} className="text-primary-400" />
+                          {Math.floor((post.workoutData.durationSeconds || 0) / 60)}m
+                        </p>
+                        <p className="text-[10px] text-gray-400">Tiempo</p>
+                      </div>
+                    </div>
+                    {post.workoutData.exercises?.length > 0 && (
+                      <ul className="mt-3 space-y-1 border-t border-white/10 pt-3">
+                        {post.workoutData.exercises.slice(0, 4).map((ex, idx) => (
+                          <li key={idx} className="flex justify-between text-xs text-gray-300">
+                            <span className="truncate pr-2">{ex.name}</span>
+                            <span className="shrink-0 text-gray-500">{ex.sets}×{ex.reps}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
                 {/* Post Content */}
-                {post.content && (
-                  <p className="text-gray-100 mb-4 leading-relaxed">{post.content}</p>
+                {post.content && !String(post.content).includes('[workout]') && (
+                  <p className="text-gray-100 mb-4 leading-relaxed break-words">{post.content}</p>
+                )}
+                {post.content && String(post.content).includes('[workout]') && (
+                  <p className="text-gray-100 mb-4 leading-relaxed break-words">
+                    {String(post.content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()}
+                  </p>
                 )}
 
                 {/* Post Images */}

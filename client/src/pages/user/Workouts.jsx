@@ -1,26 +1,33 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  FiPlus,
-  FiPlay,
-  FiCheck,
-  FiClock,
-  FiZap,
-  FiChevronDown,
-  FiSave,
-  FiX,
-  FiTrash2
-} from 'react-icons/fi'
+import { FiPlus, FiCheck, FiPlay, FiX, FiTrash2, FiSkipForward, FiShare2 } from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Timer from '../../components/Timer'
 import { useConfetti } from '../../components/Confetti'
-import { getWorkoutPreferences, getCurrentExercise } from '../../utils/workoutSession'
+import {
+  getWorkoutPreferences,
+  getWorkoutSession,
+  setWorkoutSession,
+  clearWorkoutSession,
+  getElapsedSeconds,
+  getRestRemaining,
+  getCurrentExercise,
+  formatTime,
+  clearWorkoutNotification,
+  sendWorkoutNotification
+} from '../../utils/workoutSession'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
-const WORKOUT_SESSION_KEY = 'qyntra:workout_session'
 const DEFAULT_REST_SECONDS = 60
+
+const COLOR_MAP = {
+  primary: 'from-primary-500/30 to-primary-700/10 border-primary-500/30',
+  cyan: 'from-cyan-400/25 to-cyan-700/10 border-cyan-400/30',
+  purple: 'from-violet-400/25 to-violet-700/10 border-violet-400/30',
+  green: 'from-emerald-400/25 to-emerald-700/10 border-emerald-400/30'
+}
 
 const defaultTemplates = [
   {
@@ -81,9 +88,49 @@ function createWorkoutId() {
   return `wk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 }
 
+function ShareWorkoutPrompt({ workout, onShare, onClose, onViewHistory }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 sm:items-center sm:p-4"
+    >
+      <motion.div
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 30, opacity: 0 }}
+        className="w-full max-w-md rounded-t-3xl border border-white/10 bg-dark-200 p-5 sm:rounded-3xl sm:p-6"
+      >
+        <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Sesión guardada</p>
+        <h3 className="mt-2 font-display text-2xl text-white">{workout.name}</h3>
+        <p className="mt-2 text-sm text-gray-400">
+          ¿Quieres compartir este entrenamiento en Comunidad para que lo vean quienes te siguen?
+        </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <button type="button" onClick={onShare} className="btn-primary flex flex-1 items-center justify-center gap-2 py-3">
+            <FiShare2 size={16} /> Compartir
+          </button>
+          <button type="button" onClick={onViewHistory} className="btn-secondary flex-1 py-3">
+            Ver historial
+          </button>
+        </div>
+        <button type="button" onClick={onClose} className="mt-3 w-full py-2 text-sm text-gray-500 hover:text-white">
+          Ahora no
+        </button>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 export default function Workouts() {
   const location = useLocation()
-  const exerciseScrollRef = useRef(null)
+  const navigate = useNavigate()
+  const hydrated = useRef(false)
+  const restStartedAt = useRef(null)
+  const [restHistory, setRestHistory] = useState([])
+  const [lastSavedWorkout, setLastSavedWorkout] = useState(null)
+  const [showSharePrompt, setShowSharePrompt] = useState(false)
   const [templates, setTemplates] = useState(() => {
     try {
       const stored = localStorage.getItem(WORKOUT_TEMPLATES_KEY)
@@ -97,11 +144,11 @@ export default function Workouts() {
   const [restActive, setRestActive] = useState(false)
   const [restRemaining, setRestRemaining] = useState(0)
   const [restEndsAt, setRestEndsAt] = useState(null)
+  const [restTotal, setRestTotal] = useState(DEFAULT_REST_SECONDS)
   const [restTimerSource, setRestTimerSource] = useState(null)
   const [completedExercises, setCompletedExercises] = useState([])
-  const [showTimer, setShowTimer] = useState(false)
   const [workoutTime, setWorkoutTime] = useState(0)
-  const [preferences, setPreferences] = useState(() => getWorkoutPreferences() || { restTimerDefault: DEFAULT_REST_SECONDS })
+  const [preferences] = useState(() => getWorkoutPreferences() || { restTimerDefault: DEFAULT_REST_SECONDS })
   const [saving, setSaving] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newRoutine, setNewRoutine] = useState({
@@ -114,163 +161,224 @@ export default function Workouts() {
     localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify(templates))
   }, [templates])
 
+  // Restore session once — never clear before hydration
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(WORKOUT_SESSION_KEY)
-      if (!stored) return
-      const saved = JSON.parse(stored)
-      if (!saved?.activeWorkout || !saved?.sessionStart) return
-
-      const startedAt = new Date(saved.sessionStart).getTime()
+    const saved = getWorkoutSession()
+    if (saved?.activeWorkout && saved?.sessionStart) {
       const now = Date.now()
-      const elapsed = Math.max(0, Math.floor((now - startedAt) / 1000))
-      const restEndsAt = saved.restEndsAt ? new Date(saved.restEndsAt).getTime() : null
-      const restRemaining = restEndsAt ? Math.max(0, Math.ceil((restEndsAt - now) / 1000)) : 0
-
+      const restLeft = getRestRemaining(saved, now)
       setActiveWorkout(saved.activeWorkout)
       setSessionStart(saved.sessionStart)
       setCompletedExercises(saved.completedExercises || [])
-      setWorkoutTime(elapsed)
-      setRestActive(restRemaining > 0)
-      setRestEndsAt(saved.restEndsAt || null)
-      setRestRemaining(restRemaining)
+      setWorkoutTime(getElapsedSeconds(saved, now))
+      setRestActive(restLeft > 0)
+      setRestEndsAt(restLeft > 0 ? saved.restEndsAt : null)
+      setRestRemaining(restLeft)
       setRestTimerSource(saved.restTimerSource || null)
-      setShowTimer(restRemaining > 0)
-    } catch {
-      localStorage.removeItem(WORKOUT_SESSION_KEY)
+      setRestTotal(saved.restDuration || preferences?.restTimerDefault || DEFAULT_REST_SECONDS)
     }
-  }, [])
+    hydrated.current = true
+  }, [preferences?.restTimerDefault])
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const focusExercise = params.get('focus')
     if (activeWorkout && focusExercise) {
       const target = document.getElementById(`workout-exercise-${focusExercise}`)
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [activeWorkout, location.search])
 
+  // Persist structural session changes only (time/rest derived from absolute clocks)
   useEffect(() => {
+    if (!hydrated.current) return
     if (!activeWorkout) {
-      localStorage.removeItem(WORKOUT_SESSION_KEY)
+      clearWorkoutSession()
       return
     }
 
-    const payload = {
+    const now = Date.now()
+    setWorkoutSession({
       activeWorkout,
       sessionStart,
       completedExercises,
-      restActive,
-      restRemaining,
+      restActive: Boolean(restEndsAt && getRestRemaining({ restEndsAt }, now) > 0),
+      restRemaining: restEndsAt ? getRestRemaining({ restEndsAt }, now) : 0,
       restEndsAt,
+      restDuration: restTotal,
       restTimerSource,
-      workoutTime,
+      workoutTime: getElapsedSeconds({ sessionStart }, now),
       savedAt: new Date().toISOString()
-    }
+    })
+  }, [activeWorkout, sessionStart, completedExercises, restEndsAt, restTimerSource, restTotal])
 
-    localStorage.setItem(WORKOUT_SESSION_KEY, JSON.stringify(payload))
-  }, [activeWorkout, sessionStart, completedExercises, restActive, restRemaining, restEndsAt, restTimerSource, workoutTime])
-
+  // Local clock — derived from absolute timestamps
   useEffect(() => {
-    let interval
-    if (activeWorkout) {
-      interval = window.setInterval(() => {
-        const now = Date.now()
-        if (sessionStart) {
-          const elapsed = Math.max(0, Math.floor((now - new Date(sessionStart).getTime()) / 1000))
-          setWorkoutTime(elapsed)
-        }
-
-        if (restActive && restEndsAt) {
-          const remaining = Math.max(0, Math.ceil((new Date(restEndsAt).getTime() - now) / 1000))
-          setRestRemaining(remaining)
-          if (remaining <= 0) {
-            setRestActive(false)
-            setShowTimer(false)
-            setRestEndsAt(null)
+    if (!activeWorkout || !sessionStart) return undefined
+    const tick = () => {
+      const now = Date.now()
+      setWorkoutTime(Math.max(0, Math.floor((now - new Date(sessionStart).getTime()) / 1000)))
+      if (restEndsAt) {
+        const remaining = Math.max(0, Math.ceil((new Date(restEndsAt).getTime() - now) / 1000))
+        setRestRemaining(remaining)
+        if (remaining <= 0) {
+          if (restStartedAt.current && restTimerSource) {
+            const elapsed = Math.max(1, Math.round((now - restStartedAt.current) / 1000))
+            const planned = restTotal || preferences?.restTimerDefault || DEFAULT_REST_SECONDS
+            setRestHistory((prev) => [
+              ...prev,
+              { afterExerciseId: restTimerSource, seconds: Math.min(elapsed, planned) }
+            ])
+            restStartedAt.current = null
           }
+          setRestActive(false)
+          setRestEndsAt(null)
+          setRestTimerSource(null)
         }
-      }, 1000)
+      }
     }
-    return () => window.clearInterval(interval)
-  }, [activeWorkout, restActive, restEndsAt, sessionStart])
-
-  // Notification updates are handled globally by WorkoutSessionManager.
-  // Keep this hook only for explicit actions like start / cancel / finish.
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [activeWorkout, sessionStart, restEndsAt, restTimerSource, restTotal, preferences?.restTimerDefault])
 
   const completedCount = completedExercises.length
-  const progress = activeWorkout ? Math.round((completedCount / activeWorkout.exercises.length) * 100) : 0
+  const totalExercises = activeWorkout?.exercises?.length || 0
+  const progress = totalExercises ? Math.round((completedCount / totalExercises) * 100) : 0
+  const currentExercise = useMemo(
+    () => getCurrentExercise({ activeWorkout, completedExercises }),
+    [activeWorkout, completedExercises]
+  )
+  const currentIndex = useMemo(() => {
+    if (!activeWorkout || !currentExercise) return 0
+    return activeWorkout.exercises.findIndex((e) => e.id === currentExercise.id)
+  }, [activeWorkout, currentExercise])
+
+  const startRest = (exerciseId) => {
+    const restSeconds = preferences?.restTimerDefault || DEFAULT_REST_SECONDS
+    const endsAt = new Date(Date.now() + restSeconds * 1000).toISOString()
+    restStartedAt.current = Date.now()
+    setRestTotal(restSeconds)
+    setRestActive(true)
+    setRestEndsAt(endsAt)
+    setRestRemaining(restSeconds)
+    setRestTimerSource(exerciseId)
+  }
+
+  const recordRestIfAny = () => {
+    if (restStartedAt.current && restTimerSource) {
+      const elapsed = Math.max(1, Math.round((Date.now() - restStartedAt.current) / 1000))
+      const planned = restTotal || preferences?.restTimerDefault || DEFAULT_REST_SECONDS
+      const actual = Math.min(elapsed, planned)
+      setRestHistory((prev) => [
+        ...prev,
+        { afterExerciseId: restTimerSource, seconds: actual }
+      ])
+    }
+    restStartedAt.current = null
+  }
+
+  const clearRestState = () => {
+    restStartedAt.current = null
+    setRestActive(false)
+    setRestEndsAt(null)
+    setRestRemaining(0)
+    setRestTimerSource(null)
+  }
+
+  const skipRest = () => {
+    recordRestIfAny()
+    clearRestState()
+  }
 
   const toggleExercise = (exerciseId) => {
     const isNowCompleted = !completedExercises.includes(exerciseId)
     setCompletedExercises((prev) => {
       const nextCompleted = isNowCompleted ? [...prev, exerciseId] : prev.filter((id) => id !== exerciseId)
-
       if (isNowCompleted) {
-        const restSeconds = preferences?.restTimerDefault || DEFAULT_REST_SECONDS
-        const endsAt = new Date(Date.now() + restSeconds * 1000).toISOString()
-        setRestActive(true)
-        setRestEndsAt(endsAt)
-        setRestRemaining(restSeconds)
-        setRestTimerSource(exerciseId)
-        setShowTimer(true)
-      } else {
-        if (restTimerSource === exerciseId || nextCompleted.length === 0) {
-          setRestActive(false)
-          setRestEndsAt(null)
-          setRestRemaining(0)
-          setRestTimerSource(null)
-          setShowTimer(false)
-        }
+        startRest(exerciseId)
+      } else if (restTimerSource === exerciseId || nextCompleted.length === 0) {
+        clearRestState()
       }
-
       return nextCompleted
     })
   }
 
-  const startWorkout = (workout) => {
+  const startWorkout = async (workout) => {
+    const start = new Date().toISOString()
     setActiveWorkout(workout)
-    setSessionStart(new Date().toISOString())
+    setSessionStart(start)
     setCompletedExercises([])
     setWorkoutTime(0)
-    setRestActive(false)
-    setRestRemaining(0)
-    setRestEndsAt(null)
-    setRestTimerSource(null)
-    setShowTimer(false)
-    setWorkoutNotification(workout, 0, [])
+    setRestHistory([])
+    clearRestState()
+    await sendWorkoutNotification({
+      activeWorkout: workout,
+      sessionStart: start,
+      completedExercises: [],
+      workoutTime: 0
+    })
   }
 
-  const cancelWorkout = () => {
+  const cancelWorkout = async () => {
     setActiveWorkout(null)
     setSessionStart(null)
     setCompletedExercises([])
-    setShowTimer(false)
     setWorkoutTime(0)
-    setRestActive(false)
-    setRestRemaining(0)
-    setRestEndsAt(null)
-    setRestTimerSource(null)
-    clearWorkoutNotification()
+    setRestHistory([])
+    clearRestState()
+    await clearWorkoutNotification()
   }
 
   const finishWorkout = async () => {
     if (!activeWorkout) return
     setSaving(true)
+    if (restActive) recordRestIfAny()
+
+    const restSecs = [...restHistory]
+    if (restStartedAt.current && restTimerSource) {
+      const elapsed = Math.max(1, Math.round((Date.now() - restStartedAt.current) / 1000))
+      restSecs.push({ afterExerciseId: restTimerSource, seconds: Math.min(elapsed, restTotal || 60) })
+    }
+
+    const bestRestSeconds =
+      restSecs.length > 0 ? Math.min(...restSecs.map((r) => r.seconds).filter((n) => n > 0)) : null
+    const avgRestSeconds =
+      restSecs.length > 0
+        ? Math.round(restSecs.reduce((s, r) => s + r.seconds, 0) / restSecs.length)
+        : null
+
+    const exercisesPayload = activeWorkout.exercises.map((exercise) => ({
+      ...exercise,
+      completed: completedExercises.includes(exercise.id),
+      setsCompleted: completedExercises.includes(exercise.id) ? exercise.sets : 0
+    }))
+
+    const metrics = {
+      durationSeconds: workoutTime,
+      bestRestSeconds,
+      avgRestSeconds,
+      restHistory: restSecs,
+      completedCount: completedExercises.length
+    }
+
     try {
-      await api.post('/workouts', {
+      const { data } = await api.post('/workouts', {
         name: activeWorkout.name,
-        exercises: activeWorkout.exercises.map((exercise) => ({
-          ...exercise,
-          completed: completedExercises.includes(exercise.id)
-        })),
-        duration: Math.floor(workoutTime / 60),
-        completedAt: new Date().toISOString()
+        exercises: exercisesPayload,
+        duration: Math.max(1, Math.floor(workoutTime / 60)),
+        durationSeconds: workoutTime,
+        metrics
       })
       celebration()
-      toast.success('¡Entrenamiento registrado con éxito! 💪')
+      toast.success('¡Entrenamiento registrado!')
+      setLastSavedWorkout(data?.workout || {
+        name: activeWorkout.name,
+        exercises: exercisesPayload,
+        duration: Math.max(1, Math.floor(workoutTime / 60)),
+        metrics
+      })
+      setShowSharePrompt(true)
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo guardar el entrenamiento')
     } finally {
@@ -278,13 +386,42 @@ export default function Workouts() {
       setActiveWorkout(null)
       setSessionStart(null)
       setCompletedExercises([])
-      setShowTimer(false)
       setWorkoutTime(0)
-      setRestActive(false)
-      setRestRemaining(0)
-      setRestEndsAt(null)
-      setRestTimerSource(null)
-      clearWorkoutNotification()
+      setRestHistory([])
+      skipRest()
+      await clearWorkoutNotification()
+    }
+  }
+
+  const shareLastWorkout = async () => {
+    if (!lastSavedWorkout) return
+    try {
+      const w = lastSavedWorkout
+      const metrics = w.metrics || {}
+      const completed = (w.exercises || []).filter((e) => e.completed !== false)
+      await api.post('/social', {
+        content: `Acabo de completar: ${w.name}`,
+        postType: 'workout',
+        workoutData: {
+          workoutId: w._id || w.id,
+          name: w.name,
+          completedExercises: completed.length,
+          totalExercises: (w.exercises || []).length,
+          totalSets: completed.reduce((s, e) => s + (Number(e.setsCompleted ?? e.sets) || 0), 0),
+          durationSeconds: metrics.durationSeconds || workoutTime,
+          bestRestSeconds: metrics.bestRestSeconds || null,
+          exercises: completed.map((e) => ({
+            name: e.name,
+            sets: e.setsCompleted ?? e.sets,
+            reps: e.reps
+          }))
+        }
+      })
+      toast.success('Compartido en Comunidad')
+      setShowSharePrompt(false)
+      navigate('/social')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo compartir')
     }
   }
 
@@ -315,7 +452,6 @@ export default function Workouts() {
       toast.error('Completa todos los campos antes de guardar la rutina')
       return
     }
-
     const colors = ['primary', 'cyan', 'purple', 'green']
     setTemplates((current) => [
       ...current,
@@ -325,322 +461,289 @@ export default function Workouts() {
         color: colors[current.length % colors.length]
       }
     ])
-
     setShowCreateModal(false)
     setNewRoutine({ name: '', exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }] })
-    toast.success('Rutina guardada correctamente')
+    toast.success('Rutina guardada')
   }
 
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60)
-    const remaining = seconds % 60
-    return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
+  if (activeWorkout) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 pb-28 sm:space-y-5 sm:pb-8 px-0.5">
+        {/* Compact session bar — single source for name / time / progress */}
+        <motion.header
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="sticky top-0 z-20 -mx-0.5 rounded-2xl border border-white/10 bg-[#0a0c14]/95 px-3 py-2.5 backdrop-blur-xl sm:px-5 sm:py-3"
+        >
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative h-10 w-10 shrink-0 sm:h-11 sm:w-11">
+              <svg className="h-full w-full -rotate-90" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+                <circle
+                  cx="22"
+                  cy="22"
+                  r="18"
+                  fill="none"
+                  stroke="#FF6B35"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 18}`}
+                  strokeDashoffset={`${2 * Math.PI * 18 * (1 - progress / 100)}`}
+                  className="transition-[stroke-dashoffset] duration-500"
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+                {progress}%
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-white sm:text-base">{activeWorkout.name}</p>
+              <p className="font-mono text-xs tabular-nums text-primary-300 sm:text-sm">{formatTime(workoutTime)}</p>
+            </div>
+            <button type="button" onClick={cancelWorkout} className="rounded-xl px-2.5 py-2 text-xs text-gray-400 hover:bg-white/5 hover:text-white sm:px-3 sm:text-sm">
+              Salir
+            </button>
+            <button
+              type="button"
+              onClick={finishWorkout}
+              disabled={saving}
+              className="btn-primary px-3 py-2 text-xs sm:px-4 sm:text-sm disabled:opacity-60"
+            >
+              {saving ? '…' : 'Listo'}
+            </button>
+          </div>
+        </motion.header>
+
+        {/* Focus: rest OR current exercise — never both duplicating the same stats */}
+        <AnimatePresence mode="wait">
+          {restActive ? (
+            <motion.section
+              key="rest"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              className="relative overflow-hidden rounded-[1.75rem] border border-accent-cyan/20 bg-gradient-to-b from-[#0c1520] to-[#080a10] px-5 py-8 text-center"
+            >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,245,255,0.08),transparent_65%)]" />
+              <p className="relative text-xs font-semibold uppercase tracking-[0.35em] text-accent-cyan">Descanso</p>
+              <div className="relative mt-6 flex justify-center">
+                <Timer remaining={restRemaining} total={restTotal} size="lg" />
+              </div>
+              <p className="relative mt-5 text-sm text-gray-400">
+                Siguiente: <span className="text-white">{currentExercise?.name || 'Último ejercicio'}</span>
+              </p>
+              <button
+                type="button"
+                onClick={skipRest}
+                className="relative mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+              >
+                <FiSkipForward size={14} /> Saltar descanso
+              </button>
+            </motion.section>
+          ) : (
+            <motion.section
+              key="focus"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-gradient-to-br from-[#121622] to-[#090b12] p-6 sm:p-8"
+            >
+              <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary-500/15 blur-3xl" />
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-gray-500">
+                Ejercicio {currentIndex + 1} de {totalExercises}
+              </p>
+              <h2 className="mt-3 font-display text-3xl text-white sm:text-4xl">
+                {currentExercise?.name || 'Sesión completa'}
+              </h2>
+              {currentExercise && (
+                <p className="mt-2 text-lg text-gray-400">
+                  {currentExercise.sets} series · {currentExercise.reps} reps
+                </p>
+              )}
+              {currentExercise && !completedExercises.includes(currentExercise.id) && (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => toggleExercise(currentExercise.id)}
+                  className="btn-primary mt-7 inline-flex w-full items-center justify-center gap-2 py-3.5 sm:w-auto sm:min-w-[220px]"
+                >
+                  <FiCheck size={18} /> Completar ejercicio
+                </motion.button>
+              )}
+              {completedCount === totalExercises && (
+                <p className="mt-6 text-accent-green">Todo listo — finaliza para guardar.</p>
+              )}
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Exercise checklist — progress implied by checks only */}
+        <section>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">Lista</p>
+          <div className="space-y-2">
+            {activeWorkout.exercises.map((exercise, index) => {
+              const done = completedExercises.includes(exercise.id)
+              const isCurrent = currentExercise?.id === exercise.id && !done
+              return (
+                <motion.button
+                  id={`workout-exercise-${exercise.id}`}
+                  key={exercise.id}
+                  type="button"
+                  layout
+                  whileTap={{ scale: 0.985 }}
+                  onClick={() => toggleExercise(exercise.id)}
+                  className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
+                    done
+                      ? 'border-accent-green/30 bg-accent-green/10'
+                      : isCurrent
+                        ? 'border-primary-500/40 bg-primary-500/10'
+                        : 'border-white/8 bg-white/[0.03] hover:border-white/15'
+                  }`}
+                >
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                      done
+                        ? 'bg-accent-green text-black'
+                        : isCurrent
+                          ? 'bg-primary-500 text-black'
+                          : 'bg-white/10 text-gray-400'
+                    }`}
+                  >
+                    {done ? <FiCheck size={14} /> : index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate font-medium ${done ? 'text-accent-green line-through opacity-80' : 'text-white'}`}>
+                      {exercise.name}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {exercise.sets}×{exercise.reps}
+                    </span>
+                  </span>
+                  {isCurrent && <FiPlay className="shrink-0 text-primary-400" size={16} />}
+                </motion.button>
+              )
+            })}
+          </div>
+        </section>
+      </div>
+    )
   }
-
-  const clearWorkoutNotification = async () => {
-    if (!('serviceWorker' in navigator)) return
-    const registration = await navigator.serviceWorker.ready.catch(() => null)
-    if (!registration) return
-    const notifications = await registration.getNotifications({ tag: 'qyntra-workout-session' })
-    notifications.forEach((notification) => notification.close())
-  }
-
-  const setWorkoutNotification = async (workout, totalSeconds, completed = []) => {
-    if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return
-    const nextExercise = workout.exercises.find((exercise) => !completed.includes(exercise.id))
-    const body = `Sesión: ${workout.name} · ${completed.length}/${workout.exercises.length} · Tiempo ${formatTime(totalSeconds)} · Siguiente: ${nextExercise ? nextExercise.name : 'Finalizando'}`
-    const registration = await navigator.serviceWorker.ready.catch(() => null)
-    if (!registration) return
-
-    registration.showNotification('Entrenamiento en curso', {
-      body,
-      icon: '/pwa-192x192.png',
-      badge: '/badge-96x96.png',
-      tag: 'qyntra-workout-session',
-      renotify: true,
-      requireInteraction: false,
-      data: {
-        type: 'NOTIFICATION_CLICK',
-        url: `/workouts?focus=${nextExercise?.id || ''}`
-      }
-    })
-  }
-
-  const timerLabel = restActive
-    ? 'Descanso en curso'
-    : completedCount === 0
-      ? 'Marca tu primer ejercicio'
-      : 'Marca el siguiente ejercicio para activar el descanso'
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-6 pb-24 sm:space-y-8 sm:pb-8">
+      <AnimatePresence>
+        {showSharePrompt && lastSavedWorkout && (
+          <ShareWorkoutPrompt
+            workout={lastSavedWorkout}
+            onShare={shareLastWorkout}
+            onClose={() => setShowSharePrompt(false)}
+            onViewHistory={() => {
+              setShowSharePrompt(false)
+              navigate('/my-workouts')
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Rutinas premium</p>
-          <h1 className="font-display text-5xl text-white">Entrenamientos premium</h1>
-          <p className="mt-3 max-w-2xl text-gray-400">Diseñado para que tu sesión se mantenga activa en todo momento, con descansos sincronizados, seguimiento continuo y un diseño avanzado.</p>
+          <h1 className="font-display text-3xl text-white sm:text-5xl">Entrenamientos</h1>
+          <p className="mt-2 max-w-lg text-sm text-gray-400 sm:text-base">Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.</p>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className="btn-primary inline-flex items-center gap-2 px-5 py-3 text-sm">
-          <FiPlus size={18} /> Crear nueva rutina
+        <button type="button" onClick={() => setShowCreateModal(true)} className="btn-primary inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm sm:w-auto sm:self-start">
+          <FiPlus size={18} /> Nueva rutina
         </button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.5fr_0.95fr]">
-        <div className="space-y-6">
-          {activeWorkout ? (
-            <motion.section
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#07080E]/95 p-5 shadow-[0_30px_80px_rgba(0,0,0,0.45)] sm:p-6"
-            >
-              <div className="pointer-events-none absolute -right-28 top-0 h-72 w-72 rounded-full bg-primary-500/12 blur-3xl" />
-              <div className="pointer-events-none absolute -left-24 bottom-0 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
-
-              <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-                <div className="max-w-2xl">
-                  <p className="text-sm uppercase tracking-[0.35em] text-primary-300">Rutina activa</p>
-                  <h2 className="font-display text-4xl sm:text-5xl text-white mt-4 leading-tight">{activeWorkout.name}</h2>
-                  <p className="mt-4 max-w-xl text-gray-400">El temporizador general y el descanso se sincronizan juntos para mantenerte en ritmo incluso si cambias de pantalla.</p>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-[1.75rem] border border-white/10 bg-black/40 p-5 text-center">
-                    <p className="text-sm text-gray-400 uppercase tracking-[0.2em]">Tiempo total</p>
-                    <p className="mt-3 text-3xl sm:text-4xl font-semibold text-white">{formatTime(workoutTime)}</p>
-                  </div>
-                  <div className="rounded-[1.75rem] border border-white/10 bg-black/40 p-5 text-center">
-                    <p className="text-sm text-gray-400 uppercase tracking-[0.2em]">Progreso</p>
-                    <p className="mt-3 text-3xl sm:text-4xl font-semibold text-white">{progress}%</p>
-                  </div>
-                </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+        {templates.map((template, i) => (
+          <motion.article
+            key={template.id}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            whileHover={{ y: -3 }}
+            className={`group relative overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-5 sm:p-6 ${COLOR_MAP[template.color] || COLOR_MAP.primary}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-400">
+                  {template.exercises.length} ejercicios
+                </p>
+                <h2 className="mt-2 font-display text-2xl text-white">{template.name}</h2>
               </div>
-
-              <div className="mt-8 grid gap-5 xl:grid-cols-[1.45fr_0.95fr]">
-                <div className="space-y-5">
-                  <div className="rounded-[1.75rem] border border-white/10 bg-[#0E1119]/85 p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.3em] text-gray-400">{timerLabel}</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{restActive ? `Descanso: ${formatTime(restRemaining)}` : 'Sigue marcando ejercicios para mantener el ritmo'}</p>
-                      </div>
-                      <button
-                        onClick={() => setShowTimer(true)}
-                        className="inline-flex w-full justify-center rounded-3xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-200 transition hover:bg-primary-500/15 sm:w-auto"
-                      >
-                        {restActive ? 'Ver descanso' : 'Abrir temporizador'}
-                      </button>
-                    </div>
-
-                    {restActive && (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-3xl bg-white/5 p-4">
-                          <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Descanso restante</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">{formatTime(restRemaining)}</p>
-                        </div>
-                        <div className="rounded-3xl bg-white/5 p-4">
-                          <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Siguiente meta</p>
-                          <p className="mt-2 text-lg text-white">Recupera para la próxima serie</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid gap-3">
-                    {activeWorkout.exercises.map((exercise) => {
-                      const completed = completedExercises.includes(exercise.id)
-                      return (
-                        <motion.button
-                          id={`workout-exercise-${exercise.id}`}
-                          key={exercise.id}
-                          layout
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => toggleExercise(exercise.id)}
-                          className={`group rounded-[2rem] border p-5 text-left transition-all duration-200 ${
-                            completed
-                              ? 'border-accent-green bg-accent-green/10 text-accent-green shadow-[0_20px_60px_rgba(34,197,94,0.12)]'
-                              : 'border-white/10 bg-[#10131D] hover:border-primary-500/40 hover:bg-[#13172A]'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-xl font-semibold">{exercise.name}</p>
-                              <p className="mt-1 text-sm text-gray-400">{exercise.sets} sets · {exercise.reps} reps</p>
-                            </div>
-                            <div className={`flex h-12 w-12 items-center justify-center rounded-full border-2 ${completed ? 'border-accent-green bg-accent-green text-black' : 'border-gray-500 text-gray-400'}`}>
-                              {completed ? <FiCheck size={18} /> : <FiPlay size={16} />}
-                            </div>
-                          </div>
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <aside className="space-y-5">
-                  <div className="rounded-[2rem] border border-white/10 bg-[#08101F]/90 p-6">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Sesión activa</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{activeWorkout.exercises.length} ejercicios</p>
-                      </div>
-                      <div className="rounded-3xl bg-gradient-to-br from-primary-500 to-accent-400 px-4 py-3 text-sm font-semibold text-black">
-                        LIVE
-                      </div>
-                    </div>
-
-                    <div className="mt-5 space-y-4">
-                      <div className="rounded-3xl bg-black/30 p-4">
-                        <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Rutina en curso</p>
-                        <p className="mt-2 text-2xl font-semibold text-white">{formatTime(workoutTime)}</p>
-                      </div>
-                      <div className="rounded-3xl bg-black/30 p-4">
-                        <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Ejercicios completados</p>
-                        <p className="mt-2 text-2xl font-semibold text-white">{completedCount}/{activeWorkout.exercises.length}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[2rem] border border-white/10 bg-[#0D1320]/90 p-6">
-                    <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Ritmo de entrenamiento</p>
-                    <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/5">
-                      <div className="h-full rounded-full bg-gradient-to-r from-primary-500 to-accent-400 transition-all duration-500" style={{ width: `${progress}%` }} />
-                    </div>
-                    <p className="mt-4 text-sm text-gray-300">El temporizador de descanso se sincroniza con la sesión completa para mantener el ritmo en segundo plano.</p>
-                  </div>
-
-                  <div className="grid gap-3">
-                    <button onClick={cancelWorkout} className="btn-secondary w-full py-3">Cancelar rutina</button>
-                    <button onClick={finishWorkout} disabled={saving} className="btn-primary w-full py-3">
-                      {saving ? 'Guardando...' : `Finalizar (${completedCount}/${activeWorkout.exercises.length})`}
-                    </button>
-                  </div>
-                </aside>
-              </div>
-
-              <AnimatePresence>
-                {showTimer && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="mt-6 rounded-[1.75rem] border border-white/10 bg-[#0B0F18]/95 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:p-6">
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Descanso</p>
-                        <p className="text-lg font-semibold text-white">Temporizador en segundo plano</p>
-                      </div>
-                      <button onClick={() => setShowTimer(false)} className="text-gray-400 hover:text-white self-start sm:self-auto">Cerrar</button>
-                    </div>
-                    <div className="grid gap-5 lg:grid-cols-[auto_1fr] lg:items-center">
-                      <div className="w-full max-w-[280px] mx-auto">
-                        <Timer initialTime={restRemaining || DEFAULT_REST_SECONDS} autoStart={restActive} size="lg" onComplete={() => setShowTimer(false)} />
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-400">Tu descanso continúa si cambias de pantalla. Vuelve cuando quieras y retoma donde quedaste.</p>
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-3xl bg-white/5 p-4">
-                            <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Descanso restante</p>
-                            <p className="mt-2 text-xl font-semibold text-white">{formatTime(restRemaining)}</p>
-                          </div>
-                          <div className="rounded-3xl bg-white/5 p-4">
-                            <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Tiempo total</p>
-                            <p className="mt-2 text-xl font-semibold text-white">{formatTime(workoutTime)}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.section>
-          ) : (
-            <section className="space-y-3">
-              <p className="text-sm text-gray-400">Selecciona una rutina para comenzar y mejora la experiencia con un panel más limpio y fluido.</p>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
-                {templates.slice(0, 2).map((template) => (
-                  <motion.article
-                    key={template.id}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="card rounded-[2rem] border-white/10 bg-gradient-to-br from-dark-300 to-dark-200 p-6"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.3em] text-gray-400">{template.color} training</p>
-                        <h2 className="mt-3 text-2xl font-semibold">{template.name}</h2>
-                      </div>
-                      <div className="text-primary-500 text-5xl">{template.exercises.length}</div>
-                    </div>
-                    <p className="mt-4 text-sm text-gray-400">Perfecta para entrenar con estructura y ritmo.</p>
-                    <button onClick={() => startWorkout(template)} className="btn-primary mt-6 w-full py-3">Iniciar ahora</button>
-                  </motion.article>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-
-        <aside className="space-y-6">
-          <div className="card rounded-[2rem] p-6">
-            <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Resumen</p>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-3xl bg-dark-400/70 p-4 text-center">
-                <p className="text-sm text-gray-400">Rutinas guardadas</p>
-                <p className="mt-2 text-3xl font-semibold">{templates.length}</p>
-              </div>
-              <div className="rounded-3xl bg-dark-400/70 p-4 text-center">
-                <p className="text-sm text-gray-400">Ejercicios totales</p>
-                <p className="mt-2 text-3xl font-semibold">{templates.reduce((sum, item) => sum + item.exercises.length, 0)}</p>
-              </div>
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/30 text-lg font-bold text-white/80">
+                {template.exercises.length}
+              </span>
             </div>
-          </div>
-
-          <div className="card rounded-[2rem] p-6">
-            <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Guía rápida</p>
-            <ul className="mt-4 space-y-3 text-sm text-gray-300">
-              <li className="rounded-3xl bg-dark-400/60 p-4">Marca cada ejercicio al completar para mantener orden y progreso.</li>
-              <li className="rounded-3xl bg-dark-400/60 p-4">Usa el botón de descanso para recuperar energía entre series.</li>
-              <li className="rounded-3xl bg-dark-400/60 p-4">Finaliza la rutina para registrar el entrenamiento y obtener feedback.</li>
+            <ul className="mt-4 space-y-1.5">
+              {template.exercises.slice(0, 3).map((ex) => (
+                <li key={ex.id} className="truncate text-sm text-gray-400">
+                  {ex.name}
+                  <span className="text-gray-600"> · {ex.sets}×{ex.reps}</span>
+                </li>
+              ))}
+              {template.exercises.length > 3 && (
+                <li className="text-xs text-gray-500">+{template.exercises.length - 3} más</li>
+              )}
             </ul>
-          </div>
-        </aside>
+            <button
+              type="button"
+              onClick={() => startWorkout(template)}
+              className="btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3"
+            >
+              <FiPlay size={16} /> Iniciar
+            </button>
+          </motion.article>
+        ))}
       </div>
 
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 sm:px-6 sm:py-8">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="card w-full max-w-3xl max-h-[calc(100vh-3rem)] overflow-y-auto p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-3 mb-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="card max-h-[calc(100vh-3rem)] w-full max-w-3xl overflow-y-auto p-5 sm:p-6"
+            >
+              <div className="mb-6 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm text-gray-400">Nueva rutina</p>
-                  <h2 className="font-display text-2xl">Crea tu plan perfecto</h2>
+                  <h2 className="font-display text-2xl">Crea tu plan</h2>
                 </div>
-                <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white"><FiX size={24} /></button>
+                <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white">
+                  <FiX size={24} />
+                </button>
               </div>
 
               <div className="space-y-5">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Nombre de la rutina</label>
+                  <label className="mb-2 block text-sm text-gray-400">Nombre</label>
                   <input
                     type="text"
                     value={newRoutine.name}
-                    onChange={(e) => setNewRoutine((current) => ({ ...current, name: e.target.value }))}
+                    onChange={(e) => setNewRoutine((c) => ({ ...c, name: e.target.value }))}
                     placeholder="Ej: Día de fuerza"
                     className="input-field"
                   />
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex items-center justify-between">
                     <p className="text-sm text-gray-400">Ejercicios</p>
-                    <button onClick={addExerciseField} className="text-primary-500 hover:text-primary-400 text-sm inline-flex items-center gap-2">
-                      <FiPlus /> Agregar ejercicio
+                    <button type="button" onClick={addExerciseField} className="inline-flex items-center gap-2 text-sm text-primary-500 hover:text-primary-400">
+                      <FiPlus /> Agregar
                     </button>
                   </div>
                   <div className="space-y-3">
                     {newRoutine.exercises.map((exercise, index) => (
-                      <div key={exercise.id} className="grid gap-2 lg:grid-cols-[1.6fr_0.7fr_0.7fr_40px] items-center">
+                      <div key={exercise.id} className="grid items-center gap-2 lg:grid-cols-[1.6fr_0.7fr_0.7fr_40px]">
                         <input
                           type="text"
                           value={exercise.name}
                           onChange={(e) => updateExercise(index, 'name', e.target.value)}
-                          placeholder="Nombre del ejercicio"
+                          placeholder="Ejercicio"
                           className="input-field w-full"
                         />
                         <input
@@ -649,15 +752,17 @@ export default function Workouts() {
                           onChange={(e) => updateExercise(index, 'sets', Number(e.target.value) || 1)}
                           min="1"
                           className="input-field w-full"
+                          placeholder="Series"
                         />
                         <input
                           type="text"
                           value={exercise.reps}
                           onChange={(e) => updateExercise(index, 'reps', e.target.value)}
                           className="input-field w-full"
+                          placeholder="Reps"
                         />
                         {newRoutine.exercises.length > 1 ? (
-                          <button onClick={() => removeExercise(index)} className="text-red-500 hover:text-red-400">
+                          <button type="button" onClick={() => removeExercise(index)} className="text-red-500 hover:text-red-400">
                             <FiTrash2 size={20} />
                           </button>
                         ) : null}
@@ -667,8 +772,12 @@ export default function Workouts() {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <button onClick={() => setShowCreateModal(false)} className="btn-secondary w-full py-3">Cancelar</button>
-                  <button onClick={saveNewRoutine} className="btn-primary w-full py-3">Guardar rutina</button>
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary w-full py-3">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={saveNewRoutine} className="btn-primary w-full py-3">
+                    Guardar
+                  </button>
                 </div>
               </div>
             </motion.div>

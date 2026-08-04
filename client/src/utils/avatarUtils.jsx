@@ -23,6 +23,7 @@ export const getAvatarDisplay = (avatar, name, size = 'md') => {
   const sizes = {
     sm: { container: 'w-8 h-8', icon: 16, text: 'text-sm' },
     md: { container: 'w-12 h-12', icon: 24, text: 'text-lg' },
+    story: { container: 'w-14 h-14', icon: 28, text: 'text-xl' },
     lg: { container: 'w-24 h-24', icon: 48, text: 'text-4xl' },
     xl: { container: 'w-32 h-32', icon: 64, text: 'text-6xl' }
   }

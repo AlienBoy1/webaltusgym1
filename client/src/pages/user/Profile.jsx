@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift } from 'react-icons/fi'
+import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { Link } from 'react-router-dom'
@@ -11,6 +11,7 @@ import BadgesModal from '../../components/BadgesModal'
 import { Avatar } from '../../utils/avatarUtils'
 
 const menuItems = [
+  { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
   { icon: FiSettings, label: 'Configuración', to: '/settings' },
   { icon: FiBell, label: 'Notificaciones', to: '/notifications', badge: true },
   { icon: FiMessageCircle, label: 'Mensajes', to: '/chat' },
