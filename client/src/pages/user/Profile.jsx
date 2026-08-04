@@ -8,6 +8,7 @@ import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import AvatarPicker from '../../components/AvatarPicker'
 import BadgesModal from '../../components/BadgesModal'
+import StoryHighlights from '../../components/StoryHighlights'
 import { Avatar } from '../../utils/avatarUtils'
 
 const menuItems = [
@@ -454,6 +455,9 @@ export default function Profile() {
           {100 - ((user?.stats?.xp || 0) % 100)} XP hasta el siguiente nivel
         </div>
       </motion.div>
+
+      {/* Story favorites / highlights */}
+      {user?._id && <StoryHighlights userId={user._id} />}
 
       {/* Badges */}
       <motion.div

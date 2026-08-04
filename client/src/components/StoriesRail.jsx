@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPlus, FiX, FiSend, FiImage, FiVideo, FiMoreVertical, FiShare2, FiTrash2, FiSearch, FiCheck } from 'react-icons/fi'
+import {
+  FiPlus,
+  FiX,
+  FiSend,
+  FiImage,
+  FiVideo,
+  FiMoreVertical,
+  FiShare2,
+  FiTrash2,
+  FiSearch,
+  FiCheck,
+  FiStar
+} from 'react-icons/fi'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -25,6 +37,7 @@ function storyAttachment(story, kind = 'share') {
 export default function StoriesRail() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [groups, setGroups] = useState([])
   const [reactions, setReactions] = useState([])
   const [viewer, setViewer] = useState(null)
@@ -38,6 +51,11 @@ export default function StoriesRail() {
   const [replyFocused, setReplyFocused] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [favoritesOpen, setFavoritesOpen] = useState(false)
+  const [albums, setAlbums] = useState([])
+  const [newAlbumName, setNewAlbumName] = useState('')
+  const [creatingAlbum, setCreatingAlbum] = useState(false)
+  const [savingFavorite, setSavingFavorite] = useState(false)
   const [contacts, setContacts] = useState([])
   const [shareQuery, setShareQuery] = useState('')
   const [selectedShare, setSelectedShare] = useState([])
@@ -48,21 +66,85 @@ export default function StoriesRail() {
   const timerRef = useRef(null)
   const storyStartedAtRef = useRef(null)
   const remainingMsRef = useRef(null)
-  const paused = menuOpen || shareOpen || replyFocused || Boolean(reply.trim())
+  const openStoryHandled = useRef(null)
+  const paused = menuOpen || shareOpen || favoritesOpen || replyFocused || Boolean(reply.trim())
 
   const load = useCallback(async () => {
     try {
       const { data } = await api.get('/stories/feed')
       setGroups(data.groups || [])
       setReactions(data.reactions || [])
+      return data.groups || []
     } catch {
       setGroups([])
+      return []
     }
   }, [])
+
+  const openStoryFromId = useCallback(async (storyId, currentGroups) => {
+    if (!storyId) return
+    const list = currentGroups || groups
+
+    const findInGroups = (gList) => {
+      for (let gi = 0; gi < gList.length; gi++) {
+        const si = gList[gi].stories.findIndex((s) => (s._id || s.id) === storyId)
+        if (si >= 0) return { groupIndex: gi, storyIndex: si, nextGroups: gList }
+      }
+      return null
+    }
+
+    let pos = findInGroups(list)
+    if (!pos) {
+      try {
+        const { data: story } = await api.get(`/stories/${storyId}`)
+        const uid = story.user?._id || story.user
+        const next = [...list]
+        const gi = next.findIndex((g) => (g.user?._id || g.user) === uid)
+        if (gi >= 0) {
+          const exists = next[gi].stories.some((s) => (s._id || s.id) === (story._id || story.id))
+          if (!exists) {
+            next[gi] = { ...next[gi], stories: [...next[gi].stories, story] }
+          }
+          const si = next[gi].stories.findIndex((s) => (s._id || s.id) === (story._id || story.id))
+          pos = { groupIndex: gi, storyIndex: Math.max(0, si), nextGroups: next }
+        } else {
+          next.unshift({ user: story.user, stories: [story], hasUnseen: false })
+          pos = { groupIndex: 0, storyIndex: 0, nextGroups: next }
+        }
+        setGroups(pos.nextGroups)
+      } catch (error) {
+        const gone = error.response?.status === 410 || error.response?.status === 404
+        toast.error(
+          gone
+            ? 'Este estado ya expiró (máx. 24h) o no está disponible'
+            : 'No se pudo abrir el estado'
+        )
+        return
+      }
+    }
+
+    setViewer({ groupIndex: pos.groupIndex, storyIndex: pos.storyIndex })
+    setReply('')
+    setReplyFocused(false)
+    setMenuOpen(false)
+  }, [groups])
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const storyId = searchParams.get('openStory')
+    if (!storyId || openStoryHandled.current === storyId) return
+    openStoryHandled.current = storyId
+    ;(async () => {
+      const fresh = await load()
+      await openStoryFromId(storyId, fresh)
+      const next = new URLSearchParams(searchParams)
+      next.delete('openStory')
+      setSearchParams(next, { replace: true })
+    })()
+  }, [searchParams, load, openStoryFromId, setSearchParams])
 
   const openGroup = (groupIndex, storyIndex = 0) => {
     setViewer({ groupIndex, storyIndex })
@@ -70,6 +152,7 @@ export default function StoriesRail() {
     setReplyFocused(false)
     setMenuOpen(false)
     setShareOpen(false)
+    setFavoritesOpen(false)
   }
 
   const currentGroup = viewer != null ? groups[viewer.groupIndex] : null
@@ -83,10 +166,64 @@ export default function StoriesRail() {
     setViewer(null)
     setMenuOpen(false)
     setShareOpen(false)
+    setFavoritesOpen(false)
     setReply('')
     setReplyFocused(false)
     if (timerRef.current) window.clearTimeout(timerRef.current)
     load()
+  }
+
+  const openFavorites = async () => {
+    setMenuOpen(false)
+    setFavoritesOpen(true)
+    setNewAlbumName('')
+    try {
+      const { data } = await api.get('/stories/favorites/albums')
+      setAlbums(data || [])
+    } catch {
+      setAlbums([])
+      toast.error('No se pudieron cargar los álbumes')
+    }
+  }
+
+  const createAlbum = async () => {
+    const name = newAlbumName.trim()
+    if (!name) {
+      toast.error('Escribe un nombre para el álbum')
+      return
+    }
+    setCreatingAlbum(true)
+    try {
+      const { data } = await api.post('/stories/favorites/albums', { name })
+      setAlbums((prev) => [...prev, data])
+      setNewAlbumName('')
+      toast.success('Álbum creado')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo crear el álbum')
+    } finally {
+      setCreatingAlbum(false)
+    }
+  }
+
+  const saveToAlbum = async (albumId) => {
+    if (!currentStory) return
+    setSavingFavorite(true)
+    try {
+      await api.post('/stories/favorites', {
+        albumId,
+        storyId: currentStory._id || currentStory.id
+      })
+      toast.success('Agregado a favoritos')
+      setFavoritesOpen(false)
+    } catch (error) {
+      const msg =
+        error.response?.status === 410
+          ? 'Este estado ya expiró'
+          : error.response?.data?.message || 'No se pudo guardar'
+      toast.error(msg)
+    } finally {
+      setSavingFavorite(false)
+    }
   }
 
   const markViewed = async (story) => {
@@ -580,16 +717,14 @@ export default function StoriesRail() {
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  {isOwnStory && (
-                    <button
-                      type="button"
-                      onClick={() => setMenuOpen((v) => !v)}
-                      className="rounded-full bg-black/40 p-2 text-white"
-                      aria-label="Más opciones"
-                    >
-                      <FiMoreVertical size={18} />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    className="rounded-full bg-black/40 p-2 text-white"
+                    aria-label="Más opciones"
+                  >
+                    <FiMoreVertical size={18} />
+                  </button>
                   <button
                     type="button"
                     onClick={closeViewer}
@@ -600,30 +735,41 @@ export default function StoriesRail() {
                 </div>
               </div>
 
-              {/* Own story menu */}
+              {/* Story options */}
               <AnimatePresence>
-                {menuOpen && isOwnStory && (
+                {menuOpen && (
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    className="absolute right-4 top-16 z-40 w-52 overflow-hidden rounded-2xl border border-white/10 bg-dark-200/95 shadow-2xl backdrop-blur-xl"
+                    className="absolute right-4 top-16 z-40 w-56 overflow-hidden rounded-2xl border border-white/10 bg-dark-200/95 shadow-2xl backdrop-blur-xl"
                   >
                     <button
                       type="button"
-                      onClick={openShare}
+                      onClick={openFavorites}
                       className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm text-white hover:bg-white/5"
                     >
-                      <FiShare2 className="text-primary-400" /> Compartir
+                      <FiStar className="text-accent-yellow" /> Agregar a favoritos
                     </button>
-                    <button
-                      type="button"
-                      disabled={deleting}
-                      onClick={deleteStory}
-                      className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-left text-sm text-red-400 hover:bg-white/5 disabled:opacity-50"
-                    >
-                      <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
-                    </button>
+                    {isOwnStory && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={openShare}
+                          className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-left text-sm text-white hover:bg-white/5"
+                        >
+                          <FiShare2 className="text-primary-400" /> Compartir
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deleting}
+                          onClick={deleteStory}
+                          className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-left text-sm text-red-400 hover:bg-white/5 disabled:opacity-50"
+                        >
+                          <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
+                        </button>
+                      </>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -790,6 +936,90 @@ export default function StoriesRail() {
                             ? `Enviar (${selectedShare.length})`
                             : 'Selecciona contactos'}
                       </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {favoritesOpen && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-50 flex items-end bg-black/70 sm:items-center sm:justify-center sm:p-4"
+                >
+                  <motion.div
+                    initial={{ y: 40 }}
+                    animate={{ y: 0 }}
+                    exit={{ y: 40 }}
+                    className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                  >
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <p className="font-semibold">Agregar a favoritos</p>
+                      <button
+                        type="button"
+                        onClick={() => setFavoritesOpen(false)}
+                        className="p-2 text-gray-400"
+                      >
+                        <FiX />
+                      </button>
+                    </div>
+
+                    <div className="border-b border-white/5 px-4 py-3">
+                      <p className="mb-2 text-xs text-gray-500">Crear álbum nuevo</p>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <input
+                          value={newAlbumName}
+                          onChange={(e) => setNewAlbumName(e.target.value.slice(0, 40))}
+                          placeholder="Nombre del álbum"
+                          className="input-field flex-1 py-2.5 text-sm"
+                        />
+                        <button
+                          type="button"
+                          disabled={creatingAlbum}
+                          onClick={createAlbum}
+                          className="btn-secondary whitespace-nowrap px-4 py-2.5 text-sm disabled:opacity-50"
+                        >
+                          {creatingAlbum ? '…' : 'Crear'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-2 py-2">
+                      {albums.length === 0 ? (
+                        <p className="px-3 py-8 text-center text-sm text-gray-500">
+                          Aún no tienes álbumes. Crea uno para guardar este estado.
+                        </p>
+                      ) : (
+                        albums.map((album) => (
+                          <button
+                            key={album._id || album.id}
+                            type="button"
+                            disabled={savingFavorite}
+                            onClick={() => saveToAlbum(album._id || album.id)}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/5 disabled:opacity-50"
+                          >
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary-500/40 to-accent-cyan/30 ring-2 ring-white/10">
+                              {album.coverUrl ? (
+                                album.coverType === 'video' ? (
+                                  <video src={album.coverUrl} muted className="h-full w-full object-cover" />
+                                ) : (
+                                  <img src={album.coverUrl} alt="" className="h-full w-full object-cover" />
+                                )
+                              ) : (
+                                <FiStar className="text-accent-yellow" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-white">{album.name}</p>
+                              <p className="text-xs text-gray-500">{album.count || 0} estados</p>
+                            </div>
+                            <FiPlus className="text-primary-400" />
+                          </button>
+                        ))
+                      )}
                     </div>
                   </motion.div>
                 </motion.div>

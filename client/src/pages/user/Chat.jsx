@@ -8,7 +8,7 @@ import { onChatEvent, sendTyping, showNotification, requestNotificationPermissio
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
 
-function StoryAttachmentBubble({ attachment, isMe, hasText }) {
+function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   if (!attachment || attachment.type !== 'story') return null
   const isReply = attachment.kind === 'reply' || hasText
   const label = isMe
@@ -19,8 +19,13 @@ function StoryAttachmentBubble({ attachment, isMe, hasText }) {
       ? 'Respondió a tu estado'
       : 'Te compartió un estado'
   return (
-    <div
-      className={`overflow-hidden rounded-xl ${
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen?.(attachment)
+      }}
+      className={`w-full overflow-hidden rounded-xl text-left transition hover:opacity-95 active:scale-[0.99] ${
         hasText ? 'mb-2' : ''
       } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
     >
@@ -55,9 +60,12 @@ function StoryAttachmentBubble({ attachment, isMe, hasText }) {
           <p className={`mt-0.5 line-clamp-2 text-xs leading-snug ${isMe ? 'text-white/90' : 'text-gray-200'}`}>
             {attachment.caption?.trim() || 'Estado de Qyntra'}
           </p>
+          <p className={`mt-1 text-[10px] ${isMe ? 'text-white/50' : 'text-primary-300'}`}>
+            Toca para ver el estado
+          </p>
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -502,6 +510,13 @@ export default function Chat() {
                       attachment={msg.attachment}
                       isMe={msg.sender === 'me'}
                       hasText={Boolean(msg.text?.trim())}
+                      onOpen={(att) => {
+                        if (!att?.storyId) {
+                          toast.error('No se pudo abrir este estado')
+                          return
+                        }
+                        navigate(`/social?openStory=${att.storyId}`)
+                      }}
                     />
                     {msg.text ? <p className="break-words">{msg.text}</p> : null}
                     {!msg.text && !msg.attachment ? (

@@ -16,7 +16,16 @@ export const STORY_REACTIONS = [
 
 const ALLOWED_EMOJIS = new Set(STORY_REACTIONS.map((r) => r.emoji))
 const STORY_TTL_MS = 24 * 60 * 60 * 1000
-const MAX_VIDEO_CHARS = 18_000_000 // ~13MB base64
+const MAX_VIDEO_CHARS = 18_000_000
+
+async function purgeExpiredStories() {
+  try {
+    const now = new Date().toISOString()
+    await supabaseAdmin.from('stories').delete().lte('expires_at', now)
+  } catch (err) {
+    console.error('purgeExpiredStories:', err?.message || err)
+  }
+}
 
 async function getProfilesMap(ids) {
   const unique = [...new Set((ids || []).filter(Boolean))]
@@ -81,9 +90,221 @@ async function enrichStories(rows, viewerId) {
   })
 }
 
-// List active stories from self + following, grouped by user
+function mapAlbum(row, extras = {}) {
+  return {
+    _id: row.id,
+    id: row.id,
+    name: row.name,
+    userId: row.user_id,
+    createdAt: row.created_at,
+    coverUrl: extras.coverUrl || null,
+    coverType: extras.coverType || null,
+    count: extras.count || 0,
+    items: extras.items || undefined
+  }
+}
+
+function mapFavorite(row) {
+  return {
+    _id: row.id,
+    id: row.id,
+    albumId: row.album_id,
+    mediaType: row.media_type,
+    mediaUrl: row.media_url,
+    caption: row.caption || '',
+    authorId: row.author_id,
+    authorName: row.author_name,
+    originalStoryId: row.original_story_id,
+    createdAt: row.created_at
+  }
+}
+
+// —— Favorites albums (before /:id) ——
+router.get('/favorites/albums', authenticate, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id
+    const { data: albums, error } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+
+    if (error) throw error
+    if (!albums?.length) return res.json([])
+
+    const albumIds = albums.map((a) => a.id)
+    const { data: favs } = await supabaseAdmin
+      .from('story_favorites')
+      .select('*')
+      .in('album_id', albumIds)
+      .order('created_at', { ascending: true })
+
+    const byAlbum = {}
+    for (const f of favs || []) {
+      if (!byAlbum[f.album_id]) byAlbum[f.album_id] = []
+      byAlbum[f.album_id].push(f)
+    }
+
+    res.json(
+      albums.map((a) => {
+        const items = byAlbum[a.id] || []
+        const cover = items[0]
+        return mapAlbum(a, {
+          coverUrl: cover?.media_url || null,
+          coverType: cover?.media_type || null,
+          count: items.length
+        })
+      })
+    )
+  } catch (error) {
+    res.status(500).json({ message: 'Error al cargar álbumes', error: error.message })
+  }
+})
+
+router.post('/favorites/albums', authenticate, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim().slice(0, 40)
+    if (!name) return res.status(400).json({ message: 'Nombre requerido' })
+
+    const { data, error } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .insert({ user_id: req.user.id, name })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.status(201).json(mapAlbum(data, { count: 0 }))
+  } catch (error) {
+    res.status(500).json({ message: 'Error al crear álbum', error: error.message })
+  }
+})
+
+router.get('/favorites/albums/:albumId', authenticate, async (req, res) => {
+  try {
+    const { data: album, error } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .select('*')
+      .eq('id', req.params.albumId)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!album) return res.status(404).json({ message: 'Álbum no encontrado' })
+
+    const { data: items } = await supabaseAdmin
+      .from('story_favorites')
+      .select('*')
+      .eq('album_id', album.id)
+      .order('created_at', { ascending: true })
+
+    const mappedItems = (items || []).map(mapFavorite)
+    res.json(
+      mapAlbum(album, {
+        coverUrl: mappedItems[0]?.mediaUrl || null,
+        coverType: mappedItems[0]?.mediaType || null,
+        count: mappedItems.length,
+        items: mappedItems
+      })
+    )
+  } catch (error) {
+    res.status(500).json({ message: 'Error al cargar álbum', error: error.message })
+  }
+})
+
+router.delete('/favorites/albums/:albumId', authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .delete()
+      .eq('id', req.params.albumId)
+      .eq('user_id', req.user.id)
+      .select('id')
+      .maybeSingle()
+    if (error || !data) return res.status(404).json({ message: 'Álbum no encontrado' })
+    res.json({ message: 'Álbum eliminado' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+router.post('/favorites', authenticate, async (req, res) => {
+  try {
+    await purgeExpiredStories()
+    const { albumId, storyId } = req.body
+    if (!albumId || !storyId) {
+      return res.status(400).json({ message: 'Álbum e historia requeridos' })
+    }
+
+    const { data: album } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .select('id')
+      .eq('id', albumId)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+    if (!album) return res.status(404).json({ message: 'Álbum no encontrado' })
+
+    const now = new Date().toISOString()
+    const { data: story } = await supabaseAdmin
+      .from('stories')
+      .select('*')
+      .eq('id', storyId)
+      .gt('expires_at', now)
+      .maybeSingle()
+
+    if (!story) {
+      return res.status(410).json({ message: 'Este estado ya expiró o no está disponible' })
+    }
+
+    const { data: author } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name')
+      .eq('id', story.user_id)
+      .maybeSingle()
+
+    const { data, error } = await supabaseAdmin
+      .from('story_favorites')
+      .insert({
+        album_id: albumId,
+        user_id: req.user.id,
+        original_story_id: story.id,
+        media_type: story.media_type,
+        media_url: story.media_url,
+        caption: story.caption || '',
+        author_id: story.user_id,
+        author_name: author?.name || null
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.status(201).json(mapFavorite(data))
+  } catch (error) {
+    res.status(500).json({ message: 'Error al guardar favorito', error: error.message })
+  }
+})
+
+router.delete('/favorites/:favId', authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('story_favorites')
+      .delete()
+      .eq('id', req.params.favId)
+      .eq('user_id', req.user.id)
+      .select('id')
+      .maybeSingle()
+    if (error || !data) return res.status(404).json({ message: 'Favorito no encontrado' })
+    res.json({ message: 'Eliminado de favoritos' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+router.get('/reactions', authenticate, (_req, res) => {
+  res.json(STORY_REACTIONS)
+})
+
 router.get('/feed', authenticate, async (req, res) => {
   try {
+    await purgeExpiredStories()
     const { data: following } = await supabaseAdmin
       .from('follows')
       .select('following_id')
@@ -103,7 +324,6 @@ router.get('/feed', authenticate, async (req, res) => {
 
     const enriched = await enrichStories(data || [], req.user.id)
 
-    // Group by user, own ring first
     const byUser = new Map()
     for (const story of enriched) {
       const uid = story.user?._id || story.user
@@ -137,6 +357,7 @@ router.get('/feed', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
   try {
+    await purgeExpiredStories()
     const { mediaType, mediaUrl, caption } = req.body
     if (!mediaUrl || !['image', 'video'].includes(mediaType)) {
       return res.status(400).json({ message: 'Media inválida' })
@@ -194,6 +415,29 @@ router.post('/', authenticate, async (req, res) => {
   }
 })
 
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    await purgeExpiredStories()
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('stories')
+      .select('*')
+      .eq('id', req.params.id)
+      .gt('expires_at', now)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) {
+      return res.status(410).json({ message: 'Este estado ya expiró o no está disponible' })
+    }
+
+    const [story] = await enrichStories([data], req.user.id)
+    res.json(story)
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
 router.post('/:id/view', authenticate, async (req, res) => {
   try {
     const { error } = await supabaseAdmin.from('story_views').upsert(
@@ -213,6 +457,7 @@ router.post('/:id/view', authenticate, async (req, res) => {
 
 router.post('/:id/react', authenticate, async (req, res) => {
   try {
+    await purgeExpiredStories()
     const { emoji } = req.body
     if (!ALLOWED_EMOJIS.has(emoji)) {
       return res.status(400).json({ message: 'Reacción no permitida' })
@@ -242,7 +487,6 @@ router.post('/:id/react', authenticate, async (req, res) => {
       const meta = STORY_REACTIONS.find((r) => r.emoji === emoji)
       const reactorName = req.user.name || 'Alguien'
       try {
-        // Keep a single unread reaction notice per reactor+story
         const { data: existing } = await supabaseAdmin
           .from('notifications')
           .select('id, related_data')
@@ -301,10 +545,6 @@ router.delete('/:id', authenticate, async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
   }
-})
-
-router.get('/reactions', authenticate, (_req, res) => {
-  res.json(STORY_REACTIONS)
 })
 
 export default router
