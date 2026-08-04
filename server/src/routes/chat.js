@@ -1,7 +1,8 @@
 import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
-import { notifyUser, notifyNewMessage } from '../services/notificationService.js'
+import { notifyNewMessage } from '../services/notificationService.js'
+import { encodeChatContent, decodeChatContent, formatChatMessage } from '../utils/chatMessage.js'
 
 const router = express.Router()
 
@@ -19,10 +20,11 @@ router.get('/conversations', authenticate, async (req, res) => {
     const conversationMap = new Map()
     for (const msg of messages || []) {
       const partnerId = msg.from_user_id === userId ? msg.to_user_id : msg.from_user_id
+      const preview = decodeChatContent(msg.content).preview
       if (!conversationMap.has(partnerId)) {
         conversationMap.set(partnerId, {
           otherId: partnerId,
-          lastMessage: msg.content,
+          lastMessage: preview,
           lastMessageTime: msg.created_at,
           unread: msg.to_user_id === userId && !msg.read ? 1 : 0
         })
@@ -79,14 +81,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       .eq('to_user_id', myId)
       .eq('read', false)
 
-    const formatted = (messages || []).map((m) => ({
-      id: m.id,
-      sender: m.from_user_id === myId ? 'me' : 'other',
-      text: m.content,
-      time: new Date(m.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
-    }))
-
-    res.json(formatted)
+    res.json((messages || []).map((m) => formatChatMessage(m, myId)))
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
   }
@@ -94,8 +89,9 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
 router.post('/send', authenticate, async (req, res) => {
   try {
-    const { to, content } = req.body
-    if (!to || !content?.trim()) {
+    const { to, content, attachment } = req.body
+    const text = typeof content === 'string' ? content.trim() : ''
+    if (!to || (!text && !attachment)) {
       return res.status(400).json({ message: 'Destinatario y contenido requeridos' })
     }
 
@@ -114,35 +110,30 @@ router.post('/send', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Este usuario no acepta mensajes' })
     }
 
+    const stored = encodeChatContent({ text, attachment: attachment || null })
+
     const { data: message, error } = await supabaseAdmin
       .from('messages')
       .insert({
         from_user_id: req.user.id,
         to_user_id: to,
-        content: content.trim()
+        content: stored
       })
       .select('*')
       .single()
 
     if (error) throw error
 
-    // Push + inbox for recipient (non-blocking)
+    const decoded = decodeChatContent(message.content)
+
     notifyNewMessage({
       toUserId: to,
       fromUserId: req.user.id,
       fromName: req.user.name,
-      content: message.content
+      content: decoded.preview
     }).catch((err) => console.error('Chat notify error:', err?.message || err))
 
-    res.status(201).json({
-      id: message.id,
-      sender: 'me',
-      text: message.content,
-      time: new Date(message.created_at).toLocaleTimeString('es', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    })
+    res.status(201).json(formatChatMessage(message, req.user.id))
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
   }

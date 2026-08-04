@@ -8,6 +8,59 @@ import { onChatEvent, sendTyping, showNotification, requestNotificationPermissio
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
 
+function StoryAttachmentBubble({ attachment, isMe, hasText }) {
+  if (!attachment || attachment.type !== 'story') return null
+  const isReply = attachment.kind === 'reply' || hasText
+  const label = isMe
+    ? isReply
+      ? 'Respondiste a un estado'
+      : 'Compartiste un estado'
+    : isReply
+      ? 'Respondió a tu estado'
+      : 'Te compartió un estado'
+  return (
+    <div
+      className={`overflow-hidden rounded-xl ${
+        hasText ? 'mb-2' : ''
+      } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
+    >
+      <div className="flex items-stretch gap-0">
+        <div className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-black sm:h-20 sm:w-[60px]">
+          {attachment.mediaType === 'video' ? (
+            <>
+              <video
+                src={attachment.mediaUrl}
+                muted
+                playsInline
+                preload="metadata"
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-[10px] font-bold text-white">
+                ▶
+              </span>
+            </>
+          ) : (
+            <img
+              src={attachment.mediaUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          )}
+          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/20" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center px-2.5 py-2">
+          <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${isMe ? 'text-white/65' : 'text-gray-400'}`}>
+            {label}
+          </p>
+          <p className={`mt-0.5 line-clamp-2 text-xs leading-snug ${isMe ? 'text-white/90' : 'text-gray-200'}`}>
+            {attachment.caption?.trim() || 'Estado de Qyntra'}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Chat() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
@@ -26,6 +79,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef(null)
   const selectedChatRef = useRef(null)
+  const pendingStoryReply = useRef(null)
 
   useEffect(() => {
     selectedChatRef.current = selectedChat
@@ -52,7 +106,8 @@ export default function Chat() {
             {
               id: data.id || Date.now(),
               sender: 'other',
-              text: data.message,
+              text: data.text ?? data.message ?? '',
+              attachment: data.attachment || null,
               time: new Date(data.timestamp || Date.now()).toLocaleTimeString('es', {
                 hour: '2-digit',
                 minute: '2-digit'
@@ -158,6 +213,32 @@ export default function Chat() {
       setConversations((convs) =>
         convs.map((c) => (c.otherId === otherId ? { ...c, unread: 0 } : c))
       )
+
+      const pending = pendingStoryReply.current
+      if (pending && pending.to === otherId) {
+        pendingStoryReply.current = null
+        try {
+          const { data: sent } = await api.post('/chat/send', {
+            to: otherId,
+            content: pending.text || '',
+            attachment: pending.attachment
+          })
+          setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]))
+          setConversations((convs) =>
+            convs.map((c) =>
+              c.otherId === otherId
+                ? {
+                    ...c,
+                    lastMessage: pending.text?.trim() || '📸 Estado de Qyntra',
+                    time: 'Ahora'
+                  }
+                : c
+            )
+          )
+        } catch (error) {
+          toast.error(error.response?.data?.message || 'No se pudo enviar la respuesta')
+        }
+      }
     } catch (error) {
       console.error('Error fetching messages:', error)
       setMessages([])
@@ -265,9 +346,20 @@ export default function Chat() {
   useEffect(() => {
     const startWith = location.state?.startWith
     const prefill = location.state?.prefill
+    const storyReply = location.state?.storyReply
     if (!startWith?._id && !startWith?.id) return
+    const to = startWith._id || startWith.id
+    if (storyReply?.attachment) {
+      pendingStoryReply.current = {
+        to,
+        text: storyReply.text || '',
+        attachment: storyReply.attachment
+      }
+    } else {
+      pendingStoryReply.current = null
+      if (prefill) setNewMessage(String(prefill))
+    }
     startConversation(startWith)
-    if (prefill) setNewMessage(String(prefill))
     navigate(location.pathname, { replace: true, state: {} })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state?.startWith?._id, location.state?.startWith?.id])
@@ -406,7 +498,15 @@ export default function Chat() {
                         : 'bg-dark-200 text-white rounded-bl-md'
                     }`}
                   >
-                    <p className="break-words">{msg.text}</p>
+                    <StoryAttachmentBubble
+                      attachment={msg.attachment}
+                      isMe={msg.sender === 'me'}
+                      hasText={Boolean(msg.text?.trim())}
+                    />
+                    {msg.text ? <p className="break-words">{msg.text}</p> : null}
+                    {!msg.text && !msg.attachment ? (
+                      <p className="break-words opacity-70"> </p>
+                    ) : null}
                     <p
                       className={`text-xs mt-1 ${
                         msg.sender === 'me' ? 'text-white/70' : 'text-gray-500'

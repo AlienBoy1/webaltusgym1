@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPlus, FiX, FiSend, FiImage, FiVideo } from 'react-icons/fi'
+import { FiPlus, FiX, FiSend, FiImage, FiVideo, FiMoreVertical, FiShare2, FiTrash2, FiSearch, FiCheck } from 'react-icons/fi'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -11,12 +11,23 @@ const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
+function storyAttachment(story, kind = 'share') {
+  return {
+    type: 'story',
+    kind,
+    storyId: story._id || story.id,
+    mediaType: story.mediaType,
+    mediaUrl: story.mediaUrl,
+    caption: story.caption || ''
+  }
+}
+
 export default function StoriesRail() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const [groups, setGroups] = useState([])
   const [reactions, setReactions] = useState([])
-  const [viewer, setViewer] = useState(null) // { groupIndex, storyIndex }
+  const [viewer, setViewer] = useState(null)
   const [composeOpen, setComposeOpen] = useState(false)
   const [caption, setCaption] = useState('')
   const [mediaPreview, setMediaPreview] = useState(null)
@@ -24,10 +35,20 @@ export default function StoriesRail() {
   const [mediaData, setMediaData] = useState(null)
   const [publishing, setPublishing] = useState(false)
   const [reply, setReply] = useState('')
+  const [replyFocused, setReplyFocused] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [contacts, setContacts] = useState([])
+  const [shareQuery, setShareQuery] = useState('')
+  const [selectedShare, setSelectedShare] = useState([])
+  const [sharing, setSharing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const imageInputRef = useRef(null)
   const videoInputRef = useRef(null)
-  const progressRef = useRef(null)
   const timerRef = useRef(null)
+  const storyStartedAtRef = useRef(null)
+  const remainingMsRef = useRef(null)
+  const paused = menuOpen || shareOpen || replyFocused || Boolean(reply.trim())
 
   const load = useCallback(async () => {
     try {
@@ -46,14 +67,24 @@ export default function StoriesRail() {
   const openGroup = (groupIndex, storyIndex = 0) => {
     setViewer({ groupIndex, storyIndex })
     setReply('')
+    setReplyFocused(false)
+    setMenuOpen(false)
+    setShareOpen(false)
   }
 
   const currentGroup = viewer != null ? groups[viewer.groupIndex] : null
   const currentStory =
     currentGroup && viewer != null ? currentGroup.stories[viewer.storyIndex] : null
+  const isOwnStory =
+    currentGroup &&
+    (currentGroup.user?._id || currentGroup.user) === user?._id
 
   const closeViewer = () => {
     setViewer(null)
+    setMenuOpen(false)
+    setShareOpen(false)
+    setReply('')
+    setReplyFocused(false)
     if (timerRef.current) window.clearTimeout(timerRef.current)
     load()
   }
@@ -70,15 +101,19 @@ export default function StoriesRail() {
   const goNext = useCallback(() => {
     if (viewer == null) return
     const group = groups[viewer.groupIndex]
-    if (!group) return closeViewer()
+    if (!group) {
+      setViewer(null)
+      return
+    }
     if (viewer.storyIndex < group.stories.length - 1) {
       setViewer({ groupIndex: viewer.groupIndex, storyIndex: viewer.storyIndex + 1 })
     } else if (viewer.groupIndex < groups.length - 1) {
       setViewer({ groupIndex: viewer.groupIndex + 1, storyIndex: 0 })
     } else {
-      closeViewer()
+      setViewer(null)
+      load()
     }
-  }, [viewer, groups])
+  }, [viewer, groups, load])
 
   const goPrev = () => {
     if (viewer == null) return
@@ -95,14 +130,60 @@ export default function StoriesRail() {
 
   useEffect(() => {
     if (!currentStory) return undefined
-    markViewed(currentStory)
-    if (timerRef.current) window.clearTimeout(timerRef.current)
-    const duration = currentStory.mediaType === 'video' ? MAX_VIDEO_SECONDS * 1000 : 5500
-    timerRef.current = window.setTimeout(goNext, duration)
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current)
+
+    const fullDuration =
+      currentStory.mediaType === 'video' ? MAX_VIDEO_SECONDS * 1000 : 5500
+
+    // New story → reset remaining clock
+    remainingMsRef.current = fullDuration
+    storyStartedAtRef.current = null
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
     }
-  }, [currentStory?._id, currentStory?.id, goNext])
+
+    markViewed(currentStory)
+  }, [currentStory?._id, currentStory?.id])
+
+  useEffect(() => {
+    if (!currentStory) return undefined
+
+    if (paused) {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+      if (storyStartedAtRef.current != null) {
+        const elapsed = Date.now() - storyStartedAtRef.current
+        const base = remainingMsRef.current ?? 5500
+        remainingMsRef.current = Math.max(0, base - elapsed)
+        storyStartedAtRef.current = null
+      }
+      return undefined
+    }
+
+    const wait = remainingMsRef.current ?? (
+      currentStory.mediaType === 'video' ? MAX_VIDEO_SECONDS * 1000 : 5500
+    )
+    if (wait <= 0) {
+      goNext()
+      return undefined
+    }
+
+    storyStartedAtRef.current = Date.now()
+    timerRef.current = window.setTimeout(() => {
+      remainingMsRef.current = null
+      storyStartedAtRef.current = null
+      goNext()
+    }, wait)
+
+    return () => {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [currentStory?._id, currentStory?.id, goNext, paused])
 
   const react = async (emoji) => {
     if (!currentStory) return
@@ -133,10 +214,117 @@ export default function StoriesRail() {
           name: target.name,
           avatar: target.avatar
         },
-        prefill: `Re: tu historia — ${reply.trim()}`
+        storyReply: {
+          text: reply.trim(),
+          attachment: storyAttachment(currentStory, 'reply')
+        }
       }
     })
     closeViewer()
+  }
+
+  const openShare = async () => {
+    setMenuOpen(false)
+    setShareOpen(true)
+    setShareQuery('')
+    setSelectedShare([])
+    try {
+      const [fol, fing] = await Promise.all([
+        api.get('/social/followers'),
+        api.get('/social/following')
+      ])
+      const map = new Map()
+      ;[...(fol.data || []), ...(fing.data || [])].forEach((p) => {
+        const id = p._id || p.id
+        if (id && id !== user?._id) map.set(id, p)
+      })
+      setContacts([...map.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')))
+    } catch {
+      toast.error('No se pudo cargar contactos')
+      setContacts([])
+    }
+  }
+
+  const filteredContacts = useMemo(() => {
+    const q = shareQuery.trim().toLowerCase()
+    if (!q) return contacts
+    return contacts.filter(
+      (c) =>
+        c.name?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q)
+    )
+  }, [contacts, shareQuery])
+
+  const toggleShareUser = (id) => {
+    setSelectedShare((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  const shareStory = async () => {
+    if (!currentStory || selectedShare.length === 0) return
+    setSharing(true)
+    const attachment = storyAttachment(currentStory, 'share')
+    try {
+      await Promise.all(
+        selectedShare.map((to) =>
+          api.post('/chat/send', {
+            to,
+            content: '',
+            attachment
+          })
+        )
+      )
+      toast.success(
+        selectedShare.length === 1
+          ? 'Historia enviada'
+          : `Historia enviada a ${selectedShare.length} personas`
+      )
+      setShareOpen(false)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo compartir')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const deleteStory = async () => {
+    if (!currentStory) return
+    setDeleting(true)
+    try {
+      await api.delete(`/stories/${currentStory._id || currentStory.id}`)
+      toast.success('Historia eliminada')
+      setMenuOpen(false)
+      const group = groups[viewer.groupIndex]
+      const remaining = group.stories.filter(
+        (s) => (s._id || s.id) !== (currentStory._id || currentStory.id)
+      )
+      if (remaining.length === 0) {
+        closeViewer()
+      } else {
+        const nextIndex = Math.min(viewer.storyIndex, remaining.length - 1)
+        setGroups((prev) =>
+          prev
+            .map((g, i) =>
+              i === viewer.groupIndex ? { ...g, stories: remaining } : g
+            )
+            .filter((g) => g.stories.length > 0)
+        )
+        setViewer((v) => ({ ...v, storyIndex: nextIndex }))
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo eliminar')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const resetCompose = () => {
+    setComposeOpen(false)
+    setCaption('')
+    setMediaData(null)
+    setMediaPreview(null)
+    setMediaType(null)
   }
 
   const readFile = (file, type) => {
@@ -155,6 +343,7 @@ export default function StoriesRail() {
         setMediaData(e.target.result)
         setMediaPreview(e.target.result)
         setMediaType(type)
+        setCaption('')
         setComposeOpen(true)
       }
       reader.readAsDataURL(file)
@@ -193,11 +382,7 @@ export default function StoriesRail() {
         caption: caption.trim()
       })
       toast.success('Historia publicada')
-      setComposeOpen(false)
-      setCaption('')
-      setMediaData(null)
-      setMediaPreview(null)
-      setMediaType(null)
+      resetCompose()
       load()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al publicar')
@@ -210,7 +395,6 @@ export default function StoriesRail() {
     <>
       <div className="-mx-1 mb-4 overflow-x-auto scrollbar-hide px-1">
         <div className="flex gap-3 pb-1">
-          {/* Add story */}
           <button
             type="button"
             onClick={() => imageInputRef.current?.click()}
@@ -228,9 +412,10 @@ export default function StoriesRail() {
           {groups.map((group, idx) => {
             const uid = group.user?._id || group.user
             const isMine = uid === user?._id
-            const ring = group.hasUnseen || isMine
-              ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
-              : 'bg-white/20'
+            const ring =
+              group.hasUnseen || isMine
+                ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
+                : 'bg-white/20'
             return (
               <button
                 key={uid}
@@ -292,48 +477,66 @@ export default function StoriesRail() {
         }}
       />
 
-      {/* Compose */}
+      {/* Full-screen WhatsApp-style story preview composer */}
       <AnimatePresence>
         {composeOpen && (
-          <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/80 sm:items-center sm:p-4">
-            <motion.div
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 40, opacity: 0 }}
-              className="w-full max-w-md overflow-hidden rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
-            >
-              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                <p className="font-semibold">Nueva historia</p>
-                <button type="button" onClick={() => setComposeOpen(false)} className="p-2 text-gray-400">
-                  <FiX />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-black"
+          >
+            <div className="relative mx-auto flex h-full w-full max-w-lg flex-col">
+              <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+                <button
+                  type="button"
+                  onClick={resetCompose}
+                  className="rounded-full bg-black/45 p-2.5 text-white"
+                >
+                  <FiX size={20} />
                 </button>
-              </div>
-              <div className="relative max-h-[50vh] bg-black">
-                {mediaType === 'video' ? (
-                  <video src={mediaPreview} controls className="mx-auto max-h-[50vh] w-full object-contain" />
-                ) : (
-                  <img src={mediaPreview} alt="Preview" className="mx-auto max-h-[50vh] w-full object-contain" />
-                )}
-              </div>
-              <div className="space-y-3 p-4">
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value.slice(0, 280))}
-                  placeholder="Descripción (estilo WhatsApp)…"
-                  rows={2}
-                  className="input-field resize-none text-sm"
-                />
+                <p className="text-sm font-semibold text-white drop-shadow">Nuevo estado</p>
                 <button
                   type="button"
                   disabled={publishing}
                   onClick={publish}
-                  className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:opacity-60"
+                  className="rounded-full bg-primary-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
                 >
-                  {publishing ? 'Publicando…' : 'Compartir historia'}
+                  {publishing ? '…' : 'Publicar'}
                 </button>
               </div>
-            </motion.div>
-          </div>
+
+              <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+                {mediaType === 'video' ? (
+                  <video
+                    src={mediaPreview}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <img src={mediaPreview} alt="" className="h-full w-full object-cover" />
+                )}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
+              </div>
+
+              <div className="absolute bottom-0 left-0 right-0 z-20 space-y-3 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-8">
+                {caption.trim() && (
+                  <p className="rounded-xl bg-black/40 px-3 py-2 text-center text-sm text-white backdrop-blur-sm">
+                    {caption}
+                  </p>
+                )}
+                <input
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value.slice(0, 280))}
+                  placeholder="Comparte tu Qyntra Estado con tu comunidad"
+                  className="w-full rounded-2xl border border-white/15 bg-black/50 px-4 py-3.5 text-sm text-white placeholder:text-gray-400 outline-none backdrop-blur-md focus:border-primary-500/50"
+                />
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -342,18 +545,25 @@ export default function StoriesRail() {
         {currentStory && currentGroup && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black">
             <div className="relative flex h-full w-full max-w-lg flex-col">
-              {/* Progress bars */}
               <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 {currentGroup.stories.map((s, i) => (
                   <div key={s._id || s.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25">
                     <div
-                      ref={i === viewer.storyIndex ? progressRef : null}
-                      className={`h-full bg-white ${i < viewer.storyIndex ? 'w-full' : i === viewer.storyIndex ? 'animate-story-progress' : 'w-0'}`}
+                      className={`h-full bg-white ${
+                        i < viewer.storyIndex
+                          ? 'w-full'
+                          : i === viewer.storyIndex
+                            ? 'animate-story-progress'
+                            : 'w-0'
+                      }`}
                       style={
                         i === viewer.storyIndex
                           ? {
                               animationDuration:
-                                currentStory.mediaType === 'video' ? `${MAX_VIDEO_SECONDS}s` : '5.5s'
+                                currentStory.mediaType === 'video'
+                                  ? `${MAX_VIDEO_SECONDS}s`
+                                  : '5.5s',
+                              animationPlayState: paused ? 'paused' : 'running'
                             }
                           : undefined
                       }
@@ -362,35 +572,94 @@ export default function StoriesRail() {
                 ))}
               </div>
 
-              <div className="absolute left-0 right-0 top-6 z-20 flex items-center justify-between px-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
-                <div className="flex items-center gap-2">
+              <div className="absolute left-0 right-0 top-6 z-30 flex items-center justify-between gap-2 px-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
+                <div className="flex min-w-0 items-center gap-2">
                   <Avatar avatar={currentGroup.user?.avatar} name={currentGroup.user?.name} size="sm" />
-                  <span className="text-sm font-semibold text-white drop-shadow">
+                  <span className="truncate text-sm font-semibold text-white drop-shadow">
                     {currentGroup.user?.name}
                   </span>
                 </div>
-                <button type="button" onClick={closeViewer} className="rounded-full bg-black/40 p-2 text-white">
-                  <FiX size={18} />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {isOwnStory && (
+                    <button
+                      type="button"
+                      onClick={() => setMenuOpen((v) => !v)}
+                      className="rounded-full bg-black/40 p-2 text-white"
+                      aria-label="Más opciones"
+                    >
+                      <FiMoreVertical size={18} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={closeViewer}
+                    className="rounded-full bg-black/40 p-2 text-white"
+                  >
+                    <FiX size={18} />
+                  </button>
+                </div>
               </div>
 
+              {/* Own story menu */}
+              <AnimatePresence>
+                {menuOpen && isOwnStory && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="absolute right-4 top-16 z-40 w-52 overflow-hidden rounded-2xl border border-white/10 bg-dark-200/95 shadow-2xl backdrop-blur-xl"
+                  >
+                    <button
+                      type="button"
+                      onClick={openShare}
+                      className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm text-white hover:bg-white/5"
+                    >
+                      <FiShare2 className="text-primary-400" /> Compartir
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      onClick={deleteStory}
+                      className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-left text-sm text-red-400 hover:bg-white/5 disabled:opacity-50"
+                    >
+                      <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="relative flex flex-1 items-center justify-center">
-                <button type="button" className="absolute inset-y-0 left-0 z-10 w-1/3" onClick={goPrev} aria-label="Anterior" />
-                <button type="button" className="absolute inset-y-0 right-0 z-10 w-1/3" onClick={goNext} aria-label="Siguiente" />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 left-0 z-10 w-1/3"
+                  onClick={goPrev}
+                  aria-label="Anterior"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 z-10 w-1/3"
+                  onClick={goNext}
+                  aria-label="Siguiente"
+                />
                 {currentStory.mediaType === 'video' ? (
                   <video
                     key={currentStory._id || currentStory.id}
                     src={currentStory.mediaUrl}
                     autoPlay
                     playsInline
-                    className="max-h-full max-w-full object-contain"
-                    onEnded={goNext}
+                    className="h-full w-full object-cover"
+                    ref={(el) => {
+                      if (!el) return
+                      if (paused) el.pause()
+                      else el.play().catch(() => {})
+                    }}
+                    onEnded={!paused ? goNext : undefined}
                   />
                 ) : (
                   <img
                     src={currentStory.mediaUrl}
                     alt=""
-                    className="max-h-full max-w-full object-contain"
+                    className="h-full w-full object-cover"
                   />
                 )}
               </div>
@@ -402,42 +671,130 @@ export default function StoriesRail() {
               )}
 
               <div className="absolute bottom-0 left-0 right-0 z-20 space-y-3 bg-gradient-to-t from-black via-black/80 to-transparent px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10">
-                <div className="flex justify-center gap-2">
-                  {reactions.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      title={r.label}
-                      onClick={() => react(r.emoji)}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full text-xl transition ${
-                        currentStory.myReaction === r.emoji
-                          ? 'bg-primary-500/40 ring-2 ring-primary-400 scale-110'
-                          : 'bg-white/10 hover:bg-white/20'
-                      }`}
-                    >
-                      {r.emoji}
-                    </button>
-                  ))}
-                </div>
-                {(currentGroup.user?._id || currentGroup.user) !== user?._id && (
-                  <div className="flex gap-2">
-                    <input
-                      value={reply}
-                      onChange={(e) => setReply(e.target.value)}
-                      placeholder="Responder en chat…"
-                      className="input-field flex-1 py-2.5 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={sendReply}
-                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-500 text-black"
-                    >
-                      <FiSend size={16} />
-                    </button>
-                  </div>
+                {!isOwnStory && (
+                  <>
+                    <div className="flex justify-center gap-2">
+                      {reactions.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          title={r.label}
+                          onClick={() => react(r.emoji)}
+                          className={`flex h-11 w-11 items-center justify-center rounded-full text-xl transition ${
+                            currentStory.myReaction === r.emoji
+                              ? 'scale-110 bg-primary-500/40 ring-2 ring-primary-400'
+                              : 'bg-white/10 hover:bg-white/20'
+                          }`}
+                        >
+                          {r.emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={reply}
+                        onChange={(e) => setReply(e.target.value)}
+                        onFocus={() => setReplyFocused(true)}
+                        onBlur={() => setReplyFocused(false)}
+                        placeholder="Responder en chat…"
+                        className="input-field flex-1 py-2.5 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={sendReply}
+                        onMouseDown={(e) => e.preventDefault()}
+                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-500 text-black"
+                      >
+                        <FiSend size={16} />
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
+
+            {/* Share sheet */}
+            <AnimatePresence>
+              {shareOpen && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-50 flex items-end bg-black/70 sm:items-center sm:justify-center sm:p-4"
+                >
+                  <motion.div
+                    initial={{ y: 40 }}
+                    animate={{ y: 0 }}
+                    exit={{ y: 40 }}
+                    className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                  >
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <p className="font-semibold">Compartir historia</p>
+                      <button type="button" onClick={() => setShareOpen(false)} className="p-2 text-gray-400">
+                        <FiX />
+                      </button>
+                    </div>
+                    <div className="border-b border-white/5 px-4 py-3">
+                      <div className="relative">
+                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                        <input
+                          value={shareQuery}
+                          onChange={(e) => setShareQuery(e.target.value)}
+                          placeholder="Filtrar seguidores y seguidos…"
+                          className="input-field py-2.5 pl-10 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-2 py-2">
+                      {filteredContacts.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-gray-500">
+                          No hay contactos para compartir
+                        </p>
+                      ) : (
+                        filteredContacts.map((c) => {
+                          const id = c._id || c.id
+                          const selected = selectedShare.includes(id)
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => toggleShareUser(id)}
+                              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/5"
+                            >
+                              <Avatar avatar={c.avatar} name={c.name} size="sm" />
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+                              <span
+                                className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                                  selected
+                                    ? 'border-primary-500 bg-primary-500 text-black'
+                                    : 'border-white/20 text-transparent'
+                                }`}
+                              >
+                                <FiCheck size={14} />
+                              </span>
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                    <div className="border-t border-white/10 p-4">
+                      <button
+                        type="button"
+                        disabled={sharing || selectedShare.length === 0}
+                        onClick={shareStory}
+                        className="btn-primary w-full py-3 disabled:opacity-50"
+                      >
+                        {sharing
+                          ? 'Enviando…'
+                          : selectedShare.length
+                            ? `Enviar (${selectedShare.length})`
+                            : 'Selecciona contactos'}
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </AnimatePresence>

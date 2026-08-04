@@ -240,16 +240,43 @@ router.post('/:id/react', authenticate, async (req, res) => {
 
     if (story.user_id !== req.user.id) {
       const meta = STORY_REACTIONS.find((r) => r.emoji === emoji)
-      notifyUser({
-        userId: story.user_id,
-        type: 'social',
-        title: `${req.user.name} reaccionó ${emoji}`,
-        body: meta?.label || 'Nueva reacción a tu historia',
-        icon: emoji,
-        relatedUserId: req.user.id,
-        relatedData: { storyId: story.id },
-        priority: 'low'
-      }).catch(() => {})
+      const reactorName = req.user.name || 'Alguien'
+      try {
+        // Keep a single unread reaction notice per reactor+story
+        const { data: existing } = await supabaseAdmin
+          .from('notifications')
+          .select('id, related_data')
+          .eq('user_id', story.user_id)
+          .eq('type', 'story_reaction')
+          .eq('related_user_id', req.user.id)
+          .eq('read', false)
+
+        const staleIds = (existing || [])
+          .filter((n) => n.related_data?.storyId === story.id)
+          .map((n) => n.id)
+        if (staleIds.length) {
+          await supabaseAdmin.from('notifications').delete().in('id', staleIds)
+        }
+
+        await notifyUser({
+          userId: story.user_id,
+          type: 'story_reaction',
+          title: `${reactorName} reaccionó a tu estado`,
+          body: `${emoji} ${meta?.label || 'Nueva reacción'}`,
+          icon: emoji,
+          relatedUserId: req.user.id,
+          relatedData: {
+            storyId: story.id,
+            emoji,
+            reactionLabel: meta?.label || null
+          },
+          priority: 'normal',
+          pushTag: `story-react-${story.id}-${req.user.id}`,
+          pushUrl: '/notifications'
+        })
+      } catch (err) {
+        console.error('Story reaction notify error:', err?.message || err)
+      }
     }
 
     const { data: full } = await supabaseAdmin.from('stories').select('*').eq('id', story.id).single()

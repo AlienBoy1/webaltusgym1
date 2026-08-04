@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { decodeChatContent } from './chatMessage'
 
 let messageChannel = null
 let presenceChannel = null
@@ -59,10 +60,13 @@ export function initSocket(userId) {
         } catch {
           /* ignore */
         }
+        const decoded = decodeChatContent(row.content)
         emit('newMessage', {
           from: row.from_user_id,
           fromName,
-          message: row.content,
+          message: decoded.preview,
+          text: decoded.text,
+          attachment: decoded.attachment,
           timestamp: row.created_at,
           id: row.id
         })

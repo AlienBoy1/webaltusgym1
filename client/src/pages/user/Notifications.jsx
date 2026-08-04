@@ -27,7 +27,8 @@ const typeIcons = {
   class_cancelled: '📅',
   class_registered: '📅',
   registration_request: '📝',
-  message: '💬'
+  message: '💬',
+  story_reaction: '📖'
 }
 
 function getDeepLink(notification) {
@@ -38,8 +39,10 @@ function getDeepLink(notification) {
     case 'follow_accepted':
     case 'social':
       return related ? `/user/${related}` : null
+    case 'story_reaction':
+      return '/social'
     case 'message':
-      return '/chat'
+      return related ? '/chat' : '/chat'
     case 'challenge_invite':
     case 'challenge_completed':
     case 'challenge_update':
