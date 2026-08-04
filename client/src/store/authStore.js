@@ -86,6 +86,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: async () => {
+    set({ loading: true })
     try {
       const { unsubscribeFromPush } = await import('../utils/push')
       await unsubscribeFromPush()

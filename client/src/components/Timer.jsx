@@ -8,7 +8,7 @@ export default function Timer({ initialTime = 60, autoStart = false, size = 'md'
   useEffect(() => {
     setTimeLeft(initialTime)
     setIsRunning(autoStart)
-  }, [])
+  }, [initialTime, autoStart])
 
   useEffect(() => {
     let interval

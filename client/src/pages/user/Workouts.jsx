@@ -97,6 +97,7 @@ export default function Workouts() {
   const [restActive, setRestActive] = useState(false)
   const [restRemaining, setRestRemaining] = useState(0)
   const [restEndsAt, setRestEndsAt] = useState(null)
+  const [restTimerSource, setRestTimerSource] = useState(null)
   const [completedExercises, setCompletedExercises] = useState([])
   const [showTimer, setShowTimer] = useState(false)
   const [workoutTime, setWorkoutTime] = useState(0)
@@ -133,6 +134,7 @@ export default function Workouts() {
       setRestActive(restRemaining > 0)
       setRestEndsAt(saved.restEndsAt || null)
       setRestRemaining(restRemaining)
+      setRestTimerSource(saved.restTimerSource || null)
       setShowTimer(restRemaining > 0)
     } catch {
       localStorage.removeItem(WORKOUT_SESSION_KEY)
@@ -163,12 +165,13 @@ export default function Workouts() {
       restActive,
       restRemaining,
       restEndsAt,
+      restTimerSource,
       workoutTime,
       savedAt: new Date().toISOString()
     }
 
     localStorage.setItem(WORKOUT_SESSION_KEY, JSON.stringify(payload))
-  }, [activeWorkout, sessionStart, completedExercises, restActive, restRemaining, restEndsAt, workoutTime])
+  }, [activeWorkout, sessionStart, completedExercises, restActive, restRemaining, restEndsAt, restTimerSource, workoutTime])
 
   useEffect(() => {
     let interval
@@ -202,18 +205,29 @@ export default function Workouts() {
 
   const toggleExercise = (exerciseId) => {
     const isNowCompleted = !completedExercises.includes(exerciseId)
-    setCompletedExercises((prev) =>
-      isNowCompleted ? [...prev, exerciseId] : prev.filter((id) => id !== exerciseId)
-    )
+    setCompletedExercises((prev) => {
+      const nextCompleted = isNowCompleted ? [...prev, exerciseId] : prev.filter((id) => id !== exerciseId)
 
-    if (isNowCompleted) {
-      const restSeconds = preferences?.restTimerDefault || DEFAULT_REST_SECONDS
-      const endsAt = new Date(Date.now() + restSeconds * 1000).toISOString()
-      setRestActive(true)
-      setRestEndsAt(endsAt)
-      setRestRemaining(restSeconds)
-      setShowTimer(true)
-    }
+      if (isNowCompleted) {
+        const restSeconds = preferences?.restTimerDefault || DEFAULT_REST_SECONDS
+        const endsAt = new Date(Date.now() + restSeconds * 1000).toISOString()
+        setRestActive(true)
+        setRestEndsAt(endsAt)
+        setRestRemaining(restSeconds)
+        setRestTimerSource(exerciseId)
+        setShowTimer(true)
+      } else {
+        if (restTimerSource === exerciseId || nextCompleted.length === 0) {
+          setRestActive(false)
+          setRestEndsAt(null)
+          setRestRemaining(0)
+          setRestTimerSource(null)
+          setShowTimer(false)
+        }
+      }
+
+      return nextCompleted
+    })
   }
 
   const startWorkout = (workout) => {
@@ -224,6 +238,7 @@ export default function Workouts() {
     setRestActive(false)
     setRestRemaining(0)
     setRestEndsAt(null)
+    setRestTimerSource(null)
     setShowTimer(false)
     setWorkoutNotification(workout, 0, [])
   }
@@ -237,6 +252,7 @@ export default function Workouts() {
     setRestActive(false)
     setRestRemaining(0)
     setRestEndsAt(null)
+    setRestTimerSource(null)
     clearWorkoutNotification()
   }
 
@@ -267,6 +283,7 @@ export default function Workouts() {
       setRestActive(false)
       setRestRemaining(0)
       setRestEndsAt(null)
+      setRestTimerSource(null)
       clearWorkoutNotification()
     }
   }
@@ -368,13 +385,13 @@ export default function Workouts() {
         </button>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.7fr_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_0.95fr]">
         <div className="space-y-6">
           {activeWorkout ? (
             <motion.section
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
-              className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#07080E]/90 p-6 shadow-[0_40px_100px_rgba(0,0,0,0.55)]"
+              className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#07080E]/95 p-5 shadow-[0_30px_80px_rgba(0,0,0,0.45)] sm:p-6"
             >
               <div className="pointer-events-none absolute -right-28 top-0 h-72 w-72 rounded-full bg-primary-500/12 blur-3xl" />
               <div className="pointer-events-none absolute -left-24 bottom-0 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
@@ -382,32 +399,32 @@ export default function Workouts() {
               <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
                 <div className="max-w-2xl">
                   <p className="text-sm uppercase tracking-[0.35em] text-primary-300">Rutina activa</p>
-                  <h2 className="font-display text-5xl text-white mt-4 leading-tight">{activeWorkout.name}</h2>
-                  <p className="mt-4 max-w-xl text-gray-400">El temporizador general y el descanso se sincronizan juntos, para que el progreso siga cuando cambias de pantalla o vuelves más tarde.</p>
+                  <h2 className="font-display text-4xl sm:text-5xl text-white mt-4 leading-tight">{activeWorkout.name}</h2>
+                  <p className="mt-4 max-w-xl text-gray-400">El temporizador general y el descanso se sincronizan juntos para mantenerte en ritmo incluso si cambias de pantalla.</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-[2rem] border border-white/10 bg-black/40 p-5 text-center">
+                  <div className="rounded-[1.75rem] border border-white/10 bg-black/40 p-5 text-center">
                     <p className="text-sm text-gray-400 uppercase tracking-[0.2em]">Tiempo total</p>
-                    <p className="mt-3 text-4xl font-semibold text-white">{formatTime(workoutTime)}</p>
+                    <p className="mt-3 text-3xl sm:text-4xl font-semibold text-white">{formatTime(workoutTime)}</p>
                   </div>
-                  <div className="rounded-[2rem] border border-white/10 bg-black/40 p-5 text-center">
+                  <div className="rounded-[1.75rem] border border-white/10 bg-black/40 p-5 text-center">
                     <p className="text-sm text-gray-400 uppercase tracking-[0.2em]">Progreso</p>
-                    <p className="mt-3 text-4xl font-semibold text-white">{progress}%</p>
+                    <p className="mt-3 text-3xl sm:text-4xl font-semibold text-white">{progress}%</p>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-5 xl:grid-cols-[1.2fr_0.85fr]">
+              <div className="mt-8 grid gap-5 xl:grid-cols-[1.45fr_0.95fr]">
                 <div className="space-y-5">
-                  <div className="rounded-[2rem] border border-white/10 bg-[#0E1119]/80 p-5">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="rounded-[1.75rem] border border-white/10 bg-[#0E1119]/85 p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm uppercase tracking-[0.3em] text-gray-400">{timerLabel}</p>
                         <p className="mt-2 text-lg font-semibold text-white">{restActive ? `Descanso: ${formatTime(restRemaining)}` : 'Sigue marcando ejercicios para mantener el ritmo'}</p>
                       </div>
                       <button
                         onClick={() => setShowTimer(true)}
-                        className="inline-flex items-center justify-center rounded-3xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-200 transition hover:bg-primary-500/15"
+                        className="inline-flex w-full justify-center rounded-3xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-200 transition hover:bg-primary-500/15 sm:w-auto"
                       >
                         {restActive ? 'Ver descanso' : 'Abrir temporizador'}
                       </button>
@@ -502,23 +519,23 @@ export default function Workouts() {
 
               <AnimatePresence>
                 {showTimer && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="mt-6 rounded-[2rem] border border-white/10 bg-black/40 p-6">
-                    <div className="mb-4 flex items-center justify-between gap-3">
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="mt-6 rounded-[1.75rem] border border-white/10 bg-[#0B0F18]/95 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:p-6">
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Descanso</p>
                         <p className="text-lg font-semibold text-white">Temporizador en segundo plano</p>
                       </div>
-                      <button onClick={() => setShowTimer(false)} className="text-gray-400 hover:text-white">Cerrar</button>
+                      <button onClick={() => setShowTimer(false)} className="text-gray-400 hover:text-white self-start sm:self-auto">Cerrar</button>
                     </div>
-                    <div className="grid gap-6 lg:grid-cols-[auto_1fr] lg:items-center">
-                      <div className="w-full max-w-[240px] mx-auto">
+                    <div className="grid gap-5 lg:grid-cols-[auto_1fr] lg:items-center">
+                      <div className="w-full max-w-[280px] mx-auto">
                         <Timer initialTime={restRemaining || DEFAULT_REST_SECONDS} autoStart={restActive} size="lg" onComplete={() => setShowTimer(false)} />
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400">Tu descanso se mantiene aun si navegas fuera de esta pantalla. Regresa cuando quieras y el temporizador continuará sincronizado.</p>
+                        <p className="text-sm text-gray-400">Tu descanso continúa si cambias de pantalla. Vuelve cuando quieras y retoma donde quedaste.</p>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
                           <div className="rounded-3xl bg-white/5 p-4">
-                            <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Rest restante</p>
+                            <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Descanso restante</p>
                             <p className="mt-2 text-xl font-semibold text-white">{formatTime(restRemaining)}</p>
                           </div>
                           <div className="rounded-3xl bg-white/5 p-4">
@@ -587,8 +604,8 @@ export default function Workouts() {
 
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 sm:px-6 sm:py-8">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="card w-full max-w-3xl max-h-[calc(100vh-3rem)] overflow-y-auto p-5 sm:p-6">
               <div className="flex items-center justify-between gap-3 mb-6">
                 <div>
                   <p className="text-sm text-gray-400">Nueva rutina</p>

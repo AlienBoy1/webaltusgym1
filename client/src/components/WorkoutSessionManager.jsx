@@ -1,16 +1,23 @@
 import { useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { getWorkoutSession, setWorkoutSession, sendWorkoutNotification, clearWorkoutNotification } from '../utils/workoutSession'
 
 export default function WorkoutSessionManager() {
+  const location = useLocation()
   const lastSession = useRef(getWorkoutSession())
+  const hasSentBackgroundNotification = useRef(Boolean(lastSession.current?.notificationSentAt))
 
   useEffect(() => {
     const tick = async () => {
       const session = getWorkoutSession()
+      const isWorkoutsRoute = location.pathname === '/workouts'
+      const hidden = document.visibilityState !== 'visible'
+
       if (!session?.activeWorkout) {
         if (lastSession.current?.activeWorkout) {
           await clearWorkoutNotification()
         }
+        hasSentBackgroundNotification.current = false
         lastSession.current = session
         return
       }
@@ -40,34 +47,29 @@ export default function WorkoutSessionManager() {
         savedAt: new Date().toISOString()
       }
 
-      setWorkoutSession(updatedSession)
-
-      if (document.visibilityState !== 'visible') {
-        const previous = lastSession.current || {}
-        const nowNotification = previous.notificationSentAt || 0
-        const elapsedSinceNotification = now - nowNotification
-        const progressChanged =
-          previous?.completedExercises?.length !== updatedSession.completedExercises.length ||
-          previous?.activeWorkout?.id !== updatedSession.activeWorkout.id
-
-        const shouldSendNotification =
-          !previous?.activeWorkout ||
-          progressChanged ||
-          elapsedSinceNotification >= 15000
-
-        if (shouldSendNotification) {
+      const shouldNotifyInBackground = hidden || !isWorkoutsRoute
+      if (shouldNotifyInBackground) {
+        if (!hasSentBackgroundNotification.current) {
           await sendWorkoutNotification(updatedSession)
           updatedSession.notificationSentAt = now
+          hasSentBackgroundNotification.current = true
         }
+      } else {
+        if (lastSession.current?.activeWorkout && hasSentBackgroundNotification.current) {
+          await clearWorkoutNotification()
+        }
+        hasSentBackgroundNotification.current = false
+        updatedSession.notificationSentAt = null
       }
 
+      setWorkoutSession(updatedSession)
       lastSession.current = updatedSession
     }
 
     const interval = window.setInterval(tick, 1000)
     tick()
     return () => window.clearInterval(interval)
-  }, [])
+  }, [location.pathname])
 
   return null
 }

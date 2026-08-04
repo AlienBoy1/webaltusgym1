@@ -86,7 +86,7 @@ function PushNavigationBridge() {
 }
 
 function App() {
-  const { checkAuth, initializing } = useAuthStore()
+  const { checkAuth, initializing, loading } = useAuthStore()
 
   useEffect(() => {
     checkAuth()
@@ -135,6 +135,15 @@ function App() {
       <WorkoutSessionManager />
       <WorkoutFloatingPanel />
       <PushNavigationBridge />
+
+      {loading && !initializing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-dark-300/95 p-8 shadow-2xl">
+            <div className="w-16 h-16 border-4 border-white/15 border-t-white rounded-full animate-spin" />
+            <div className="text-lg font-semibold">Procesando...</div>
+          </div>
+        </div>
+      )}
 
       <Routes>
         {/* Public Routes */}
