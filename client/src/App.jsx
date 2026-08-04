@@ -3,6 +3,8 @@ import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 import { useEffect } from 'react'
 import UpdateCenter from './components/UpdateCenter'
+import WorkoutFloatingPanel from './components/WorkoutFloatingPanel'
+import WorkoutSessionManager from './components/WorkoutSessionManager'
 
 // Layouts
 import MainLayout from './layouts/MainLayout'
@@ -84,13 +86,11 @@ function PushNavigationBridge() {
 }
 
 function App() {
-  const { refreshUser, isAuthenticated } = useAuthStore()
-  
+  const { checkAuth, initializing } = useAuthStore()
+
   useEffect(() => {
-    if (isAuthenticated) {
-      refreshUser()
-    }
-  }, [isAuthenticated])
+    checkAuth()
+  }, [checkAuth])
 
   // Recovery links sometimes land on /#access_token=...&type=recovery — send to reset UI
   useEffect(() => {
@@ -99,6 +99,17 @@ function App() {
     if (window.location.pathname === '/reset-password') return
     window.location.replace(`/reset-password${hash}`)
   }, [])
+
+  if (initializing) {
+    return (
+      <div className="min-h-screen bg-dark-500 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-dark-300/90 p-8 shadow-2xl">
+          <div className="w-16 h-16 border-4 border-white/15 border-t-white rounded-full animate-spin" />
+          <div className="text-lg font-semibold">Verificando tu sesión...</div>
+        </div>
+      </div>
+    )
+  }
   
   return (
     <BrowserRouter>
@@ -121,6 +132,8 @@ function App() {
       />
       
       <UpdateCenter />
+      <WorkoutSessionManager />
+      <WorkoutFloatingPanel />
       <PushNavigationBridge />
 
       <Routes>
@@ -132,11 +145,12 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         
         {/* User Routes */}
-        <Route path="/" element={
+        <Route element={
           <ProtectedRoute>
             <MainLayout />
           </ProtectedRoute>
         }>
+          <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="social" element={<Social />} />
           <Route path="workouts" element={<Workouts />} />
@@ -163,6 +177,7 @@ function App() {
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

@@ -76,13 +76,15 @@ self.addEventListener('fetch', (event) => {
           .catch(() => {})
         return cachedResponse
       }
-      return fetch(event.request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
-        }
-        return response
-      })
+      return fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+          }
+          return response
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || new Response('Service unavailable', { status: 503, statusText: 'Service Unavailable' })))
     })
   )
 })

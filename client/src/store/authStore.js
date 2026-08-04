@@ -3,10 +3,12 @@ import api from '../utils/api'
 import { withIdAlias } from '../utils/ids'
 import { supabase } from '../lib/supabase'
 import {
+  getStoredTokens,
   getStoredToken,
   getStoredRefreshToken,
   setAuthTokens,
-  clearAuthTokens
+  clearAuthTokens,
+  isRememberMeEnabled
 } from '../utils/tokenStorage'
 
 /** Sync JWT into Supabase client so Realtime/RLS see auth.uid() */
@@ -22,13 +24,16 @@ async function syncSupabaseSession(accessToken, refreshToken) {
   }
 }
 
-const initialToken = getStoredToken()
+const { token: initialToken, refreshToken: initialRefreshToken } = getStoredTokens()
 
 export const useAuthStore = create((set, get) => ({
   user: null,
   token: initialToken,
+  refreshToken: initialRefreshToken,
   isAuthenticated: !!initialToken,
+  rememberMe: isRememberMeEnabled(),
   loading: false,
+  initializing: true,
 
   login: async (email, password, { remember = true } = {}) => {
     set({ loading: true })
@@ -40,7 +45,9 @@ export const useAuthStore = create((set, get) => ({
       set({
         user,
         token: data.token,
+        refreshToken: data.refreshToken,
         isAuthenticated: true,
+        rememberMe: remember,
         loading: false
       })
       return { success: true }
@@ -63,6 +70,8 @@ export const useAuthStore = create((set, get) => ({
       set({
         user,
         token: data.token,
+        refreshToken: data.refreshToken,
+        rememberMe: true,
         isAuthenticated: true,
         loading: false
       })
@@ -89,8 +98,49 @@ export const useAuthStore = create((set, get) => ({
       /* ignore */
     }
     clearAuthTokens()
-    set({ user: null, token: null, isAuthenticated: false })
+    set({
+      user: null,
+      token: null,
+      refreshToken: null,
+      isAuthenticated: false,
+      rememberMe: false,
+      loading: false,
+      initializing: false
+    })
     window.location.href = '/login'
+  },
+
+  refreshSession: async (refreshToken) => {
+    if (!refreshToken) {
+      return { success: false }
+    }
+
+    set({ loading: true })
+    try {
+      const { data } = await api.post('/auth/refresh', { refreshToken })
+      const remember = isRememberMeEnabled()
+      setAuthTokens(data.token, data.refreshToken, remember)
+      await syncSupabaseSession(data.token, data.refreshToken)
+      set({
+        user: withIdAlias(data.user),
+        token: data.token,
+        refreshToken: data.refreshToken,
+        isAuthenticated: true,
+        rememberMe: remember,
+        loading: false
+      })
+      return { success: true }
+    } catch (error) {
+      clearAuthTokens()
+      set({
+        user: null,
+        token: null,
+        refreshToken: null,
+        isAuthenticated: false,
+        loading: false
+      })
+      return { success: false }
+    }
   },
 
   refreshUser: async () => {
@@ -102,7 +152,7 @@ export const useAuthStore = create((set, get) => ({
       set({ user: withIdAlias(data.user), isAuthenticated: true })
     } catch (error) {
       if (error.response?.status === 401) {
-        get().logout()
+        await get().checkAuth()
       }
     }
   },
@@ -112,21 +162,50 @@ export const useAuthStore = create((set, get) => ({
   },
 
   checkAuth: async () => {
+    set({ initializing: true, loading: true })
     const token = getStoredToken()
+    const refreshToken = getStoredRefreshToken()
+
     if (!token) {
-      set({ isAuthenticated: false, user: null })
+      clearAuthTokens()
+      set({
+        isAuthenticated: false,
+        user: null,
+        token: null,
+        refreshToken: null,
+        initializing: false,
+        loading: false
+      })
       return false
     }
 
     try {
-      const refreshToken = getStoredRefreshToken()
       await syncSupabaseSession(token, refreshToken)
       const { data } = await api.get('/auth/me')
-      set({ user: withIdAlias(data.user), isAuthenticated: true, token })
+      set({
+        user: withIdAlias(data.user),
+        isAuthenticated: true,
+        token,
+        refreshToken,
+        initializing: false,
+        loading: false
+      })
       return true
     } catch (error) {
+      if (refreshToken) {
+        const refreshed = await get().refreshSession(refreshToken)
+        set({ initializing: false })
+        return refreshed.success
+      }
       clearAuthTokens()
-      set({ user: null, token: null, isAuthenticated: false })
+      set({
+        user: null,
+        token: null,
+        refreshToken: null,
+        isAuthenticated: false,
+        initializing: false,
+        loading: false
+      })
       return false
     }
   }

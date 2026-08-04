@@ -417,6 +417,54 @@ router.post('/login', async (req, res) => {
   }
 })
 
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body
+    if (!refreshToken) {
+      return res.status(400).json({ message: 'Refresh token requerido' })
+    }
+
+    const authClient = createAuthClient()
+    const { data, error } = await authClient.auth.refreshSession({ refreshToken })
+    if (error || !data?.session || !data.session.user) {
+      console.error('Refresh session failed:', error)
+      return res.status(401).json({ message: 'No se pudo refrescar la sesión' })
+    }
+
+    const session = data.session
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single()
+
+    if (profileError || !profile) {
+      return res.status(401).json({ message: 'Usuario inválido' })
+    }
+
+    const mapped = mapProfile(profile)
+    res.json({
+      message: 'Sesión renovada',
+      token: session.access_token,
+      refreshToken: session.refresh_token,
+      user: {
+        _id: mapped._id,
+        id: mapped.id,
+        name: mapped.name,
+        email: mapped.email,
+        role: mapped.role,
+        avatar: mapped.avatar,
+        membership: mapped.membership,
+        stats: mapped.stats,
+        mustResetPassword: mapped.mustResetPassword
+      }
+    })
+  } catch (error) {
+    console.error('Refresh token error:', error)
+    res.status(500).json({ message: 'Error al refrescar la sesión' })
+  }
+})
+
 function resolvePasswordResetRedirect() {
   // Always send users to the real SPA reset page — never Site URL / localhost:3000
   const PRODUCTION = 'https://qyntagymweb.vercel.app'

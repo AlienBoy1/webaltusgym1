@@ -6,6 +6,11 @@ export default function Timer({ initialTime = 60, autoStart = false, size = 'md'
   const [isRunning, setIsRunning] = useState(autoStart)
   
   useEffect(() => {
+    setTimeLeft(initialTime)
+    setIsRunning(autoStart)
+  }, [])
+
+  useEffect(() => {
     let interval
     
     if (isRunning && timeLeft > 0) {
