@@ -741,7 +741,7 @@ export default function StoriesRail({
       </>
       )}
 
-      {/* Full-screen WhatsApp-style story preview composer */}
+      {/* Full-screen WhatsApp-style story preview composer (always dark chrome) */}
       {showRail && (
       <AnimatePresence>
         {composeOpen && (
@@ -749,7 +749,7 @@ export default function StoriesRail({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-black"
+            className="story-composer force-dark fixed inset-0 z-[70] bg-black"
           >
             <div className="relative mx-auto flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -757,6 +757,7 @@ export default function StoriesRail({
                   type="button"
                   onClick={resetCompose}
                   className="rounded-full bg-black/45 p-2.5 text-white"
+                  aria-label="Cerrar"
                 >
                   <FiX size={20} />
                 </button>
@@ -784,21 +785,42 @@ export default function StoriesRail({
                 ) : (
                   <img src={mediaPreview} alt="" className="h-full w-full object-cover" />
                 )}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/45" />
               </div>
 
               <div className="absolute bottom-0 left-0 right-0 z-20 space-y-3 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-8">
                 {caption.trim() && (
-                  <p className="rounded-xl bg-black/40 px-3 py-2 text-center text-sm text-white backdrop-blur-sm">
+                  <p
+                    className="rounded-xl px-3 py-2 text-center text-sm backdrop-blur-sm"
+                    style={{
+                      color: '#fff',
+                      background: 'rgba(0,0,0,0.55)',
+                      border: '1px solid rgba(255,255,255,0.16)',
+                      textShadow: '0 1px 2px rgba(0,0,0,0.75)'
+                    }}
+                  >
                     {caption}
                   </p>
                 )}
                 <input
                   value={caption}
                   onChange={(e) => setCaption(e.target.value.slice(0, 280))}
-                  placeholder="Comparte tu Qyntra Estado con tu comunidad"
-                  className="w-full rounded-2xl border border-white/15 bg-black/50 px-4 py-3.5 text-sm text-white placeholder:text-gray-400 outline-none backdrop-blur-md focus:border-primary-500/50"
+                  placeholder="Escribe una descripción…"
+                  autoFocus
+                  aria-label="Descripción de la historia"
+                  className="w-full rounded-2xl px-4 py-3.5 text-sm outline-none backdrop-blur-md focus:ring-2 focus:ring-primary-500/60"
+                  style={{
+                    color: '#ffffff',
+                    caretColor: '#ffffff',
+                    WebkitTextFillColor: '#ffffff',
+                    background: 'rgba(0,0,0,0.72)',
+                    border: '1px solid rgba(255,255,255,0.28)',
+                    boxShadow: '0 8px 28px rgba(0,0,0,0.45)'
+                  }}
                 />
+                <p className="text-center text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  {caption.length}/280
+                </p>
               </div>
             </div>
           </motion.div>
@@ -806,10 +828,10 @@ export default function StoriesRail({
       </AnimatePresence>
       )}
 
-      {/* Viewer */}
+      {/* Viewer — always dark chrome */}
       <AnimatePresence>
         {currentStory && currentGroup && (
-          <div className="story-viewer fixed inset-0 z-[80] flex items-center justify-center bg-black">
+          <div className="story-viewer force-dark fixed inset-0 z-[80] flex items-center justify-center bg-black">
             <div className="relative flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 {currentGroup.stories.map((s, i) => (
@@ -1002,7 +1024,14 @@ export default function StoriesRail({
                         onFocus={() => setReplyFocused(true)}
                         onBlur={() => setReplyFocused(false)}
                         placeholder="Responder en chat…"
-                        className="input-field flex-1 py-2.5 text-sm"
+                        className="story-chrome-input flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+                        style={{
+                          color: '#fff',
+                          caretColor: '#fff',
+                          WebkitTextFillColor: '#fff',
+                          background: 'rgba(0,0,0,0.65)',
+                          border: '1px solid rgba(255,255,255,0.22)'
+                        }}
                       />
                       <button
                         type="button"
@@ -1031,7 +1060,7 @@ export default function StoriesRail({
                     initial={{ y: 40 }}
                     animate={{ y: 0 }}
                     exit={{ y: 40 }}
-                    className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                    className="force-dark flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
                   >
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <p className="font-semibold">Compartir historia</p>
@@ -1116,7 +1145,7 @@ export default function StoriesRail({
                     animate={{ y: 0 }}
                     exit={{ y: 40 }}
                     onClick={(e) => e.stopPropagation()}
-                    className="flex max-h-[75vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                    className="force-dark flex max-h-[75vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
                   >
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <div>
@@ -1184,7 +1213,7 @@ export default function StoriesRail({
                     initial={{ y: 40 }}
                     animate={{ y: 0 }}
                     exit={{ y: 40 }}
-                    className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                    className="force-dark flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
                   >
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <p className="font-semibold">Agregar a favoritos</p>

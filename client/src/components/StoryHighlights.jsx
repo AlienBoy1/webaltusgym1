@@ -94,7 +94,7 @@ export default function StoryHighlights({ userId }) {
 
       <AnimatePresence>
         {active && item && (
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black">
+          <div className="story-viewer force-dark fixed inset-0 z-[90] flex items-center justify-center bg-black">
             <div className="relative flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 <div className="min-w-0">

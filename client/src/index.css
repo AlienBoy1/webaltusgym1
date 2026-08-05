@@ -325,6 +325,13 @@ html.light .force-dark .text-white {
   color: #ffffff !important;
 }
 
+html.light .story-viewer .text-gray-100,
+html.light .story-viewer .text-gray-200,
+html.light .force-dark .text-gray-100,
+html.light .force-dark .text-gray-200 {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
 html.light .story-viewer .text-gray-300,
 html.light .story-viewer .text-gray-400,
 html.light .force-dark .text-gray-300,
@@ -332,14 +339,123 @@ html.light .force-dark .text-gray-400 {
   color: rgba(255, 255, 255, 0.72) !important;
 }
 
-html.light .story-viewer .bg-dark-200,
-html.light .story-viewer .bg-dark-200\/95,
-html.light .force-dark .bg-dark-200 {
-  background-color: #14141C !important;
+html.light .story-viewer .text-gray-500,
+html.light .story-viewer .text-gray-600,
+html.light .force-dark .text-gray-500,
+html.light .force-dark .text-gray-600 {
+  color: rgba(255, 255, 255, 0.55) !important;
 }
 
-.force-dark {
+html.light .story-viewer .placeholder\:text-gray-400::placeholder,
+html.light .force-dark .placeholder\:text-gray-400::placeholder,
+html.light .story-viewer input::placeholder,
+html.light .story-viewer textarea::placeholder,
+html.light .force-dark input::placeholder,
+html.light .force-dark textarea::placeholder {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+html.light .story-viewer .bg-dark-200,
+html.light .story-viewer .bg-dark-200\/95,
+html.light .story-viewer .bg-dark-100,
+html.light .story-viewer .bg-dark-50,
+html.light .force-dark .bg-dark-200,
+html.light .force-dark .bg-dark-200\/95,
+html.light .force-dark .bg-dark-100,
+html.light .force-dark .bg-dark-50 {
+  background-color: #14141c !important;
+}
+
+html.light .story-viewer .bg-black,
+html.light .force-dark .bg-black {
+  background-color: #000000 !important;
+}
+
+html.light .story-viewer .bg-black\/30,
+html.light .force-dark .bg-black\/30 {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+html.light .story-viewer .bg-black\/40,
+html.light .force-dark .bg-black\/40 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+html.light .story-viewer .bg-black\/45,
+html.light .force-dark .bg-black\/45 {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+
+html.light .story-viewer .bg-black\/50,
+html.light .force-dark .bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+html.light .story-viewer .bg-black\/70,
+html.light .force-dark .bg-black\/70 {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+html.light .story-viewer .bg-black\/75,
+html.light .force-dark .bg-black\/75 {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+}
+
+html.light .story-viewer .bg-white\/5,
+html.light .story-viewer .bg-white\/10,
+html.light .story-viewer .hover\:bg-white\/5:hover,
+html.light .story-viewer .hover\:bg-white\/20:hover,
+html.light .force-dark .bg-white\/5,
+html.light .force-dark .bg-white\/10,
+html.light .force-dark .hover\:bg-white\/5:hover,
+html.light .force-dark .hover\:bg-white\/20:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.light .story-viewer .border-white\/5,
+html.light .story-viewer .border-white\/8,
+html.light .story-viewer .border-white\/10,
+html.light .story-viewer .border-white\/15,
+html.light .story-viewer .border-white\/20,
+html.light .force-dark .border-white\/5,
+html.light .force-dark .border-white\/8,
+html.light .force-dark .border-white\/10,
+html.light .force-dark .border-white\/15,
+html.light .force-dark .border-white\/20 {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+html.light .story-viewer .bg-white,
+html.light .force-dark .bg-white {
+  background-color: #ffffff !important;
+}
+
+html.light .story-viewer .ring-\[color\:var\(--bg-app\)\],
+html.light .force-dark .ring-\[color\:var\(--bg-app\)\] {
+  --tw-ring-color: #000000;
+}
+
+/* Story compose/view chrome: always dark Instagram-style surface */
+.force-dark,
+.story-viewer,
+.story-composer {
   color-scheme: dark;
+  color: #fff;
+}
+
+.story-composer input,
+.story-composer textarea,
+.story-viewer .story-chrome-input {
+  color: #ffffff !important;
+  caret-color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+.story-composer input::placeholder,
+.story-composer textarea::placeholder,
+.story-viewer .story-chrome-input::placeholder {
+  color: rgba(255, 255, 255, 0.55) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.55);
 }
 
 html.light.high-contrast {
