@@ -15,8 +15,7 @@ import {
 } from 'react-icons/fi'
 import QyntraLogo from '../components/QyntraLogo'
 import DownloadApps from '../components/DownloadApps'
-
-const LANDING_THEME_KEY = 'qyntra:landing-theme'
+import { applyGuestTheme, getGuestTheme } from '../utils/guestTheme'
 
 const LANDING_IMAGES = {
   hero: { webp: '/landing/hero-gym.webp', jpg: '/landing/hero-gym.jpg', alt: 'Gimnasio premium con iluminación tecnofitness' },
@@ -126,13 +125,7 @@ function FloatingOrb({ className, color, delay = 0, reduceMotion }) {
 
 export default function Landing() {
   const reduceMotion = useReducedMotion()
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem(LANDING_THEME_KEY) === 'light' ? 'light' : 'dark'
-    } catch {
-      return 'dark'
-    }
-  })
+  const [theme, setTheme] = useState(() => getGuestTheme())
 
   const { scrollYProgress } = useScroll()
   const heroParallax = useTransform(scrollYProgress, [0, 0.25], [0, -80])
@@ -140,11 +133,7 @@ export default function Landing() {
   const heroFade = useTransform(scrollYProgress, [0, 0.2], [1, 0.4])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LANDING_THEME_KEY, theme)
-    } catch {
-      /* ignore */
-    }
+    applyGuestTheme(theme)
   }, [theme])
 
   const vars = useMemo(() => {
@@ -427,7 +416,7 @@ export default function Landing() {
             initial={{ opacity: 0, y: 36 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12, duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-            className="font-display text-[clamp(3.5rem,16vw,9.5rem)] leading-[0.88] tracking-[0.08em] text-white"
+            className="landing-force-white font-display text-[clamp(3.5rem,16vw,9.5rem)] leading-[0.88] tracking-[0.08em]"
           >
             <span className="landing-gradient-text">QYNTRA</span>
           </motion.h1>
@@ -436,7 +425,7 @@ export default function Landing() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.28, duration: 0.65 }}
-            className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/80 sm:text-xl"
+            className="landing-force-white-soft mx-auto mt-6 max-w-xl text-base leading-relaxed sm:text-xl"
           >
             El sistema operativo del gimnasio: entrena, conecta y mide tu evolución en una app instalable.
           </motion.p>
@@ -459,7 +448,7 @@ export default function Landing() {
             <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}>
               <a
                 href="#descargas"
-                className="inline-flex min-w-[200px] items-center justify-center gap-2 rounded-xl border border-white/20 bg-black/30 px-8 py-3.5 text-base font-semibold text-white backdrop-blur-md"
+                className="landing-hero-secondary-btn inline-flex min-w-[200px] items-center justify-center gap-2 rounded-xl px-8 py-3.5 text-base font-semibold backdrop-blur-md"
               >
                 <FiDownload /> Descargar app
               </a>
@@ -693,10 +682,10 @@ export default function Landing() {
             />
           )}
           <div className="relative z-10">
-            <h2 className="font-display text-4xl tracking-wide text-white sm:text-6xl">
+            <h2 className="landing-force-white font-display text-4xl tracking-wide sm:text-6xl">
               TU PRÓXIMO PR EMPIEZA AQUÍ
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-lg text-white/75">
+            <p className="landing-force-white-soft mx-auto mt-4 max-w-xl text-lg">
               Únete a Qyntra Gym y convierte cada sesión en progreso compartido, medible y motivador.
             </p>
             <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} className="mt-8 inline-flex">
@@ -760,6 +749,31 @@ export default function Landing() {
         .landing-root img {
           -webkit-user-select: none;
           user-select: none;
+        }
+        /* Defeat html.light remaps on photographic / cinematic surfaces */
+        .landing-root .landing-force-white,
+        html.light .landing-root .landing-force-white {
+          color: #ffffff !important;
+        }
+        .landing-root .landing-force-white-soft,
+        html.light .landing-root .landing-force-white-soft {
+          color: rgba(255, 255, 255, 0.86) !important;
+        }
+        .landing-root .landing-hero-secondary-btn,
+        html.light .landing-root .landing-hero-secondary-btn {
+          color: #ffffff !important;
+          background: rgba(0, 0, 0, 0.45) !important;
+          border: 1px solid rgba(255, 255, 255, 0.38) !important;
+        }
+        .landing-root .landing-hero-secondary-btn:hover,
+        html.light .landing-root .landing-hero-secondary-btn:hover {
+          background: rgba(0, 0, 0, 0.58) !important;
+          border-color: rgba(255, 255, 255, 0.5) !important;
+        }
+        .landing-root .landing-hero-secondary-btn svg,
+        html.light .landing-root .landing-hero-secondary-btn svg {
+          color: #ffffff !important;
+          stroke: #ffffff !important;
         }
       `}</style>
     </div>

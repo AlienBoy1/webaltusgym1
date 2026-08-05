@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { FiLock, FiCheck } from 'react-icons/fi'
 import toast from 'react-hot-toast'
-import QyntraLogo from '../components/QyntraLogo'
+import AuthShell, { AuthLabel } from '../components/AuthShell'
 import { supabase } from '../lib/supabase'
 import api from '../utils/api'
 
@@ -72,7 +71,6 @@ export default function ResetPassword() {
           return
         }
 
-        // Give detectSessionInUrl / hash parsing a moment
         await new Promise((r) => setTimeout(r, 800))
         if (!mounted || settled) return
         const again = await supabase.auth.getSession()
@@ -126,86 +124,97 @@ export default function ResetPassword() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-400 via-dark-300 to-dark-400 p-4">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <QyntraLogo size="xl" withGlow />
-          </div>
-          <h1 className="font-display text-4xl mb-2">
-            <span className="text-primary-500">QYNTRA</span> GYM
-          </h1>
-        </div>
+  const title = done
+    ? 'Listo'
+    : checking
+      ? 'Verificando enlace…'
+      : !ready
+        ? 'Enlace inválido'
+        : 'Nueva contraseña'
 
-        <div className="glass rounded-3xl p-8">
-          {done ? (
-            <div className="text-center">
-              <div className="w-16 h-16 bg-accent-green/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FiCheck className="text-accent-green" size={32} />
-              </div>
-              <h2 className="font-display text-2xl mb-2">¡Listo!</h2>
-              <p className="text-gray-400 mb-6">Tu contraseña fue actualizada. Redirigiendo al login…</p>
-              <Link to="/login" className="btn-primary inline-block">
-                Ir al Login
-              </Link>
-            </div>
-          ) : checking ? (
-            <div className="text-center space-y-3">
-              <h2 className="font-display text-2xl">Verificando enlace…</h2>
-              <p className="text-gray-400">Un momento mientras validamos tu solicitud.</p>
-            </div>
-          ) : !ready ? (
-            <div className="text-center space-y-4">
-              <h2 className="font-display text-2xl">Enlace inválido o expirado</h2>
-              <p className="text-gray-400">
-                Abre el enlace más reciente del correo de recuperación. Si expiró, solicita uno nuevo.
-              </p>
-              <Link to="/forgot-password" className="btn-primary inline-block">
-                Solicitar nuevo enlace
-              </Link>
-            </div>
-          ) : (
-            <>
-              <h2 className="font-display text-2xl text-center mb-2">Nueva contraseña</h2>
-              <p className="text-gray-400 text-center mb-6">Elige una contraseña segura para tu cuenta</p>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Contraseña</label>
-                  <div className="relative">
-                    <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="input-field pl-12"
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Confirmar</label>
-                  <div className="relative">
-                    <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                    <input
-                      type="password"
-                      value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
-                      className="input-field pl-12"
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                    />
-                  </div>
-                </div>
-                <button type="submit" disabled={loading} className="btn-primary w-full">
-                  {loading ? 'Guardando…' : 'Guardar contraseña'}
-                </button>
-              </form>
-            </>
-          )}
+  const subtitle = done
+    ? 'Tu contraseña fue actualizada.'
+    : checking
+      ? 'Un momento mientras validamos tu solicitud.'
+      : !ready
+        ? 'Abre el enlace más reciente del correo de recuperación.'
+        : 'Elige una contraseña segura para tu cuenta.'
+
+  return (
+    <AuthShell title={title} subtitle={subtitle} panelHeadline="RESTABLECE TU ACCESO">
+      {done ? (
+        <div className="text-center">
+          <div
+            className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full"
+            style={{ background: 'rgba(34, 197, 94, 0.15)' }}
+          >
+            <FiCheck style={{ color: '#22C55E' }} size={32} />
+          </div>
+          <p className="auth-readable-secondary mb-6 text-sm">Redirigiendo al login…</p>
+          <Link to="/login" className="btn-primary inline-flex">
+            Ir al login
+          </Link>
         </div>
-      </motion.div>
-    </div>
+      ) : checking ? (
+        <div className="flex justify-center py-6">
+          <div
+            className="h-8 w-8 animate-spin rounded-full border-2"
+            style={{
+              borderColor: 'var(--border-subtle)',
+              borderTopColor: 'var(--color-primary)'
+            }}
+          />
+        </div>
+      ) : !ready ? (
+        <div className="space-y-4 text-center">
+          <p className="auth-readable-secondary text-sm">
+            Si el enlace expiró, solicita uno nuevo desde recuperar contraseña.
+          </p>
+          <Link to="/forgot-password" className="btn-primary inline-flex">
+            Solicitar nuevo enlace
+          </Link>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <AuthLabel>Contraseña</AuthLabel>
+            <div className="relative">
+              <FiLock
+                className="absolute left-4 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--text-muted)' }}
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-field pl-12"
+                placeholder="••••••••"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <div>
+            <AuthLabel>Confirmar</AuthLabel>
+            <div className="relative">
+              <FiLock
+                className="absolute left-4 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--text-muted)' }}
+              />
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className="input-field pl-12"
+                placeholder="••••••••"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <button type="submit" disabled={loading} className="btn-primary w-full">
+            {loading ? 'Guardando…' : 'Guardar contraseña'}
+          </button>
+        </form>
+      )}
+    </AuthShell>
   )
 }
