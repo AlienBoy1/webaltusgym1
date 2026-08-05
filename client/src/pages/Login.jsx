@@ -162,9 +162,6 @@ export default function Login() {
                   ¿Olvidaste tu contraseña?
                 </Link>
               </div>
-              <p className="text-[11px] text-gray-500 pl-6">
-                Guarda tu sesión al cerrar la app (recomendado para notificaciones push).
-              </p>
             </div>
             
             <button
