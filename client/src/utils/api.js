@@ -71,7 +71,9 @@ api.interceptors.response.use(
     const isCredentialRequest =
       url.includes('/auth/login') ||
       url.includes('/auth/register') ||
-      url.includes('/auth/request-access')
+      url.includes('/auth/google') ||
+      url.includes('/auth/request-access') ||
+      url.includes('/auth/complete-registration')
 
     // Wrong password / form errors: never wipe an existing session storage by accident
     if (error.response?.status === 401 && isCredentialRequest) {
@@ -120,7 +122,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null)
         clearAuthTokens()
         const path = window.location.pathname
-        if (path !== '/login' && path !== '/register' && path !== '/') {
+        if (path !== '/login' && path !== '/register' && path !== '/' && !path.startsWith('/auth/')) {
           const redirect = encodeURIComponent(window.location.pathname + window.location.search)
           window.location.href = `/login?redirect=${redirect}`
         }
@@ -133,7 +135,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !isCredentialRequest) {
       clearAuthTokens()
       const path = window.location.pathname
-      if (path !== '/login' && path !== '/register' && path !== '/') {
+      if (path !== '/login' && path !== '/register' && path !== '/' && !path.startsWith('/auth/')) {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search)
         window.location.href = `/login?redirect=${redirect}`
       }

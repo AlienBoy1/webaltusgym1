@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive } from 'react-icons/fi'
+import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive, FiLink } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -14,8 +14,11 @@ import {
 import { setWorkoutPreferences } from '../../utils/workoutSession'
 import { getStorageAccessGranted, setStorageAccessGranted } from '../../utils/storageAccess'
 import { useAppDialog } from '../../components/AppDialog'
+import GoogleIcon from '../../components/GoogleIcon'
+import { getGoogleLinkedStatus, startGoogleLink } from '../../utils/googleAuth'
 
 const settingsSections = [
+  { id: 'account', title: 'Cuenta', icon: FiLink, color: 'primary' },
   { id: 'notifications', title: 'Notificaciones', icon: FiBell, color: 'primary' },
   { id: 'privacy', title: 'Privacidad', icon: FiEye, color: 'cyan' },
   { id: 'permissions', title: 'Permisos', icon: FiHardDrive, color: 'orange' },
@@ -31,6 +34,8 @@ export default function UserSettings() {
   const [searchParams] = useSearchParams()
   const [activeSection, setActiveSection] = useState(() => searchParams.get('section') || 'notifications')
   const [storageAccess, setStorageAccess] = useState(() => getStorageAccessGranted())
+  const [googleLinked, setGoogleLinked] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [settings, setSettings] = useState({
     notifications: { push: false, email: true, workoutReminders: true, socialActivity: true, challenges: true, marketing: false },
     privacy: { profilePublic: true, showProgress: true, showWorkouts: true, allowMessages: true },
@@ -55,6 +60,21 @@ export default function UserSettings() {
       }
     }
   }, [searchParams])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const status = await getGoogleLinkedStatus()
+        if (!cancelled) setGoogleLinked(Boolean(status.linked))
+      } catch {
+        if (!cancelled) setGoogleLinked(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?._id, activeSection])
 
   useEffect(() => {
     if (settings.workout) {
@@ -164,6 +184,28 @@ export default function UserSettings() {
     }
   }
   
+  const handleLinkGoogle = async () => {
+    if (googleLinked || googleLoading) return
+    setGoogleLoading(true)
+    try {
+      await startGoogleLink()
+    } catch (error) {
+      console.error(error)
+      const msg = error?.message || 'No se pudo vincular Google'
+      if (/manual linking is disabled/i.test(msg)) {
+        toast.error(
+          'Vinculación manual desactivada en Supabase. Actívala en Authentication → Providers → Allow manual linking.',
+          { duration: 7000 }
+        )
+      } else if (/already|identity|linked/i.test(msg)) {
+        toast.error('Esta cuenta de Google ya está vinculada a otro usuario')
+      } else {
+        toast.error(msg)
+      }
+      setGoogleLoading(false)
+    }
+  }
+
   const Toggle = ({ enabled, onChange }) => (
     <button
       type="button"
@@ -191,6 +233,74 @@ export default function UserSettings() {
         
         <div className="md:col-span-2">
           <motion.div key={activeSection} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="card">
+
+            {activeSection === 'account' && (
+              <div className="space-y-6">
+                <h2 className="font-display flex items-center gap-2 text-xl">
+                  <FiLink className="text-primary-500" /> Cuenta
+                </h2>
+                <div
+                  className="rounded-xl border p-4"
+                  style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-muted)' }}
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
+                      >
+                        <GoogleIcon size={22} />
+                      </div>
+                      <div>
+                        <div className="font-medium">Google</div>
+                        <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          {googleLinked
+                            ? 'Tu cuenta ya puede iniciar sesión con Google.'
+                            : 'Vincula Google para entrar más rápido con el mismo correo.'}
+                        </div>
+                        {user?.email && (
+                          <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {user.email}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {googleLinked ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 self-start rounded-lg px-3 py-2 text-sm font-medium sm:self-auto"
+                        style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22C55E' }}
+                      >
+                        <FiCheck size={16} /> Vinculado
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleLinkGoogle}
+                        disabled={googleLoading}
+                        className="btn-secondary inline-flex items-center justify-center gap-2 self-stretch sm:self-auto sm:min-w-[10rem]"
+                      >
+                        {googleLoading ? (
+                          <div
+                            className="h-5 w-5 animate-spin rounded-full border-2"
+                            style={{
+                              borderColor: 'var(--border-subtle)',
+                              borderTopColor: 'var(--color-primary)'
+                            }}
+                          />
+                        ) : (
+                          <>
+                            <GoogleIcon size={18} /> Vincular Google
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  Usa el mismo correo de tu cuenta Qyntra. Si Google usa otro email, la vinculación fallará.
+                </p>
+              </div>
+            )}
             
             {activeSection === 'notifications' && (
               <div className="space-y-6">

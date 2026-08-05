@@ -23,18 +23,7 @@ async function getProfileByEmail(email) {
   return data
 }
 
-async function createAuthAndProfile({ email, password, name, role, phone, profile, membership, stats }) {
-  const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email: email.toLowerCase(),
-    password,
-    email_confirm: true,
-    user_metadata: { name },
-    app_metadata: { role }
-  })
-
-  if (createError) throw createError
-
-  const userId = created.user.id
+async function upsertProfileRow({ userId, email, name, role, phone, profile, membership, stats }) {
   const { data: upserted, error: upsertError } = await supabaseAdmin
     .from('profiles')
     .upsert({
@@ -54,6 +43,98 @@ async function createAuthAndProfile({ email, password, name, role, phone, profil
 
   if (upsertError) throw upsertError
   return upserted
+}
+
+async function createAuthAndProfile({ email, password, name, role, phone, profile, membership, stats }) {
+  const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+    email: email.toLowerCase(),
+    password,
+    email_confirm: true,
+    user_metadata: { name },
+    app_metadata: { role }
+  })
+
+  if (createError) throw createError
+
+  return upsertProfileRow({
+    userId: created.user.id,
+    email,
+    name,
+    role,
+    phone,
+    profile,
+    membership,
+    stats
+  })
+}
+
+/** Completes registration for an Auth user already created by Google OAuth (no second auth.users row). */
+async function createProfileForExistingAuthUser({
+  userId,
+  email,
+  password,
+  name,
+  role,
+  phone,
+  profile,
+  membership,
+  stats
+}) {
+  const updates = {
+    email_confirm: true,
+    user_metadata: { name },
+    app_metadata: { role }
+  }
+  if (password) updates.password = password
+
+  const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(userId, updates)
+  if (updErr) throw updErr
+
+  return upsertProfileRow({
+    userId,
+    email,
+    name,
+    role,
+    phone,
+    profile,
+    membership,
+    stats
+  })
+}
+
+function mapAuthUserPayload(mapped) {
+  return {
+    _id: mapped._id,
+    id: mapped.id,
+    name: mapped.name,
+    email: mapped.email,
+    role: mapped.role,
+    avatar: mapped.avatar,
+    membership: mapped.membership,
+    stats: mapped.stats,
+    mustResetPassword: mapped.mustResetPassword
+  }
+}
+
+/** If client has a Google (or other OAuth) session for this email and no profile yet, reuse that auth user. */
+async function resolveExistingAuthUserForRegistration(req, email) {
+  const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '')
+  if (!bearer) return null
+
+  const { data: authData, error } = await supabaseAdmin.auth.getUser(bearer)
+  if (error || !authData?.user) return null
+
+  const authUser = authData.user
+  if ((authUser.email || '').toLowerCase() !== email.toLowerCase()) return null
+
+  const { data: existingProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('id', authUser.id)
+    .maybeSingle()
+
+  if (existingProfile) return null
+  return authUser
 }
 
 async function sessionFor(email, password) {
@@ -180,26 +261,41 @@ router.post('/complete-registration', async (req, res) => {
     }
 
     const userData = request.user_data || {}
-    const profile = await createAuthAndProfile({
-      email,
-      password,
-      name: userData.name || 'Usuario',
-      role: 'user',
-      phone: userData.phone,
-      profile: {
-        age: userData.age,
-        weight: userData.weight,
-        height: userData.height
-      },
-      membership: {
-        plan: userData.membershipPlan || 'basic',
-        status: 'active',
-        startDate: new Date().toISOString(),
-        endDate: new Date(
-          Date.now() + (userData.membershipDuration || 30) * 24 * 60 * 60 * 1000
-        ).toISOString()
-      }
-    })
+    const membership = {
+      plan: userData.membershipPlan || 'basic',
+      status: 'active',
+      startDate: new Date().toISOString(),
+      endDate: new Date(
+        Date.now() + (userData.membershipDuration || 30) * 24 * 60 * 60 * 1000
+      ).toISOString()
+    }
+    const profilePayload = {
+      age: userData.age,
+      weight: userData.weight,
+      height: userData.height
+    }
+
+    const existingAuthUser = await resolveExistingAuthUserForRegistration(req, email)
+    const profile = existingAuthUser
+      ? await createProfileForExistingAuthUser({
+          userId: existingAuthUser.id,
+          email,
+          password,
+          name: userData.name || existingAuthUser.user_metadata?.full_name || 'Usuario',
+          role: 'user',
+          phone: userData.phone,
+          profile: profilePayload,
+          membership
+        })
+      : await createAuthAndProfile({
+          email,
+          password,
+          name: userData.name || 'Usuario',
+          role: 'user',
+          phone: userData.phone,
+          profile: profilePayload,
+          membership
+        })
 
     await supabaseAdmin
       .from('access_codes')
@@ -319,21 +415,32 @@ router.post('/register', async (req, res) => {
     const userCount = await countProfiles()
     const isFirstUser = userCount === 0
     const role = isFirstUser ? 'admin' : 'user'
+    const membership = {
+      plan: isFirstUser ? 'elite' : 'basic',
+      status: 'active',
+      startDate: new Date().toISOString(),
+      endDate: new Date(
+        Date.now() + (isFirstUser ? 365 : 30) * 24 * 60 * 60 * 1000
+      ).toISOString()
+    }
 
-    const profile = await createAuthAndProfile({
-      email,
-      password,
-      name,
-      role,
-      membership: {
-        plan: isFirstUser ? 'elite' : 'basic',
-        status: 'active',
-        startDate: new Date().toISOString(),
-        endDate: new Date(
-          Date.now() + (isFirstUser ? 365 : 30) * 24 * 60 * 60 * 1000
-        ).toISOString()
-      }
-    })
+    const existingAuthUser = await resolveExistingAuthUserForRegistration(req, email)
+    const profile = existingAuthUser
+      ? await createProfileForExistingAuthUser({
+          userId: existingAuthUser.id,
+          email,
+          password,
+          name: name || existingAuthUser.user_metadata?.full_name || 'Usuario',
+          role,
+          membership
+        })
+      : await createAuthAndProfile({
+          email,
+          password,
+          name,
+          role,
+          membership
+        })
 
     await supabaseAdmin.from('notifications').insert({
       user_id: profile.id,
@@ -370,6 +477,82 @@ router.post('/register', async (req, res) => {
   }
 })
 
+router.post('/google', async (req, res) => {
+  try {
+    const { accessToken, refreshToken } = req.body
+    if (!accessToken) {
+      return res.status(400).json({ message: 'Token de Google requerido' })
+    }
+
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(accessToken)
+    if (authError || !authData?.user) {
+      return res.status(401).json({ message: 'Sesión de Google inválida o expirada' })
+    }
+
+    const authUser = authData.user
+    const email = (authUser.email || '').toLowerCase()
+
+    const { data: profileById } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle()
+
+    if (!profileById) {
+      if (email) {
+        const profileByEmail = await getProfileByEmail(email)
+        if (profileByEmail) {
+          return res.status(409).json({
+            code: 'EMAIL_EXISTS_NEEDS_LINK',
+            message:
+              'Ya existe una cuenta con este correo. Inicia sesión con email y contraseña y vincula Google desde Configuración.'
+          })
+        }
+      }
+
+      return res.status(403).json({
+        code: 'NEEDS_REGISTRATION',
+        message:
+          'Esta cuenta de Google aún no está registrada en Qyntra. Completa tu registro (nombre, contraseña y código de acceso si aplica).',
+        email,
+        name:
+          authUser.user_metadata?.full_name ||
+          authUser.user_metadata?.name ||
+          authUser.user_metadata?.preferred_username ||
+          '',
+        avatar: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null
+      })
+    }
+
+    supabaseAdmin
+      .from('profiles')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', authUser.id)
+      .then(() => {})
+      .catch(() => {})
+
+    const mapped = mapProfile(profileById)
+    const token = accessToken
+    let nextRefresh = refreshToken || null
+
+    if (!nextRefresh) {
+      return res.status(400).json({
+        message: 'Falta refresh token de la sesión. Vuelve a iniciar con Google.'
+      })
+    }
+
+    res.json({
+      message: 'Login exitoso',
+      token,
+      refreshToken: nextRefresh,
+      user: mapAuthUserPayload(mapped)
+    })
+  } catch (error) {
+    console.error('Google auth error:', error)
+    res.status(500).json({ message: 'Error al autenticar con Google', error: error.message })
+  }
+})
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body
@@ -399,17 +582,7 @@ router.post('/login', async (req, res) => {
       message: 'Login exitoso',
       token: session.session.access_token,
       refreshToken: session.session.refresh_token,
-      user: {
-        _id: mapped._id,
-        id: mapped.id,
-        name: mapped.name,
-        email: mapped.email,
-        role: mapped.role,
-        avatar: mapped.avatar,
-        membership: mapped.membership,
-        stats: mapped.stats,
-        mustResetPassword: mapped.mustResetPassword
-      }
+      user: mapAuthUserPayload(mapped)
     })
   } catch (error) {
     console.error('Login error:', error)

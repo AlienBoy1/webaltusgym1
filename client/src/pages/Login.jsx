@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import TermsModal from '../components/TermsModal'
 import CodeAccessModal from '../components/CodeAccessModal'
 import AuthShell, { AuthLabel } from '../components/AuthShell'
+import GoogleAuthButton, { AuthDivider } from '../components/GoogleAuthButton'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -88,6 +89,10 @@ export default function Login() {
       subtitle="Accede a tu cuenta y continúa donde lo dejaste."
       panelHeadline="TU SESIÓN EMPIEZA AQUÍ"
     >
+      <GoogleAuthButton label="Continuar con Google" disabled={loading} />
+
+      <AuthDivider label="o con email" />
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <AuthLabel>Email</AuthLabel>

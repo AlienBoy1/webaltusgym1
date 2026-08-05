@@ -36,6 +36,66 @@ export const useAuthStore = create((set, get) => ({
   initializing: true,
   authIntent: null,
 
+  loginWithSession: async (token, refreshToken, userPayload, { remember = true } = {}) => {
+    if (!token || !refreshToken || !userPayload) {
+      return { success: false, message: 'Sesión incompleta' }
+    }
+    set({ loading: true, authIntent: 'login' })
+    try {
+      setAuthTokens(token, refreshToken, remember)
+      await syncSupabaseSession(token, refreshToken)
+      const user = withIdAlias(userPayload)
+      set({
+        user,
+        token,
+        refreshToken,
+        isAuthenticated: true,
+        rememberMe: remember,
+        loading: false,
+        authIntent: null
+      })
+      return { success: true }
+    } catch (error) {
+      set({ loading: false, authIntent: null })
+      return {
+        success: false,
+        message: error?.message || 'Error al establecer sesión'
+      }
+    }
+  },
+
+  loginWithGoogleSession: async (accessToken, refreshToken, { remember = true } = {}) => {
+    set({ loading: true, authIntent: 'login' })
+    try {
+      const { data } = await api.post('/auth/google', { accessToken, refreshToken })
+      setAuthTokens(data.token, data.refreshToken, remember)
+      await syncSupabaseSession(data.token, data.refreshToken)
+      const user = withIdAlias(data.user)
+      set({
+        user,
+        token: data.token,
+        refreshToken: data.refreshToken,
+        isAuthenticated: true,
+        rememberMe: remember,
+        loading: false,
+        authIntent: null
+      })
+      return { success: true }
+    } catch (error) {
+      set({ loading: false, authIntent: null })
+      const payload = error.response?.data || {}
+      return {
+        success: false,
+        status: error.response?.status,
+        code: payload.code,
+        message: payload.message || 'Error al iniciar sesión con Google',
+        email: payload.email,
+        name: payload.name,
+        avatar: payload.avatar
+      }
+    }
+  },
+
   login: async (email, password, { remember = true } = {}) => {
     set({ loading: true, authIntent: 'login' })
     try {
@@ -65,7 +125,19 @@ export const useAuthStore = create((set, get) => ({
   register: async (name, email, password) => {
     set({ loading: true, authIntent: 'login' })
     try {
-      const { data } = await api.post('/auth/register', { name, email, password })
+      const headers = {}
+      try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const { data } = await api.post('/auth/register', { name, email, password }, { headers })
       setAuthTokens(data.token, data.refreshToken, true)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)

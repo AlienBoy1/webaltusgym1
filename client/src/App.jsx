@@ -16,6 +16,7 @@ import HomeEntry from './pages/HomeEntry'
 import Login from './pages/Login'
 
 const Register = lazy(() => import('./pages/Register'))
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 
@@ -167,6 +168,7 @@ function App() {
           <Route path="/" element={<HomeEntry />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
 

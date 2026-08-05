@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiX, FiKey, FiMail, FiLock, FiCheck } from 'react-icons/fi'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { setAuthTokens } from '../utils/tokenStorage'
+import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../store/authStore'
+import { clearPendingGoogleRegistration } from '../utils/googleAuth'
 
-export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
+export default function CodeAccessModal({ isOpen, onClose, onSuccess, initialEmail = '' }) {
   const [step, setStep] = useState(1) // 1: email + code, 2: password
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(initialEmail || '')
   const [accessCode, setAccessCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -15,7 +18,14 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
   const [registering, setRegistering] = useState(false)
   const [codeValid, setCodeValid] = useState(false)
   const [attemptsRemaining, setAttemptsRemaining] = useState(3)
-  
+  const loginWithSession = useAuthStore((s) => s.loginWithSession)
+
+  useEffect(() => {
+    if (isOpen && initialEmail) {
+      setEmail(initialEmail)
+    }
+  }, [isOpen, initialEmail])
+
   const handleVerifyCode = async () => {
     if (!email.trim() || !accessCode.trim()) {
       toast.error('Completa todos los campos')
@@ -65,24 +75,38 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
     
     setRegistering(true)
     try {
-      const { data } = await api.post('/auth/complete-registration', {
-        email,
-        accessCode: accessCode.toUpperCase(),
-        password,
-        confirmPassword
-      })
-      
-      // Show loading animation
-      toast.loading('Estamos trabajando en tu nueva membresía, nos tardamos menos de lo que pega un press...', {
-        duration: 5000
-      })
-      
-      // Simulate processing (max 5 seconds)
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      
+      const headers = {}
+      try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const { data } = await api.post(
+        '/auth/complete-registration',
+        {
+          email,
+          accessCode: accessCode.toUpperCase(),
+          password,
+          confirmPassword
+        },
+        { headers }
+      )
+
+      toast.loading(
+        'Estamos trabajando en tu nueva membresía, nos tardamos menos de lo que pega un press...',
+        { duration: 5000 }
+      )
+
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+
       setAuthTokens(data.token, data.refreshToken, true)
       try {
-        const { supabase } = await import('../lib/supabase')
         if (data.token && data.refreshToken) {
           await supabase.auth.setSession({
             access_token: data.token,
@@ -92,11 +116,14 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess }) {
       } catch {
         /* ignore */
       }
-      
+
+      await loginWithSession(data.token, data.refreshToken, data.user, { remember: true })
+      clearPendingGoogleRegistration()
+
       toast.success('¡Bienvenido a Qyntra Gym! Tu membresía está lista.', {
         duration: 4000
       })
-      
+
       onSuccess()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al completar registro')
