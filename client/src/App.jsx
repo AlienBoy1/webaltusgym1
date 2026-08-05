@@ -155,8 +155,10 @@ function App() {
       <SessionTheater
         visible={loading && !initializing}
         variant={authIntent === 'logout' ? 'logout' : 'auth'}
-        title={authIntent === 'logout' ? 'Hasta pronto' : 'QYNTRA'}
-        subtitle={authIntent === 'logout' ? 'Cerrando tu sesión…' : 'Entrando a tu cuenta…'}
+        title={authIntent === 'logout' ? 'HASTA PRONTO' : 'QYNTRA'}
+        subtitle={
+          authIntent === 'logout' ? 'Cerrando tu sesión con seguridad' : 'Entrando a tu cuenta'
+        }
       />
 
       <Suspense fallback={<PageFallback />}>

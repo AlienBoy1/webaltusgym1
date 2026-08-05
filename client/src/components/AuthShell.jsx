@@ -41,10 +41,27 @@ export default function AuthShell({
     applyGuestTheme(theme)
   }, [theme])
 
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const lock = () => {
+      document.body.style.overflow = mq.matches ? 'hidden' : prev || ''
+    }
+    lock()
+    mq.addEventListener?.('change', lock)
+    return () => {
+      mq.removeEventListener?.('change', lock)
+      document.body.style.overflow = prev
+    }
+  }, [])
+
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
   return (
-    <div className="auth-shell relative min-h-[100svh]" data-auth-theme={theme}>
+    <div
+      className="auth-shell relative h-[100svh] max-h-[100svh] overflow-hidden lg:h-auto lg:max-h-none lg:min-h-[100svh] lg:overflow-visible"
+      data-auth-theme={theme}
+    >
       {/* Desktop full-bleed stage */}
       <div className="auth-desktop-stage pointer-events-none absolute inset-0 hidden lg:block" aria-hidden>
         <picture className="absolute inset-0 block h-full w-full">
@@ -70,11 +87,11 @@ export default function AuthShell({
         )}
       </div>
 
-      <div className="relative z-10 flex min-h-[100svh] flex-col lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,28rem)] lg:items-stretch lg:gap-8 lg:px-10 xl:grid-cols-[minmax(0,1.1fr)_minmax(24rem,30rem)] xl:px-16 2xl:px-24">
+      <div className="auth-layout relative z-10 flex h-full min-h-0 flex-col lg:grid lg:min-h-[100svh] lg:h-auto lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,28rem)] lg:items-stretch lg:gap-8 lg:px-10 xl:grid-cols-[minmax(0,1.1fr)_minmax(24rem,30rem)] xl:px-16 2xl:px-24">
         {/* Brand / hero strip */}
-        <aside className="auth-visual relative isolate overflow-hidden lg:flex lg:flex-col lg:justify-between lg:overflow-visible lg:py-10">
-          {/* Mobile photo band */}
-          <div className="relative h-[min(30svh,12.5rem)] w-full sm:h-[min(34svh,15rem)] lg:hidden">
+        <aside className="auth-visual relative isolate shrink-0 overflow-hidden lg:flex lg:flex-col lg:justify-between lg:overflow-visible lg:py-10">
+          {/* Mobile photo band — compact so form fits without page scroll */}
+          <div className="relative h-16 w-full sm:h-[4.5rem] lg:hidden">
             <picture className="absolute inset-0 block h-full w-full">
               <source srcSet={PANEL_IMAGE.webp} type="image/webp" />
               <img
@@ -94,16 +111,16 @@ export default function AuthShell({
                   'radial-gradient(ellipse at 30% 20%, rgba(var(--color-primary-rgb),0.38), transparent 52%)'
               }}
             />
-            <div className="relative z-10 flex h-full flex-col justify-between p-4 sm:p-5">
+            <div className="relative z-10 flex h-full flex-col justify-center p-3 sm:px-4">
               <div className="flex items-center justify-between gap-3">
-                <Link to={installed ? '/login' : '/'} className="flex min-w-0 items-center gap-2.5">
-                  <QyntraLogo size="md" withGlow />
+                <Link to={installed ? '/login' : '/'} className="flex min-w-0 items-center gap-2">
+                  <QyntraLogo size="sm" withGlow />
                   <div className="min-w-0">
-                    <span className="auth-force-white font-display block text-xl tracking-[0.14em] leading-none">
+                    <span className="auth-force-white font-display block text-lg tracking-[0.14em] leading-none">
                       QYNTRA
                     </span>
                     <span
-                      className="text-[9px] uppercase tracking-[0.28em]"
+                      className="text-[8px] uppercase tracking-[0.28em]"
                       style={{ color: 'var(--color-primary)' }}
                     >
                       {panelEyebrow}
@@ -113,9 +130,9 @@ export default function AuthShell({
                 {showBackHome && !installed && (
                   <Link
                     to="/"
-                    className="auth-force-white-muted inline-flex h-9 items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3 text-xs font-medium backdrop-blur-md"
+                    className="auth-force-white-muted inline-flex h-8 items-center gap-1 rounded-full border border-white/25 bg-black/40 px-2.5 text-[11px] font-medium backdrop-blur-md"
                   >
-                    <FiArrowLeft size={14} /> Inicio
+                    <FiArrowLeft size={12} /> Inicio
                   </Link>
                 )}
               </div>
@@ -175,12 +192,12 @@ export default function AuthShell({
         </aside>
 
         {/* Phone device stage */}
-        <main className="auth-form relative z-20 -mt-8 flex flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mt-10 sm:px-6 lg:mt-0 lg:items-center lg:justify-center lg:px-0 lg:py-8 lg:pb-8">
+        <main className="auth-form relative z-20 -mt-3 flex min-h-0 flex-1 flex-col px-2.5 pb-[max(0.4rem,env(safe-area-inset-bottom))] sm:-mt-4 sm:px-5 lg:mt-0 lg:items-center lg:justify-center lg:px-0 lg:py-8 lg:pb-8">
           <motion.div
-            initial={reduceMotion ? false : { opacity: 0, y: 28, scale: 0.97 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 20, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: 'spring', damping: 22, stiffness: 220 }}
-            className="auth-device mx-auto flex w-full max-w-[26.5rem] flex-1 flex-col lg:max-h-[min(860px,calc(100svh-4rem))] lg:w-[min(100%,26rem)] lg:flex-none xl:w-[27rem]"
+            className="auth-device mx-auto flex h-full min-h-0 w-full max-w-[26.5rem] flex-1 flex-col lg:h-auto lg:max-h-[min(860px,calc(100svh-4rem))] lg:w-[min(100%,26rem)] lg:flex-none xl:w-[27rem]"
           >
             <span className="auth-device-btn auth-device-btn-silent" aria-hidden />
             <span className="auth-device-btn auth-device-btn-vol-up" aria-hidden />
@@ -226,38 +243,38 @@ export default function AuthShell({
                   </div>
                 </div>
 
-                <div className="auth-device-screen relative z-10 mx-auto flex min-h-0 w-full flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-1 pt-1 sm:px-5">
+                <div className="auth-device-screen relative z-10 mx-auto flex min-h-0 w-full flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y px-3.5 pb-1 pt-0.5 sm:px-5">
                   <div className="auth-screen-grid pointer-events-none absolute inset-0" aria-hidden />
                   <div className="auth-screen-glow pointer-events-none absolute inset-x-0 top-0 h-16" aria-hidden />
 
                   {(title || subtitle) && (
-                    <div className="relative mb-4 shrink-0 sm:mb-5">
-                      <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                    <div className="auth-heading relative mb-2.5 shrink-0 sm:mb-5">
+                      <div className="auth-chips mb-1.5 flex flex-wrap items-center gap-1.5 sm:mb-2.5">
                         <span className="auth-chip">Gym OS</span>
                         <span className="auth-chip auth-chip-accent">Training+</span>
                       </div>
                       {title && (
                         <h1
-                          className="font-display text-[1.75rem] tracking-wide sm:text-[1.9rem]"
+                          className="auth-title font-display text-[1.55rem] tracking-wide sm:text-[1.9rem]"
                           style={{ color: 'var(--text-primary)' }}
                         >
                           {title}
                         </h1>
                       )}
                       {subtitle && (
-                        <p className="auth-readable-secondary mt-1.5 text-sm leading-relaxed">
+                        <p className="auth-readable-secondary auth-subtitle mt-1 line-clamp-2 text-xs leading-relaxed sm:mt-1.5 sm:text-sm">
                           {subtitle}
                         </p>
                       )}
                     </div>
                   )}
 
-                  <div className="auth-form-card relative mb-2 shrink-0 rounded-[1.25rem] border p-4 sm:p-5">
+                  <div className="auth-form-card relative mb-1 shrink-0 rounded-[1.1rem] border p-3 sm:mb-2 sm:rounded-[1.25rem] sm:p-5">
                     {children}
                   </div>
                 </div>
 
-                <div className="auth-home-bar relative z-20 flex shrink-0 justify-center pb-2.5 pt-2" aria-hidden>
+                <div className="auth-home-bar relative z-20 flex shrink-0 justify-center pb-1.5 pt-1.5 lg:pb-2.5 lg:pt-2" aria-hidden>
                   <span className="auth-home-indicator" />
                 </div>
               </div>
@@ -270,6 +287,75 @@ export default function AuthShell({
         .auth-shell {
           background: var(--bg-app);
           color: var(--text-primary);
+        }
+
+        /* Mobile: lock page scroll; form lives inside phone */
+        @media (max-width: 1023px) {
+          .auth-shell {
+            overscroll-behavior: none;
+            touch-action: manipulation;
+          }
+          .auth-shell .auth-layout {
+            height: 100%;
+            min-height: 0;
+          }
+          .auth-shell .auth-device {
+            min-height: 0;
+            filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.32));
+          }
+          .auth-shell .auth-device-bezel {
+            border-radius: 1.75rem;
+            padding: 0.28rem;
+          }
+          .auth-shell .auth-device-screen-shell {
+            border-radius: 1.5rem;
+          }
+          .auth-shell .auth-island {
+            top: 0.4rem;
+            width: 5.6rem;
+            height: 1.35rem;
+          }
+          .auth-shell .auth-status {
+            padding-top: 1.45rem;
+            padding-bottom: 0.2rem;
+          }
+          .auth-shell .auth-device-screen {
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch;
+          }
+          .auth-shell .auth-form-card .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.55rem;
+          }
+          .auth-shell .auth-form-card .mt-4 { margin-top: 0.55rem !important; }
+          .auth-shell .auth-form-card .mt-6 { margin-top: 0.7rem !important; }
+          .auth-shell .auth-form-card .mt-3 { margin-top: 0.45rem !important; }
+          .auth-shell .auth-form-card .mb-2 { margin-bottom: 0.35rem !important; }
+          .auth-shell .input-field {
+            padding-top: 0.58rem;
+            padding-bottom: 0.58rem;
+            font-size: 0.92rem;
+          }
+          .auth-shell .btn-primary,
+          .auth-shell .btn-secondary {
+            padding-top: 0.62rem;
+            padding-bottom: 0.62rem;
+            font-size: 0.92rem;
+          }
+          .auth-shell .auth-label {
+            margin-bottom: 0.28rem;
+            font-size: 0.78rem;
+          }
+          .auth-shell .auth-home-indicator {
+            width: 5.5rem;
+            height: 0.22rem;
+          }
+        }
+
+        @media (max-width: 1023px) and (max-height: 740px) {
+          .auth-shell .auth-chips { display: none; }
+          .auth-shell .auth-subtitle { display: none; }
+          .auth-shell .auth-title { font-size: 1.35rem; }
+          .auth-shell .auth-heading { margin-bottom: 0.45rem; }
         }
 
         .auth-shell .auth-desktop-stage-overlay {
