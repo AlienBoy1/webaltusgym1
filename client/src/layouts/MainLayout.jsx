@@ -10,6 +10,8 @@ import api from '../utils/api'
 import { Link } from 'react-router-dom'
 import QyntraLogo from '../components/QyntraLogo'
 import { Avatar } from '../utils/avatarUtils'
+import { applyAppearanceSettings, cacheAppearance, loadCachedSettings, bindSystemThemeListener } from '../utils/theme'
+import { StoryViewerProvider } from '../components/StoryViewerContext'
 
 const navItems = [
   { path: '/dashboard', icon: FiHome, label: 'Inicio' },
@@ -52,6 +54,30 @@ export default function MainLayout() {
       unsubscribeRealtime()
     }
   }, [user])
+
+  // Apply saved theme / accent across the whole app on session start
+  useEffect(() => {
+    const id = user?.id || user?._id
+    if (!id) return
+    const cached = loadCachedSettings(id)
+    if (cached) {
+      applyAppearanceSettings(cached)
+      bindSystemThemeListener(() => cached.theme || 'dark')
+    }
+    ;(async () => {
+      try {
+        const { data } = await api.get('/users/profile')
+        if (data?.settings) {
+          applyAppearanceSettings(data.settings)
+          cacheAppearance(data.settings)
+          localStorage.setItem(`settings_${id}`, JSON.stringify(data.settings))
+          bindSystemThemeListener(() => data.settings.theme || 'dark')
+        }
+      } catch {
+        /* keep cached */
+      }
+    })()
+  }, [user?.id, user?._id])
 
   // Re-sync Web Push subscription when permission already granted
   useEffect(() => {
@@ -133,6 +159,7 @@ export default function MainLayout() {
   )
   
   return (
+    <StoryViewerProvider>
     <div className="min-h-screen bg-dark-500">
       {/* Header */}
       <header className="glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
@@ -256,7 +283,16 @@ export default function MainLayout() {
               {user?.role === 'admin' && (
                 <NavLink to="/admin" className="hidden sm:inline-flex px-2 py-1 bg-accent-purple/20 text-accent-purple text-xs rounded-full">Admin</NavLink>
               )}
-              <button onClick={logout} className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500" aria-label="Cerrar sesión"><FiLogOut size={18} /></button>
+              <button
+                onClick={async () => {
+                  await logout()
+                  navigate('/', { replace: true })
+                }}
+                className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500"
+                aria-label="Cerrar sesión"
+              >
+                <FiLogOut size={18} />
+              </button>
             </div>
           </div>        </div>
         
@@ -323,7 +359,7 @@ export default function MainLayout() {
       {/* Main Content */}
       <main className="pt-16 pb-24 md:pb-6 overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          <motion.div key={location.pathname} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          <motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
             <Outlet />
           </motion.div>
         </div>
@@ -348,5 +384,6 @@ export default function MainLayout() {
       {/* Notification Prompt */}
       <NotificationPrompt />
     </div>
+    </StoryViewerProvider>
   )
 }

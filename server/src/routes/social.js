@@ -29,14 +29,19 @@ async function getProfilesMap(ids) {
   return Object.fromEntries((data || []).map((p) => [p.id, p]))
 }
 
-async function enrichPosts(posts) {
+async function enrichPosts(posts, viewerId = null) {
   if (!posts?.length) return []
 
   const postIds = posts.map((p) => p.id)
   const sharedIds = [...new Set(posts.map((p) => p.shared_from).filter(Boolean))]
 
   const [{ data: likes }, { data: comments }, { data: sharedRows }] = await Promise.all([
-    supabaseAdmin.from('post_likes').select('post_id, user_id').in('post_id', postIds),
+    supabaseAdmin.from('post_likes').select('post_id, user_id, emoji').in('post_id', postIds).then(async (res) => {
+      if (res.error && String(res.error.message || '').includes('emoji')) {
+        return supabaseAdmin.from('post_likes').select('post_id, user_id').in('post_id', postIds)
+      }
+      return res
+    }),
     supabaseAdmin
       .from('post_comments')
       .select('*')
@@ -55,9 +60,12 @@ async function enrichPosts(posts) {
   const userMap = await getProfilesMap(authorIds)
 
   const likesByPost = {}
+  const reactionByPostUser = {}
   for (const l of likes || []) {
     if (!likesByPost[l.post_id]) likesByPost[l.post_id] = []
     likesByPost[l.post_id].push(l.user_id)
+    if (!reactionByPostUser[l.post_id]) reactionByPostUser[l.post_id] = {}
+    reactionByPostUser[l.post_id][l.user_id] = l.emoji || '❤️'
   }
 
   const commentsByPost = {}
@@ -106,6 +114,7 @@ async function enrichPosts(posts) {
         comments: commentsByPost[row.id] || [],
         workoutData
       }),
+      myReaction: viewerId ? reactionByPostUser[row.id]?.[viewerId] || null : null,
       sharedFrom
     }
   })
@@ -154,7 +163,7 @@ router.get('/feed', authenticate, async (req, res) => {
 
     if (error) throw error
 
-    res.json(await enrichPosts(posts || []))
+    res.json(await enrichPosts(posts || [], req.user.id))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener feed', error: error.message })
   }
@@ -171,7 +180,7 @@ router.get('/user/:userId/posts', authenticate, async (req, res) => {
       .limit(50)
 
     if (error) throw error
-    res.json(await enrichPosts(posts || []))
+    res.json(await enrichPosts(posts || [], req.user.id))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener publicaciones', error: error.message })
   }
@@ -237,7 +246,7 @@ router.post('/', authenticate, async (req, res) => {
     if (error) throw error
 
     await bumpSocialInteractions(req.user.id)
-    const [enriched] = await enrichPosts([post])
+    const [enriched] = await enrichPosts([post], req.user.id)
 
     // Notify followers of new post (background)
     process.nextTick(async () => {
@@ -317,9 +326,12 @@ router.post('/:id/poll/vote', authenticate, async (req, res) => {
   }
 })
 
-// Like/Unlike post
+// Like / reaction (FB style): emoji optional; null/omit toggles ❤️; same emoji removes
 router.post('/:id/like', authenticate, async (req, res) => {
   try {
+    const emojiRaw = req.body?.emoji
+    const emoji = emojiRaw === null || emojiRaw === '' ? null : (emojiRaw || '❤️')
+
     const { data: post } = await supabaseAdmin
       .from('posts')
       .select('id')
@@ -337,16 +349,57 @@ router.post('/:id/like', authenticate, async (req, res) => {
       .eq('user_id', req.user.id)
       .maybeSingle()
 
-    let liked
-    if (existing) {
+    let liked = false
+    let myReaction = null
+
+    if (emoji === null) {
+      // Explicit unlike
+      if (existing) {
+        await supabaseAdmin
+          .from('post_likes')
+          .delete()
+          .eq('post_id', post.id)
+          .eq('user_id', req.user.id)
+      }
+      liked = false
+      myReaction = null
+    } else if (existing && (existing.emoji || '❤️') === emoji) {
+      // Toggle off same reaction
       await supabaseAdmin
         .from('post_likes')
         .delete()
         .eq('post_id', post.id)
         .eq('user_id', req.user.id)
       liked = false
+      myReaction = null
+    } else if (existing) {
+      const { error } = await supabaseAdmin
+        .from('post_likes')
+        .update({ emoji })
+        .eq('post_id', post.id)
+        .eq('user_id', req.user.id)
+      if (error && String(error.message || '').includes('emoji')) {
+        // Column not migrated yet — keep like without emoji
+        liked = true
+        myReaction = '❤️'
+      } else if (error) throw error
+      else {
+        liked = true
+        myReaction = emoji
+      }
     } else {
-      await supabaseAdmin.from('post_likes').insert({ post_id: post.id, user_id: req.user.id })
+      const payload = { post_id: post.id, user_id: req.user.id, emoji }
+      let { error } = await supabaseAdmin.from('post_likes').insert(payload)
+      if (error && String(error.message || '').includes('emoji')) {
+        const retry = await supabaseAdmin
+          .from('post_likes')
+          .insert({ post_id: post.id, user_id: req.user.id })
+        error = retry.error
+        myReaction = '❤️'
+      } else {
+        myReaction = emoji
+      }
+      if (error) throw error
       liked = true
     }
 
@@ -355,7 +408,7 @@ router.post('/:id/like', authenticate, async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('post_id', post.id)
 
-    res.json({ liked, likesCount: count || 0 })
+    res.json({ liked, likesCount: count || 0, myReaction })
   } catch (error) {
     res.status(500).json({ message: 'Error al dar like', error: error.message })
   }
@@ -433,7 +486,7 @@ router.post('/:id/share', authenticate, async (req, res) => {
     if (error) throw error
 
     await bumpSocialInteractions(req.user.id)
-    const [enriched] = await enrichPosts([sharedPost])
+    const [enriched] = await enrichPosts([sharedPost], req.user.id)
     res.status(201).json(enriched)
   } catch (error) {
     res.status(500).json({ message: 'Error al compartir publicación', error: error.message })

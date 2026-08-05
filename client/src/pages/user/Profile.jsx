@@ -9,7 +9,9 @@ import toast from 'react-hot-toast'
 import AvatarPicker from '../../components/AvatarPicker'
 import BadgesModal from '../../components/BadgesModal'
 import StoryHighlights from '../../components/StoryHighlights'
+import ProfileAvatar from '../../components/ProfileAvatar'
 import { Avatar } from '../../utils/avatarUtils'
+import { useStoryViewer } from '../../components/StoryViewerContext'
 
 const menuItems = [
   { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
@@ -272,12 +274,14 @@ function MembershipSection({ user }) {
 export default function Profile() {
   const { user, logout, updateUser, refreshUser } = useAuthStore()
   const { unreadCount } = useNotificationStore()
+  const { openUserStory } = useStoryViewer()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(user?.name || '')
   const [saving, setSaving] = useState(false)
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const [showBadges, setShowBadges] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [hasStories, setHasStories] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -292,6 +296,22 @@ export default function Profile() {
       setLoading(false)
     }
   }, [user?.avatar])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/stories/feed')
+        if (cancelled) return
+        const groups = data?.groups || []
+        const mine = groups.find((g) => (g.user?._id || g.user) === user?._id)
+        setHasStories(Boolean(mine?.stories?.length))
+      } catch {
+        if (!cancelled) setHasStories(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user?._id])
 
   const handleSave = async () => {
     setSaving(true)
@@ -346,10 +366,17 @@ export default function Profile() {
         className="card text-center"
       >
         <div className="relative inline-block mb-4">
-          <Avatar avatar={user?.avatar} name={user?.name} size="xl" />
+          <ProfileAvatar
+            avatar={user?.avatar}
+            name={user?.name}
+            size="xl"
+            hasStories={hasStories}
+            onViewStory={() => openUserStory(user?._id)}
+          />
           <button
+            type="button"
             onClick={() => setShowAvatarPicker(true)}
-            className="absolute bottom-0 right-0 w-8 h-8 bg-dark-100 rounded-full flex items-center justify-center border border-white/10 hover:border-primary-500 transition-colors"
+            className="absolute bottom-1 right-1 z-10 w-8 h-8 bg-dark-100 rounded-full flex items-center justify-center border border-white/10 hover:border-primary-500 transition-colors"
           >
             <FiCamera size={16} />
           </button>

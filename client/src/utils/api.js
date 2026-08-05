@@ -66,7 +66,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
     const refreshToken = getStoredRefreshToken()
-    const isRefreshEndpoint = originalRequest?.url?.endsWith('/auth/refresh')
+    const url = String(originalRequest?.url || '')
+    const isRefreshEndpoint = url.endsWith('/auth/refresh')
+    const isCredentialRequest =
+      url.includes('/auth/login') ||
+      url.includes('/auth/register') ||
+      url.includes('/auth/request-access')
+
+    // Wrong password / form errors: never wipe an existing session storage by accident
+    if (error.response?.status === 401 && isCredentialRequest) {
+      return Promise.reject(error)
+    }
 
     if (
       error.response?.status === 401 &&
@@ -100,7 +110,8 @@ api.interceptors.response.use(
 
         const token = response.data.token
         const nextRefreshToken = response.data.refreshToken
-        const remember = isRememberMeEnabled()
+        // Keep tokens in the same persistence tier the user chose ("Recordarme")
+        const remember = isRememberMeEnabled() || Boolean(localStorage.getItem('token'))
         setAuthTokens(token, nextRefreshToken, remember)
         processQueue(null, token)
         originalRequest.headers.Authorization = `Bearer ${token}`
@@ -108,7 +119,8 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null)
         clearAuthTokens()
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+        const path = window.location.pathname
+        if (path !== '/login' && path !== '/register' && path !== '/') {
           const redirect = encodeURIComponent(window.location.pathname + window.location.search)
           window.location.href = `/login?redirect=${redirect}`
         }
@@ -118,9 +130,10 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isCredentialRequest) {
       clearAuthTokens()
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+      const path = window.location.pathname
+      if (path !== '/login' && path !== '/register' && path !== '/') {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search)
         window.location.href = `/login?redirect=${redirect}`
       }

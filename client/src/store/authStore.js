@@ -113,6 +113,7 @@ export const useAuthStore = create((set, get) => ({
       initializing: false
     })
     await new Promise((resolve) => setTimeout(resolve, 850))
+    // PWA/logged-out UX: always login. Web landing remains available at `/` via "Volver".
     window.location.href = '/login'
   },
 

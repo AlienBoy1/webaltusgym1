@@ -12,7 +12,8 @@ import {
   FiTrash2,
   FiSearch,
   FiCheck,
-  FiStar
+  FiStar,
+  FiEye
 } from 'react-icons/fi'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
@@ -34,7 +35,12 @@ function storyAttachment(story, kind = 'share') {
   }
 }
 
-export default function StoriesRail() {
+export default function StoriesRail({
+  showRail = true,
+  forceOpenUserId = null,
+  forceOpenStoryId = null,
+  onForceClose = null
+} = {}) {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -61,13 +67,16 @@ export default function StoriesRail() {
   const [selectedShare, setSelectedShare] = useState([])
   const [sharing, setSharing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [viewersOpen, setViewersOpen] = useState(false)
+  const [viewers, setViewers] = useState([])
+  const [loadingViewers, setLoadingViewers] = useState(false)
   const imageInputRef = useRef(null)
   const videoInputRef = useRef(null)
   const timerRef = useRef(null)
   const storyStartedAtRef = useRef(null)
   const remainingMsRef = useRef(null)
   const openStoryHandled = useRef(null)
-  const paused = menuOpen || shareOpen || favoritesOpen || replyFocused || Boolean(reply.trim())
+  const paused = menuOpen || shareOpen || favoritesOpen || viewersOpen || replyFocused || Boolean(reply.trim())
 
   const load = useCallback(async () => {
     try {
@@ -130,21 +139,52 @@ export default function StoriesRail() {
   }, [groups])
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (showRail) load()
+  }, [load, showRail])
 
   useEffect(() => {
-    const storyId = searchParams.get('openStory')
-    if (!storyId || openStoryHandled.current === storyId) return
+    const storyId = forceOpenStoryId || searchParams.get('openStory')
+    if (!storyId) return
+    if (!forceOpenStoryId && openStoryHandled.current === storyId) return
     openStoryHandled.current = storyId
     ;(async () => {
       const fresh = await load()
       await openStoryFromId(storyId, fresh)
-      const next = new URLSearchParams(searchParams)
-      next.delete('openStory')
-      setSearchParams(next, { replace: true })
+      if (!forceOpenStoryId) {
+        const next = new URLSearchParams(searchParams)
+        next.delete('openStory')
+        setSearchParams(next, { replace: true })
+      }
     })()
-  }, [searchParams, load, openStoryFromId, setSearchParams])
+  }, [forceOpenStoryId, searchParams, load, openStoryFromId, setSearchParams])
+
+  useEffect(() => {
+    const userId = forceOpenUserId || searchParams.get('openUserStory')
+    if (!userId) return
+    const key = `user:${userId}`
+    if (!forceOpenUserId && openStoryHandled.current === key) return
+    openStoryHandled.current = key
+    ;(async () => {
+      const fresh = await load()
+      const gi = fresh.findIndex((g) => (g.user?._id || g.user) === userId)
+      if (gi >= 0) {
+        setViewer({ groupIndex: gi, storyIndex: 0 })
+        setReply('')
+        setMenuOpen(false)
+        setShareOpen(false)
+        setFavoritesOpen(false)
+        setViewersOpen(false)
+      } else {
+        toast.error('Este usuario no tiene historias activas')
+        onForceClose?.()
+      }
+      if (!forceOpenUserId) {
+        const next = new URLSearchParams(searchParams)
+        next.delete('openUserStory')
+        setSearchParams(next, { replace: true })
+      }
+    })()
+  }, [forceOpenUserId, searchParams, load, setSearchParams, onForceClose])
 
   const openGroup = (groupIndex, storyIndex = 0) => {
     setViewer({ groupIndex, storyIndex })
@@ -153,6 +193,8 @@ export default function StoriesRail() {
     setMenuOpen(false)
     setShareOpen(false)
     setFavoritesOpen(false)
+    setViewersOpen(false)
+    setViewers([])
   }
 
   const currentGroup = viewer != null ? groups[viewer.groupIndex] : null
@@ -167,10 +209,30 @@ export default function StoriesRail() {
     setMenuOpen(false)
     setShareOpen(false)
     setFavoritesOpen(false)
+    setViewersOpen(false)
+    setViewers([])
     setReply('')
     setReplyFocused(false)
     if (timerRef.current) window.clearTimeout(timerRef.current)
-    load()
+    openStoryHandled.current = null
+    onForceClose?.()
+    if (showRail) load()
+  }
+
+  const openViewers = async () => {
+    if (!currentStory || !isOwnStory) return
+    setMenuOpen(false)
+    setViewersOpen(true)
+    setLoadingViewers(true)
+    try {
+      const { data } = await api.get(`/stories/${currentStory._id || currentStory.id}/viewers`)
+      setViewers(data || [])
+    } catch (error) {
+      setViewers([])
+      toast.error(error.response?.data?.message || 'No se pudieron cargar las vistas')
+    } finally {
+      setLoadingViewers(false)
+    }
   }
 
   const openFavorites = async () => {
@@ -530,6 +592,7 @@ export default function StoriesRail() {
 
   return (
     <>
+      {showRail && (
       <div className="-mx-1 mb-4 overflow-x-auto scrollbar-hide px-1">
         <div className="flex gap-3 pb-1">
           <button
@@ -573,7 +636,9 @@ export default function StoriesRail() {
           })}
         </div>
       </div>
+      )}
 
+      {showRail && (
       <div className="mb-3 flex gap-2 px-1">
         <button
           type="button"
@@ -590,7 +655,10 @@ export default function StoriesRail() {
           <FiVideo size={14} /> Video 30s
         </button>
       </div>
+      )}
 
+      {showRail && (
+      <>
       <input
         ref={imageInputRef}
         type="file"
@@ -613,8 +681,11 @@ export default function StoriesRail() {
           e.target.value = ''
         }}
       />
+      </>
+      )}
 
       {/* Full-screen WhatsApp-style story preview composer */}
+      {showRail && (
       <AnimatePresence>
         {composeOpen && (
           <motion.div
@@ -676,11 +747,12 @@ export default function StoriesRail() {
           </motion.div>
         )}
       </AnimatePresence>
+      )}
 
       {/* Viewer */}
       <AnimatePresence>
         {currentStory && currentGroup && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black">
+          <div className="story-viewer fixed inset-0 z-[80] flex items-center justify-center bg-black">
             <div className="relative flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 {currentGroup.stories.map((s, i) => (
@@ -712,7 +784,7 @@ export default function StoriesRail() {
               <div className="absolute left-0 right-0 top-6 z-30 flex items-center justify-between gap-2 px-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
                 <div className="flex min-w-0 items-center gap-2">
                   <Avatar avatar={currentGroup.user?.avatar} name={currentGroup.user?.name} size="sm" />
-                  <span className="truncate text-sm font-semibold text-white drop-shadow">
+                  <span className="truncate text-sm font-semibold drop-shadow" style={{ color: '#fff' }}>
                     {currentGroup.user?.name}
                   </span>
                 </div>
@@ -720,7 +792,8 @@ export default function StoriesRail() {
                   <button
                     type="button"
                     onClick={() => setMenuOpen((v) => !v)}
-                    className="rounded-full bg-black/40 p-2 text-white"
+                    className="rounded-full bg-black/40 p-2"
+                    style={{ color: '#fff' }}
                     aria-label="Más opciones"
                   >
                     <FiMoreVertical size={18} />
@@ -728,47 +801,58 @@ export default function StoriesRail() {
                   <button
                     type="button"
                     onClick={closeViewer}
-                    className="rounded-full bg-black/40 p-2 text-white"
+                    className="rounded-full bg-black/40 p-2"
+                    style={{ color: '#fff' }}
                   >
                     <FiX size={18} />
                   </button>
                 </div>
               </div>
 
-              {/* Story options */}
+              {/* Story options — always dark chrome (WhatsApp-like) */}
               <AnimatePresence>
                 {menuOpen && (
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    className="absolute right-4 top-16 z-40 w-56 overflow-hidden rounded-2xl border border-white/10 bg-dark-200/95 shadow-2xl backdrop-blur-xl"
+                    className="absolute right-4 top-16 z-40 w-56 overflow-hidden rounded-2xl border border-white/15 shadow-2xl backdrop-blur-xl"
+                    style={{ background: 'rgba(20,20,28,0.97)', color: '#fff' }}
                   >
-                    <button
-                      type="button"
-                      onClick={openFavorites}
-                      className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm text-white hover:bg-white/5"
-                    >
-                      <FiStar className="text-accent-yellow" /> Agregar a favoritos
-                    </button>
+                    {isOwnStory && (
+                      <button
+                        type="button"
+                        onClick={openFavorites}
+                        className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm hover:bg-white/5"
+                        style={{ color: '#fff' }}
+                      >
+                        <FiStar className="text-accent-yellow" /> Agregar a favoritos
+                      </button>
+                    )}
                     {isOwnStory && (
                       <>
                         <button
                           type="button"
                           onClick={openShare}
-                          className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-left text-sm text-white hover:bg-white/5"
+                          className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-3.5 text-left text-sm hover:bg-white/5"
+                          style={{ color: '#fff' }}
                         >
-                          <FiShare2 className="text-primary-400" /> Compartir
+                          <FiShare2 style={{ color: 'var(--color-primary)' }} /> Compartir
                         </button>
                         <button
                           type="button"
                           disabled={deleting}
                           onClick={deleteStory}
-                          className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-left text-sm text-red-400 hover:bg-white/5 disabled:opacity-50"
+                          className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-3.5 text-left text-sm text-red-400 hover:bg-white/5 disabled:opacity-50"
                         >
                           <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
                         </button>
                       </>
+                    )}
+                    {!isOwnStory && (
+                      <p className="px-4 py-3.5 text-sm text-white/70">
+                        Solo puedes guardar tus propias historias en favoritos
+                      </p>
                     )}
                   </motion.div>
                 )}
@@ -811,13 +895,31 @@ export default function StoriesRail() {
               </div>
 
               {currentStory.caption && (
-                <p className="absolute bottom-36 left-4 right-4 z-20 rounded-xl bg-black/45 px-3 py-2 text-center text-sm text-white backdrop-blur-sm">
+                <p
+                  className="absolute bottom-36 left-4 right-4 z-20 rounded-xl px-3 py-2.5 text-center text-sm font-medium leading-relaxed backdrop-blur-md shadow-lg"
+                  style={{
+                    color: '#fff',
+                    background: 'rgba(0,0,0,0.72)',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.8)'
+                  }}
+                >
                   {currentStory.caption}
                 </p>
               )}
 
               <div className="absolute bottom-0 left-0 right-0 z-20 space-y-3 bg-gradient-to-t from-black via-black/80 to-transparent px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10">
-                {!isOwnStory && (
+                {isOwnStory ? (
+                  <button
+                    type="button"
+                    onClick={openViewers}
+                    className="mx-auto flex items-center gap-2 rounded-full bg-white/10 px-4 py-2.5 text-sm text-white backdrop-blur-sm hover:bg-white/20"
+                  >
+                    <FiEye size={16} />
+                    {currentStory.viewCount || 0}{' '}
+                    {(currentStory.viewCount || 0) === 1 ? 'vista' : 'vistas'}
+                  </button>
+                ) : (
                   <>
                     <div className="flex justify-center gap-2">
                       {reactions.map((r) => (
@@ -936,6 +1038,77 @@ export default function StoriesRail() {
                             ? `Enviar (${selectedShare.length})`
                             : 'Selecciona contactos'}
                       </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Viewers inbox — WhatsApp style with reactions */}
+            <AnimatePresence>
+              {viewersOpen && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-50 flex items-end bg-black/70 sm:items-center sm:justify-center sm:p-4"
+                  onClick={() => setViewersOpen(false)}
+                >
+                  <motion.div
+                    initial={{ y: 40 }}
+                    animate={{ y: 0 }}
+                    exit={{ y: 40 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex max-h-[75vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                  >
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <div>
+                        <p className="font-semibold">Vistas</p>
+                        <p className="text-xs text-gray-500">
+                          {viewers.length} {(viewers.length === 1 ? 'persona' : 'personas')}
+                        </p>
+                      </div>
+                      <button type="button" onClick={() => setViewersOpen(false)} className="p-2 text-gray-400">
+                        <FiX />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-2 py-2">
+                      {loadingViewers ? (
+                        <div className="flex justify-center py-10">
+                          <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/10 border-t-primary-500" />
+                        </div>
+                      ) : viewers.length === 0 ? (
+                        <p className="py-10 text-center text-sm text-gray-500">
+                          Todavía nadie ha visto esta historia
+                        </p>
+                      ) : (
+                        viewers.map((v) => (
+                          <div
+                            key={v.userId}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                          >
+                            <Avatar avatar={v.user?.avatar} name={v.user?.name} size="md" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-white">{v.user?.name}</p>
+                              {v.viewedAt && (
+                                <p className="text-xs text-gray-500">
+                                  {new Date(v.viewedAt).toLocaleString('es', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    day: 'numeric',
+                                    month: 'short'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                            {v.reaction && (
+                              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl">
+                                {v.reaction}
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </motion.div>
                 </motion.div>

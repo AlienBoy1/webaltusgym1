@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPlus, FiCheck, FiPlay, FiX, FiTrash2, FiSkipForward, FiShare2 } from 'react-icons/fi'
+import { FiPlus, FiCheck, FiPlay, FiX, FiTrash2, FiSkipForward, FiShare2, FiEdit2, FiCompass, FiGlobe } from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Timer from '../../components/Timer'
@@ -151,15 +151,39 @@ export default function Workouts() {
   const [preferences] = useState(() => getWorkoutPreferences() || { restTimerDefault: DEFAULT_REST_SECONDS })
   const [saving, setSaving] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [newRoutine, setNewRoutine] = useState({
     name: '',
-    exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }]
+    exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
+    isPublic: false
   })
   const { celebration } = useConfetti()
 
   useEffect(() => {
     localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify(templates))
   }, [templates])
+
+  const syncRoutineToServer = async (routine, { remove = false } = {}) => {
+    try {
+      if (remove && routine.serverId) {
+        await api.delete(`/workouts/routines/${routine.serverId}`)
+        return null
+      }
+      const payload = {
+        id: routine.serverId || undefined,
+        localId: routine.id,
+        name: routine.name,
+        exercises: routine.exercises,
+        color: routine.color || 'primary',
+        isPublic: Boolean(routine.isPublic)
+      }
+      const { data } = await api.post('/workouts/routines', payload)
+      return data
+    } catch (error) {
+      console.warn('Routine sync skipped:', error?.response?.data?.message || error.message)
+      return null
+    }
+  }
 
   // Restore session once — never clear before hydration
   useEffect(() => {
@@ -447,23 +471,127 @@ export default function Workouts() {
     }))
   }
 
-  const saveNewRoutine = () => {
+  const saveNewRoutine = async () => {
     if (!newRoutine.name.trim() || newRoutine.exercises.some((exercise) => !exercise.name.trim())) {
       toast.error('Completa todos los campos antes de guardar la rutina')
       return
     }
     const colors = ['primary', 'cyan', 'purple', 'green']
-    setTemplates((current) => [
-      ...current,
-      {
-        ...newRoutine,
-        id: createWorkoutId(),
-        color: colors[current.length % colors.length]
+
+    if (editingId) {
+      let updatedRoutine = null
+      setTemplates((current) =>
+        current.map((t) => {
+          if (t.id !== editingId) return t
+          updatedRoutine = {
+            ...t,
+            name: newRoutine.name.trim(),
+            exercises: newRoutine.exercises,
+            isPublic: Boolean(newRoutine.isPublic)
+          }
+          return updatedRoutine
+        })
+      )
+      if (updatedRoutine) {
+        const synced = await syncRoutineToServer(updatedRoutine)
+        if (synced?.id || synced?._id) {
+          setTemplates((current) =>
+            current.map((t) =>
+              t.id === editingId ? { ...t, serverId: synced.id || synced._id, isPublic: synced.isPublic } : t
+            )
+          )
+        }
       }
-    ])
+      toast.success('Rutina actualizada')
+    } else {
+      const created = {
+        ...newRoutine,
+        name: newRoutine.name.trim(),
+        id: createWorkoutId(),
+        color: colors[templates.length % colors.length],
+        isPublic: Boolean(newRoutine.isPublic)
+      }
+      setTemplates((current) => [...current, created])
+      const synced = await syncRoutineToServer(created)
+      if (synced?.id || synced?._id) {
+        setTemplates((current) =>
+          current.map((t) =>
+            t.id === created.id ? { ...t, serverId: synced.id || synced._id } : t
+          )
+        )
+      }
+      toast.success(created.isPublic ? 'Rutina pública guardada' : 'Rutina guardada')
+    }
+
     setShowCreateModal(false)
-    setNewRoutine({ name: '', exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }] })
-    toast.success('Rutina guardada')
+    setEditingId(null)
+    setNewRoutine({
+      name: '',
+      exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
+      isPublic: false
+    })
+  }
+
+  const openEditRoutine = (template) => {
+    setEditingId(template.id)
+    setNewRoutine({
+      name: template.name,
+      exercises: template.exercises.map((ex) => ({ ...ex })),
+      isPublic: Boolean(template.isPublic)
+    })
+    setShowCreateModal(true)
+  }
+
+  const deleteRoutine = async (template) => {
+    if (!window.confirm(`¿Eliminar la rutina "${template.name}"?`)) return
+    setTemplates((current) => current.filter((t) => t.id !== template.id))
+    await syncRoutineToServer(template, { remove: true })
+    toast.success('Rutina eliminada')
+  }
+
+  const togglePublic = async (template) => {
+    const next = !template.isPublic
+    const updated = { ...template, isPublic: next }
+    setTemplates((current) => current.map((t) => (t.id === template.id ? updated : t)))
+    const synced = await syncRoutineToServer(updated)
+    if (synced?.id || synced?._id) {
+      setTemplates((current) =>
+        current.map((t) =>
+          t.id === template.id ? { ...t, serverId: synced.id || synced._id, isPublic: synced.isPublic } : t
+        )
+      )
+    }
+    toast.success(next ? 'Rutina marcada como pública' : 'Rutina ahora es privada')
+  }
+
+  const shareRoutineToCommunity = async (template) => {
+    try {
+      await api.post('/social', {
+        content: `Comparte mi rutina GymRat: ${template.name}`,
+        postType: 'workout',
+        workoutData: {
+          name: template.name,
+          completedExercises: template.exercises.length,
+          totalExercises: template.exercises.length,
+          totalSets: template.exercises.reduce((s, e) => s + (Number(e.sets) || 0), 0),
+          durationSeconds: 0,
+          routineId: template.serverId || template.id,
+          isPublicRoutine: Boolean(template.isPublic),
+          exercises: template.exercises.map((e) => ({
+            name: e.name,
+            sets: e.sets,
+            reps: e.reps
+          }))
+        }
+      })
+      if (!template.isPublic) {
+        await togglePublic({ ...template, isPublic: false })
+      }
+      toast.success('Rutina compartida en Comunidad')
+      navigate('/social')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo compartir')
+    }
   }
 
   if (activeWorkout) {
@@ -650,9 +778,30 @@ export default function Workouts() {
           <h1 className="font-display text-3xl text-white sm:text-5xl">Entrenamientos</h1>
           <p className="mt-2 max-w-lg text-sm text-gray-400 sm:text-base">Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.</p>
         </div>
-        <button type="button" onClick={() => setShowCreateModal(true)} className="btn-primary inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm sm:w-auto sm:self-start">
-          <FiPlus size={18} /> Nueva rutina
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:self-start">
+          <button
+            type="button"
+            onClick={() => navigate('/explore-routines')}
+            className="btn-secondary inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm sm:w-auto"
+          >
+            <FiCompass size={18} /> Explorar rutinas
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingId(null)
+              setNewRoutine({
+                name: '',
+                exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
+                isPublic: false
+              })
+              setShowCreateModal(true)
+            }}
+            className="btn-primary inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm sm:w-auto"
+          >
+            <FiPlus size={18} /> Nueva rutina
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -669,6 +818,7 @@ export default function Workouts() {
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-400">
                   {template.exercises.length} ejercicios
+                  {template.isPublic ? ' · Pública' : ''}
                 </p>
                 <h2 className="mt-2 font-display text-2xl text-white">{template.name}</h2>
               </div>
@@ -687,10 +837,40 @@ export default function Workouts() {
                 <li className="text-xs text-gray-500">+{template.exercises.length - 3} más</li>
               )}
             </ul>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openEditRoutine(template)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              >
+                <FiEdit2 size={14} /> Editar
+              </button>
+              <button
+                type="button"
+                onClick={() => togglePublic(template)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              >
+                <FiGlobe size={14} /> {template.isPublic ? 'Privada' : 'Pública'}
+              </button>
+              <button
+                type="button"
+                onClick={() => shareRoutineToCommunity(template)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              >
+                <FiShare2 size={14} /> Compartir
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteRoutine(template)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-red-300 hover:bg-black/40"
+              >
+                <FiTrash2 size={14} /> Eliminar
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => startWorkout(template)}
-              className="btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3"
+              className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3"
             >
               <FiPlay size={16} /> Iniciar
             </button>
@@ -709,10 +889,17 @@ export default function Workouts() {
             >
               <div className="mb-6 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm text-gray-400">Nueva rutina</p>
-                  <h2 className="font-display text-2xl">Crea tu plan</h2>
+                  <p className="text-sm text-gray-400">{editingId ? 'Editar rutina' : 'Nueva rutina'}</p>
+                  <h2 className="font-display text-2xl">{editingId ? 'Actualiza tu plan' : 'Crea tu plan'}</h2>
                 </div>
-                <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false)
+                    setEditingId(null)
+                  }}
+                  className="text-gray-400 hover:text-white"
+                >
                   <FiX size={24} />
                 </button>
               </div>
@@ -728,6 +915,20 @@ export default function Workouts() {
                     className="input-field"
                   />
                 </div>
+
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  <span>
+                    <span className="block font-medium">Rutina pública</span>
+                    <span className="text-xs text-gray-500">Visible para tu comunidad GymRat</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setNewRoutine((c) => ({ ...c, isPublic: !c.isPublic }))}
+                    className={`h-6 w-12 rounded-full transition-colors ${newRoutine.isPublic ? 'bg-primary-500' : 'bg-dark-300'}`}
+                  >
+                    <span className={`block h-5 w-5 rounded-full bg-white transition-transform ${newRoutine.isPublic ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </label>
 
                 <div>
                   <div className="mb-3 flex items-center justify-between">
@@ -772,11 +973,18 @@ export default function Workouts() {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary w-full py-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateModal(false)
+                      setEditingId(null)
+                    }}
+                    className="btn-secondary w-full py-3"
+                  >
                     Cancelar
                   </button>
                   <button type="button" onClick={saveNewRoutine} className="btn-primary w-full py-3">
-                    Guardar
+                    {editingId ? 'Guardar cambios' : 'Guardar'}
                   </button>
                 </div>
               </div>

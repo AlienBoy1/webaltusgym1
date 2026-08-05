@@ -7,6 +7,22 @@ import api from '../../utils/api'
 import { onChatEvent, sendTyping, showNotification, requestNotificationPermission } from '../../utils/socket'
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
+import { useStoryViewer } from '../../components/StoryViewerContext'
+
+function MessageTicks({ status }) {
+  if (!status) return null
+  const read = status === 'read'
+  const delivered = status === 'delivered' || read
+  return (
+    <span
+      className="ml-1 inline-flex items-end text-[11px] leading-none tracking-tighter"
+      style={{ color: read ? '#53bdeb' : 'rgba(255,255,255,0.7)' }}
+      title={read ? 'Leído' : delivered ? 'Entregado' : 'Enviado'}
+    >
+      {delivered ? '✓✓' : '✓'}
+    </span>
+  )
+}
 
 function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   if (!attachment || attachment.type !== 'story') return null
@@ -73,11 +89,13 @@ export default function Chat() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const { openUserStory, openStoryById } = useStoryViewer()
   const [conversations, setConversations] = useState([])
   const [selectedChat, setSelectedChat] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [search, setSearch] = useState('')
+  const [storyUsers, setStoryUsers] = useState(() => new Set())
   const [showNewChat, setShowNewChat] = useState(false)
   const [userSearch, setUserSearch] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -94,9 +112,35 @@ export default function Chat() {
   }, [selectedChat])
 
   useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/stories/feed')
+        if (cancelled) return
+        const ids = new Set(
+          (data?.groups || [])
+            .filter((g) => g.stories?.length)
+            .map((g) => g.user?._id || g.user)
+            .filter(Boolean)
+        )
+        setStoryUsers(ids)
+      } catch {
+        if (!cancelled) setStoryUsers(new Set())
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!user?._id) return
 
     const handleNewMessage = (data) => {
+      // Ack delivery to sender
+      if (data.from) {
+        api.post(`/chat/delivered/${data.from}`).catch(() => {})
+      }
       showNotification(`${data.fromName}`, data.message, {
         tag: `msg-${data.from}`,
         onClick: () => navigate('/chat')
@@ -274,6 +318,7 @@ export default function Chat() {
       id: tempId,
       sender: 'me',
       text: msgText,
+      status: 'sent',
       time: new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
     }
     setMessages((prev) => [...prev, tempMsg])
@@ -429,14 +474,39 @@ export default function Chat() {
                   className="relative flex-shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Avatar avatar={conv.avatar} name={conv.name} size="md" />
+                  <span
+                    className={
+                      storyUsers.has(conv.otherId)
+                        ? 'inline-flex rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] to-[color:var(--color-accent)] p-[2px]'
+                        : ''
+                    }
+                  >
+                    <span
+                      className="rounded-full bg-[color:var(--bg-card)] p-[1px]"
+                      onClick={(e) => {
+                        if (!storyUsers.has(conv.otherId)) return
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openUserStory(conv.otherId)
+                      }}
+                      role={storyUsers.has(conv.otherId) ? 'button' : undefined}
+                    >
+                      <Avatar avatar={conv.avatar} name={conv.name} size="md" />
+                    </span>
+                  </span>
                   {isOnline(conv.otherId) && (
                     <div className="absolute bottom-0 right-0 w-3 h-3 bg-accent-green rounded-full border-2 border-dark-200" />
                   )}
                 </Link>
                 <div className="flex-1 text-left min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium truncate">{conv.name}</span>
+                    <Link
+                      to={`/user/${conv.otherId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium truncate hover:text-primary-500"
+                    >
+                      {conv.name}
+                    </Link>
                     <span className="text-xs text-gray-500 flex-shrink-0">{conv.time}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
@@ -466,8 +536,27 @@ export default function Chat() {
             >
               <FiArrowLeft size={20} />
             </button>
-            <Link to={`/user/${selectedChat.otherId}`} className="relative flex-shrink-0">
-              <Avatar avatar={selectedChat.avatar} name={selectedChat.name} size="sm" />
+            <Link
+              to={`/user/${selectedChat.otherId}`}
+              className="relative flex-shrink-0"
+              onClick={(e) => {
+                if (storyUsers.has(selectedChat.otherId)) {
+                  e.preventDefault()
+                  openUserStory(selectedChat.otherId)
+                }
+              }}
+            >
+              <span
+                className={
+                  storyUsers.has(selectedChat.otherId)
+                    ? 'inline-flex rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] to-[color:var(--color-accent)] p-[2px]'
+                    : ''
+                }
+              >
+                <span className="rounded-full bg-[color:var(--bg-card)] p-[1px]">
+                  <Avatar avatar={selectedChat.avatar} name={selectedChat.name} size="sm" />
+                </span>
+              </span>
               {isOnline(selectedChat.otherId) && (
                 <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-accent-green rounded-full border-2 border-dark-200" />
               )}
@@ -511,11 +600,15 @@ export default function Chat() {
                       isMe={msg.sender === 'me'}
                       hasText={Boolean(msg.text?.trim())}
                       onOpen={(att) => {
-                        if (!att?.storyId) {
-                          toast.error('No se pudo abrir este estado')
+                        if (att?.storyId) {
+                          openStoryById(att.storyId)
                           return
                         }
-                        navigate(`/social?openStory=${att.storyId}`)
+                        if (selectedChat?.otherId) {
+                          openUserStory(selectedChat.otherId)
+                          return
+                        }
+                        toast.error('No se pudo abrir este estado')
                       }}
                     />
                     {msg.text ? <p className="break-words">{msg.text}</p> : null}
@@ -523,11 +616,12 @@ export default function Chat() {
                       <p className="break-words opacity-70"> </p>
                     ) : null}
                     <p
-                      className={`text-xs mt-1 ${
+                      className={`text-xs mt-1 flex items-center justify-end gap-0.5 ${
                         msg.sender === 'me' ? 'text-white/70' : 'text-gray-500'
                       }`}
                     >
                       {msg.time}
+                      {msg.sender === 'me' && <MessageTicks status={msg.status || (msg.read ? 'read' : msg.delivered ? 'delivered' : 'sent')} />}
                     </p>
                   </div>
                 </motion.div>

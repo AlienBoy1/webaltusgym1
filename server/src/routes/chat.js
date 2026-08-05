@@ -74,16 +74,65 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
     if (error) throw error
 
+    // Mark inbound as delivered + read (WhatsApp style when opening chat)
+    const now = new Date().toISOString()
     await supabaseAdmin
       .from('messages')
-      .update({ read: true })
+      .update({ read: true, delivered: true, delivered_at: now })
       .eq('from_user_id', otherId)
       .eq('to_user_id', myId)
-      .eq('read', false)
+      .or('read.eq.false,delivered.eq.false')
 
-    res.json((messages || []).map((m) => formatChatMessage(m, myId)))
+    // Also mark any of my outbound as delivered if peer previously opened? already handled when they open.
+
+    res.json((messages || []).map((m) => {
+      // Reflect read/delivered for messages we just marked
+      if (m.from_user_id === otherId && m.to_user_id === myId) {
+        return formatChatMessage({ ...m, read: true, delivered: true }, myId)
+      }
+      return formatChatMessage(m, myId)
+    }))
   } catch (error) {
-    res.status(500).json({ message: 'Error', error: error.message })
+    // Fallback if delivered columns missing
+    try {
+      const myId = req.user.id
+      const otherId = req.params.userId
+      const { data: messages } = await supabaseAdmin
+        .from('messages')
+        .select('*')
+        .or(
+          `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
+        )
+        .order('created_at', { ascending: true })
+      await supabaseAdmin
+        .from('messages')
+        .update({ read: true })
+        .eq('from_user_id', otherId)
+        .eq('to_user_id', myId)
+        .eq('read', false)
+      res.json((messages || []).map((m) => formatChatMessage(m, myId)))
+    } catch (err2) {
+      res.status(500).json({ message: 'Error', error: error.message })
+    }
+  }
+})
+
+// Mark messages as delivered (recipient device ack)
+router.post('/delivered/:userId', authenticate, async (req, res) => {
+  try {
+    const myId = req.user.id
+    const fromId = req.params.userId
+    const now = new Date().toISOString()
+    const { error } = await supabaseAdmin
+      .from('messages')
+      .update({ delivered: true, delivered_at: now })
+      .eq('from_user_id', fromId)
+      .eq('to_user_id', myId)
+      .eq('delivered', false)
+    if (error) throw error
+    res.json({ ok: true })
+  } catch (error) {
+    res.json({ ok: false })
   }
 })
 

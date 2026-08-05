@@ -230,14 +230,14 @@ export default function MyWorkouts() {
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 40, opacity: 0 }}
-              className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-white/10 bg-dark-200 p-5 sm:rounded-3xl sm:p-6"
+              className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] p-5 sm:rounded-3xl sm:p-6"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Reporte</p>
-                  <h2 className="font-display text-2xl text-white truncate">{selected.name}</h2>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[color:var(--text-muted)]">Reporte</p>
+                  <h2 className="font-display text-2xl text-[color:var(--text-primary)] truncate">{selected.name}</h2>
                   {selected.completedAt && (
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-[color:var(--text-secondary)]">
                       {format(parseISO(selected.completedAt), "EEEE d 'de' MMMM", { locale: es })}
                     </p>
                   )}
@@ -245,7 +245,7 @@ export default function MyWorkouts() {
                 <button
                   type="button"
                   onClick={() => setSelected(null)}
-                  className="rounded-xl bg-white/5 p-2 text-gray-400 hover:text-white"
+                  className="rounded-xl bg-[color:var(--bg-muted)] p-2 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                 >
                   <FiX size={18} />
                 </button>
@@ -271,37 +271,38 @@ export default function MyWorkouts() {
                       report.bestRest != null ? `${report.bestRest}s` : '—'
                   }
                 ].map((stat) => (
-                  <div key={stat.label} className="rounded-2xl bg-dark-300/80 p-3 text-center">
-                    <stat.icon className="mx-auto text-primary-400" size={16} />
-                    <p className="mt-1 text-lg font-semibold text-white">{stat.value}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">{stat.label}</p>
+                  <div key={stat.label} className="rounded-2xl bg-[color:var(--bg-muted)] p-3 text-center">
+                    <stat.icon className="mx-auto text-[color:var(--color-primary)]" size={16} />
+                    <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">{stat.value}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">{stat.label}</p>
                   </div>
                 ))}
               </div>
 
               {report.avgRest != null && (
-                <p className="mt-3 text-center text-xs text-gray-500">
+                <p className="mt-3 text-center text-xs text-[color:var(--text-muted)]">
                   Descanso promedio entre ejercicios: {report.avgRest}s
                 </p>
               )}
 
               <div className="mt-5">
-                <p className="mb-1 text-sm font-semibold text-white">Rendimiento por ejercicio</p>
-                <p className="mb-3 text-xs text-gray-500">
+                <p className="mb-1 text-sm font-semibold text-[color:var(--text-primary)]">Rendimiento por ejercicio</p>
+                <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                   Volumen ≈ series × reps. Mide el trabajo hecho en cada movimiento.
                 </p>
                 {report.chart.length > 0 ? (
-                  <div className="h-52 w-full rounded-2xl bg-dark-300/50 p-2">
+                  <div className="h-52 w-full rounded-2xl bg-[color:var(--bg-muted)] p-2">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={report.chart} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                        <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                        <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                        <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                        <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                         <Tooltip
                           contentStyle={{
-                            background: '#14141C',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            borderRadius: 12
+                            background: 'var(--bg-elevated)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 12,
+                            color: 'var(--text-primary)'
                           }}
                           labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
                           formatter={(value, key) => [
@@ -309,27 +310,29 @@ export default function MyWorkouts() {
                             key === 'volumen' ? 'Volumen (series×reps)' : 'Series'
                           ]}
                         />
-                        <Bar dataKey="volumen" fill="#FF6B35" radius={[6, 6, 0, 0]} />
-                        <Bar dataKey="series" fill="#00F5FF" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="volumen" fill="var(--color-primary)" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="series" fill="var(--color-accent)" radius={[6, 6, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">Sin datos suficientes para la gráfica.</p>
+                  <p className="text-sm text-[color:var(--text-muted)]">Sin datos suficientes para la gráfica.</p>
                 )}
               </div>
 
               <div className="mt-5 space-y-2">
-                <p className="text-sm font-semibold text-white">Detalle de series</p>
+                <p className="text-sm font-semibold text-[color:var(--text-primary)]">Detalle de series</p>
                 {(selected.exercises || []).map((ex, idx) => (
                   <div
                     key={ex.id || idx}
                     className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm ${
-                      ex.completed === false ? 'bg-white/5 text-gray-500' : 'bg-accent-green/10 text-white'
+                      ex.completed === false
+                        ? 'bg-[color:var(--bg-muted)] text-[color:var(--text-muted)]'
+                        : 'bg-accent-green/10 text-[color:var(--text-primary)]'
                     }`}
                   >
                     <span className="truncate pr-2">{ex.name}</span>
-                    <span className="shrink-0 tabular-nums text-gray-300">
+                    <span className="shrink-0 tabular-nums text-[color:var(--text-secondary)]">
                       {ex.setsCompleted ?? ex.sets}×{ex.reps}
                       {ex.completed === false ? '' : ' ✓'}
                     </span>

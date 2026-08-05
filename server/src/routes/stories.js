@@ -455,6 +455,52 @@ router.post('/:id/view', authenticate, async (req, res) => {
   }
 })
 
+// WhatsApp-style viewers inbox (own stories only) — includes reaction if any
+router.get('/:id/viewers', authenticate, async (req, res) => {
+  try {
+    const { data: story } = await supabaseAdmin
+      .from('stories')
+      .select('id, user_id')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (!story) return res.status(404).json({ message: 'Historia no encontrada' })
+    if (story.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Solo el autor puede ver quién vio la historia' })
+    }
+
+    const [{ data: views }, { data: reactions }] = await Promise.all([
+      supabaseAdmin
+        .from('story_views')
+        .select('user_id, viewed_at')
+        .eq('story_id', story.id)
+        .order('viewed_at', { ascending: false }),
+      supabaseAdmin.from('story_reactions').select('user_id, emoji').eq('story_id', story.id)
+    ])
+
+    const reactionByUser = Object.fromEntries((reactions || []).map((r) => [r.user_id, r.emoji]))
+    const viewerIds = (views || []).map((v) => v.user_id).filter((id) => id !== req.user.id)
+    const userMap = await getProfilesMap(viewerIds)
+
+    res.json(
+      viewerIds.map((uid) => {
+        const view = (views || []).find((v) => v.user_id === uid)
+        const profile = userMap[uid]
+        return {
+          userId: uid,
+          user: profile
+            ? { _id: uid, id: uid, name: profile.name, avatar: profile.avatar }
+            : { _id: uid, id: uid, name: 'Usuario' },
+          viewedAt: view?.viewed_at || null,
+          reaction: reactionByUser[uid] || null
+        }
+      })
+    )
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener vistas', error: error.message })
+  }
+})
+
 router.post('/:id/react', authenticate, async (req, res) => {
   try {
     await purgeExpiredStories()

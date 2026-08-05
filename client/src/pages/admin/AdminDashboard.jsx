@@ -77,29 +77,29 @@ export default function AdminDashboard() {
   }
   
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-3xl md:text-4xl">Dashboard</h1>
-          <p className="text-gray-400">Bienvenido al panel de administración</p>
+    <div className="space-y-4 sm:space-y-6 min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl sm:text-3xl md:text-4xl">Dashboard</h1>
+          <p className="text-[color:var(--text-secondary)] text-sm sm:text-base">Bienvenido al panel de administración</p>
         </div>
-        <div className="text-sm text-gray-400">
+        <div className="text-xs sm:text-sm text-[color:var(--text-muted)] capitalize truncate">
           {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
       </div>
       
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statsCards.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="card"
+            className="card min-w-0"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+            <div className="flex items-start justify-between mb-3 gap-2">
+              <div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${
                 stat.color === 'primary' ? 'bg-primary-500/20 text-primary-500' :
                 stat.color === 'cyan' ? 'bg-accent-cyan/20 text-accent-cyan' :
                 stat.color === 'green' ? 'bg-accent-green/20 text-accent-green' :
@@ -109,8 +109,8 @@ export default function AdminDashboard() {
               </div>
               <span className="text-accent-green text-sm font-medium">{stat.change}</span>
             </div>
-            <div className="font-display text-2xl mb-1">{stat.value}</div>
-            <div className="text-gray-400 text-sm">{stat.label}</div>
+            <div className="font-display text-xl sm:text-2xl mb-1 truncate">{stat.value}</div>
+            <div className="text-gray-400 text-xs sm:text-sm">{stat.label}</div>
           </motion.div>
         ))}
       </div>
@@ -152,15 +152,15 @@ export default function AdminDashboard() {
           className="card"
         >
           <h2 className="font-display text-xl mb-4">Asistencia Semanal</h2>
-          <div className="h-64">
+          <div className="h-56 sm:h-64 min-w-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={attendanceData}>
                 <XAxis dataKey="day" stroke="#666" fontSize={12} />
-                <YAxis stroke="#666" fontSize={12} />
+                <YAxis stroke="#666" fontSize={12} width={32} />
                 <Tooltip 
-                  contentStyle={{ background: '#14141C', border: '1px solid #333', borderRadius: '8px' }}
+                  contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}
                 />
-                <Bar dataKey="visits" fill="#FF6B35" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="visits" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -173,7 +173,7 @@ export default function AdminDashboard() {
           className="card"
         >
           <h2 className="font-display text-xl mb-4">Ingresos Mensuales</h2>
-          <div className="h-64">
+          <div className="h-56 sm:h-64 min-w-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueData}>
                 <defs>
@@ -183,9 +183,9 @@ export default function AdminDashboard() {
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="month" stroke="#666" fontSize={12} />
-                <YAxis stroke="#666" fontSize={12} />
+                <YAxis stroke="#666" fontSize={12} width={40} />
                 <Tooltip 
-                  contentStyle={{ background: '#14141C', border: '1px solid #333', borderRadius: '8px' }}
+                  contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}
                   formatter={(value) => [`$${value.toLocaleString()}`, 'Ingresos']}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#22C55E" fill="url(#revenueGradient)" strokeWidth={2} />

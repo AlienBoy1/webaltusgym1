@@ -1,59 +1,74 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import UpdateCenter from './components/UpdateCenter'
 import WorkoutFloatingPanel from './components/WorkoutFloatingPanel'
 import WorkoutSessionManager from './components/WorkoutSessionManager'
 import SessionTheater from './components/SessionTheater'
 
-// Layouts
+// Layouts (keep eager — shell of the app)
 import MainLayout from './layouts/MainLayout'
 import AdminLayout from './layouts/AdminLayout'
 
-// Public Pages
-import Landing from './pages/Landing'
+// Public — eager for first paint
+import HomeEntry from './pages/HomeEntry'
 import Login from './pages/Login'
-import Register from './pages/Register'
-import ForgotPassword from './pages/ForgotPassword'
-import ResetPassword from './pages/ResetPassword'
 
-// User Pages
-import Dashboard from './pages/user/Dashboard'
-import Social from './pages/user/Social'
-import Workouts from './pages/user/Workouts'
-import MyWorkouts from './pages/user/MyWorkouts'
-import Progress from './pages/user/Progress'
-import Profile from './pages/user/Profile'
-import UserProfile from './pages/user/UserProfile'
-import Notifications from './pages/user/Notifications'
-import UserSettings from './pages/user/Settings'
-import Classes from './pages/user/Classes'
-import Challenges from './pages/user/Challenges'
-import Chat from './pages/user/Chat'
+const Register = lazy(() => import('./pages/Register'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 
-// Admin Pages
-import AdminDashboard from './pages/admin/AdminDashboard'
-import Users from './pages/admin/Users'
-import Memberships from './pages/admin/Memberships'
-import Attendance from './pages/admin/Attendance'
-import Reports from './pages/admin/Reports'
-import Settings from './pages/admin/Settings'
+// User pages — code-split for faster navigation
+const Dashboard = lazy(() => import('./pages/user/Dashboard'))
+const Social = lazy(() => import('./pages/user/Social'))
+const Workouts = lazy(() => import('./pages/user/Workouts'))
+const MyWorkouts = lazy(() => import('./pages/user/MyWorkouts'))
+const Progress = lazy(() => import('./pages/user/Progress'))
+const Profile = lazy(() => import('./pages/user/Profile'))
+const UserProfile = lazy(() => import('./pages/user/UserProfile'))
+const Notifications = lazy(() => import('./pages/user/Notifications'))
+const UserSettings = lazy(() => import('./pages/user/Settings'))
+const Classes = lazy(() => import('./pages/user/Classes'))
+const Challenges = lazy(() => import('./pages/user/Challenges'))
+const Chat = lazy(() => import('./pages/user/Chat'))
+const ExploreRoutines = lazy(() => import('./pages/user/ExploreRoutines'))
 
-// Protected Route Component
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
+const Users = lazy(() => import('./pages/admin/Users'))
+const Memberships = lazy(() => import('./pages/admin/Memberships'))
+const Attendance = lazy(() => import('./pages/admin/Attendance'))
+const Reports = lazy(() => import('./pages/admin/Reports'))
+const Settings = lazy(() => import('./pages/admin/Settings'))
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center">
+      <div
+        className="h-8 w-8 animate-spin rounded-full border-2 border-[color:var(--border-subtle)]"
+        style={{ borderTopColor: 'var(--color-primary)' }}
+      />
+    </div>
+  )
+}
+
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, isAuthenticated } = useAuthStore()
   const location = useLocation()
-  
+
   if (!isAuthenticated) {
+    // Don't bounce marketing `/` into an endless login?redirect=/ loop
+    if (location.pathname === '/' || location.pathname === '') {
+      return <Navigate to="/login" replace />
+    }
     const redirect = encodeURIComponent(location.pathname + location.search)
     return <Navigate to={`/login?redirect=${redirect}`} replace />
   }
-  
+
   if (adminOnly && user?.role !== 'admin') {
     return <Navigate to="/dashboard" replace />
   }
-  
+
   return children
 }
 
@@ -94,7 +109,6 @@ function App() {
     checkAuth()
   }, [checkAuth])
 
-  // Recovery links sometimes land on /#access_token=...&type=recovery — send to reset UI
   useEffect(() => {
     const hash = window.location.hash || ''
     if (!hash.includes('type=recovery') && !hash.includes('type%3Drecovery')) return
@@ -112,10 +126,10 @@ function App() {
       />
     )
   }
-  
+
   return (
     <BrowserRouter>
-      <Toaster 
+      <Toaster
         position="top-right"
         toastOptions={{
           duration: 4000,
@@ -132,7 +146,7 @@ function App() {
           }
         }}
       />
-      
+
       <UpdateCenter />
       <WorkoutSessionManager />
       <WorkoutFloatingPanel />
@@ -145,50 +159,55 @@ function App() {
         subtitle={authIntent === 'logout' ? 'Cerrando tu sesión…' : 'Entrando a tu cuenta…'}
       />
 
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        
-        {/* User Routes */}
-        <Route element={
-          <ProtectedRoute>
-            <MainLayout />
-          </ProtectedRoute>
-        }>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="social" element={<Social />} />
-          <Route path="workouts" element={<Workouts />} />
-          <Route path="my-workouts" element={<MyWorkouts />} />
-          <Route path="progress" element={<Progress />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="user/:id" element={<UserProfile />} />
-          <Route path="notifications" element={<Notifications />} />
-          <Route path="settings" element={<UserSettings />} />
-          <Route path="classes" element={<Classes />} />
-          <Route path="challenges" element={<Challenges />} />
-          <Route path="chat" element={<Chat />} />
-        </Route>
-        
-        {/* Admin Routes */}
-        <Route path="/admin" element={
-          <ProtectedRoute adminOnly>
-            <AdminLayout />
-          </ProtectedRoute>
-        }>
-          <Route index element={<AdminDashboard />} />
-          <Route path="users" element={<Users />} />
-          <Route path="memberships" element={<Memberships />} />
-          <Route path="attendance" element={<Attendance />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/" element={<HomeEntry />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+
+          <Route
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            {/* IMPORTANT: no `index` here — it stole `/` from the landing and forced login?redirect=/ */}
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="social" element={<Social />} />
+            <Route path="workouts" element={<Workouts />} />
+            <Route path="explore-routines" element={<ExploreRoutines />} />
+            <Route path="my-workouts" element={<MyWorkouts />} />
+            <Route path="progress" element={<Progress />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="user/:id" element={<UserProfile />} />
+            <Route path="notifications" element={<Notifications />} />
+            <Route path="settings" element={<UserSettings />} />
+            <Route path="classes" element={<Classes />} />
+            <Route path="challenges" element={<Challenges />} />
+            <Route path="chat" element={<Chat />} />
+          </Route>
+
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<AdminDashboard />} />
+            <Route path="users" element={<Users />} />
+            <Route path="memberships" element={<Memberships />} />
+            <Route path="attendance" element={<Attendance />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

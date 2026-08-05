@@ -12,6 +12,10 @@ import { formatDistanceToNow, format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Avatar } from '../../utils/avatarUtils'
 import StoriesRail from '../../components/StoriesRail'
+import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
+import PostReactionButton from '../../components/PostReactionButton'
+
+const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
 const moods = [
   { id: 'happy', label: 'Feliz', emoji: '😊', color: 'from-yellow-400 to-orange-500' },
@@ -40,12 +44,26 @@ export default function Social() {
   const [showComments, setShowComments] = useState({})
   const [commenting, setCommenting] = useState({})
   const [voting, setVoting] = useState({})
+  const [routineModal, setRoutineModal] = useState(null)
   const fileInputRef = useRef(null)
   const imagePreviewRefs = useRef({})
 
   useEffect(() => {
     fetchPosts()
   }, [])
+
+  const adoptRoutine = () => {
+    if (!routineModal) return
+    const local = toStartableTemplate(routineModal)
+    try {
+      const stored = JSON.parse(localStorage.getItem(WORKOUT_TEMPLATES_KEY) || '[]')
+      localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify([...stored, local]))
+      toast.success('Rutina adoptada en Entrenos')
+      setRoutineModal(null)
+    } catch {
+      toast.error('No se pudo guardar')
+    }
+  }
 
   const fetchPosts = async () => {
     try {
@@ -186,21 +204,22 @@ export default function Social() {
     }
   }
 
-  const handleLike = async (postId) => {
+  const handleReact = async (postId, emoji) => {
     try {
-      const { data } = await api.post(`/social/${postId}/like`)
-      setPosts(posts.map(post =>
-        post._id === postId
-          ? {
-            ...post,
-            likes: data.liked
-              ? [...(post.likes || []), user._id]
-              : (post.likes || []).filter(id => (id?._id || id) !== user._id)
-          }
-          : post
-      ))
+      const { data } = await api.post(`/social/${postId}/like`, { emoji })
+      setPosts((posts) =>
+        posts.map((post) => {
+          if (post._id !== postId) return post
+          const uid = user._id
+          let likes = [...(post.likes || [])]
+          const has = likes.some((id) => (id?._id || id) === uid)
+          if (data.liked && !has) likes.push(uid)
+          if (!data.liked) likes = likes.filter((id) => (id?._id || id) !== uid)
+          return { ...post, likes, myReaction: data.myReaction || null }
+        })
+      )
     } catch (error) {
-      toast.error('Error al dar like')
+      toast.error('Error al reaccionar')
     }
   }
 
@@ -494,7 +513,7 @@ export default function Social() {
         <div className="space-y-3 sm:space-y-4">
           {posts.map((post, i) => {
             const isOwner = post.user?._id === user?._id
-            const isLiked = post.likes?.some(id => (id?._id || id) === user?._id)
+            const myReaction = post.myReaction || (post.likes?.some(id => (id?._id || id) === user?._id) ? '❤️' : null)
             const badge = getLevelBadge(post.user?.stats?.level || 1)
             const postComments = post.comments || []
             const showCommentSection = showComments[post._id]
@@ -598,10 +617,17 @@ export default function Social() {
 
                 {/* Workout share card */}
                 {(post.postType === 'workout' || post.workoutData) && post.workoutData && (
-                  <div className="mb-4 overflow-hidden rounded-2xl border border-primary-500/25 bg-gradient-to-br from-primary-500/15 to-accent-cyan/10 p-4">
+                  <button
+                    type="button"
+                    onClick={() => setRoutineModal({
+                      ...post.workoutData,
+                      user: typeof post.user === 'object' ? post.user : null
+                    })}
+                    className="mb-4 w-full overflow-hidden rounded-2xl border border-primary-500/25 bg-gradient-to-br from-primary-500/15 to-accent-cyan/10 p-4 text-left transition hover:border-primary-500/50"
+                  >
                     <div className="mb-3 flex items-center gap-2 text-primary-300">
                       <FiActivity size={16} />
-                      <span className="text-xs font-semibold uppercase tracking-[0.2em]">Entrenamiento</span>
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em]">Entrenamiento · GymRat</span>
                     </div>
                     <h4 className="font-display text-xl text-white">{post.workoutData.name}</h4>
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -633,7 +659,8 @@ export default function Social() {
                         ))}
                       </ul>
                     )}
-                  </div>
+                    <p className="mt-3 text-xs text-primary-400">Tocar para ver rutina completa</p>
+                  </button>
                 )}
 
                 {/* Post Content */}
@@ -720,15 +747,11 @@ export default function Social() {
 
                 {/* Post Actions */}
                 <div className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-white/5">
-                  <button
-                    onClick={() => handleLike(post._id)}
-                    className={`flex items-center gap-1.5 sm:gap-2 transition-colors min-h-[40px] ${
-                      isLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'
-                    }`}
-                  >
-                    <FiHeart size={18} className={isLiked ? 'fill-current' : ''} />
-                    <span className="text-sm tabular-nums">{post.likes?.length || 0}</span>
-                  </button>
+                  <PostReactionButton
+                    myReaction={myReaction}
+                    likesCount={post.likes?.length || 0}
+                    onReact={(emoji) => handleReact(post._id, emoji)}
+                  />
 
                   <button
                     onClick={() => setShowComments({ ...showComments, [post._id]: !showCommentSection })}
@@ -821,6 +844,14 @@ export default function Social() {
           })}
         </div>
       )}
+
+      <RoutineDetailModal
+        open={Boolean(routineModal)}
+        onClose={() => setRoutineModal(null)}
+        routine={routineModal}
+        author={routineModal?.user}
+        onAdopt={adoptRoutine}
+      />
     </div>
   )
 }

@@ -17,15 +17,22 @@ import {
 import api from '../../utils/api'
 import { useAuthStore } from '../../store/authStore'
 import BadgesModal from '../../components/BadgesModal'
+import ProfileFeed from '../../components/ProfileFeed'
+import ProfileAvatar from '../../components/ProfileAvatar'
+import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import { Avatar } from '../../utils/avatarUtils'
+import { useStoryViewer } from '../../components/StoryViewerContext'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
+
+const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
 export default function UserProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user: currentUser } = useAuthStore()
+  const { openUserStory } = useStoryViewer()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showBadges, setShowBadges] = useState(false)
@@ -43,6 +50,8 @@ export default function UserProfile() {
   const [loadingList, setLoadingList] = useState(false)
   const [followRequests, setFollowRequests] = useState([])
   const [loadingRequests, setLoadingRequests] = useState(false)
+  const [hasStories, setHasStories] = useState(false)
+  const [selectedRoutine, setSelectedRoutine] = useState(null)
 
   const isOwnProfile = currentUser?._id === id
 
@@ -50,13 +59,42 @@ export default function UserProfile() {
     if (id) {
       fetchUser()
       checkFollowStatus()
+      checkStories()
       if (currentUser?._id === id) {
         fetchFollowRequests()
+        loadUserPosts()
       } else {
         setFollowRequests([])
       }
     }
   }, [id, currentUser?._id])
+
+  const checkStories = async () => {
+    try {
+      const { data } = await api.get('/stories/feed')
+      const groups = data?.groups || []
+      const group = groups.find((g) => (g.user?._id || g.user) === id)
+      setHasStories(Boolean(group?.stories?.length))
+    } catch {
+      setHasStories(false)
+    }
+  }
+
+  const openStory = () => {
+    openUserStory(id)
+  }
+
+  const adoptRoutineFromPost = (workout) => {
+    const local = toStartableTemplate(workout)
+    try {
+      const stored = JSON.parse(localStorage.getItem(WORKOUT_TEMPLATES_KEY) || '[]')
+      localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify([...stored, local]))
+      toast.success('Rutina adoptada')
+      setSelectedRoutine(null)
+    } catch {
+      toast.error('No se pudo guardar la rutina')
+    }
+  }
 
   const fetchUser = async () => {
     try {
@@ -236,7 +274,13 @@ export default function UserProfile() {
         className="card text-center"
       >
         <div className="relative inline-block mb-4">
-          <Avatar avatar={user.avatar} name={user.name} size="xl" />
+          <ProfileAvatar
+            avatar={user.avatar}
+            name={user.name}
+            size="xl"
+            hasStories={hasStories}
+            onViewStory={openStory}
+          />
         </div>
 
         <h1 className="font-display text-2xl mb-1">{user.name}</h1>
@@ -468,78 +512,81 @@ export default function UserProfile() {
         )}
       </motion.div>
 
-      {!isOwnProfile && followStatus.isFollowing && (
+      {(isOwnProfile || followStatus.isFollowing) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="card"
+          className="space-y-4"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <h2 className="font-display text-xl flex items-center gap-2">
               <FiUsers className="text-primary-500" />
               Publicaciones
             </h2>
-            <button
-              onClick={() => {
-                if (!showPosts && posts.length === 0) {
-                  loadUserPosts()
-                } else {
-                  setShowPosts(!showPosts)
-                }
-              }}
-              className="text-primary-500 hover:text-primary-400 text-sm"
-            >
-              {showPosts ? 'Ocultar' : 'Ver'}
-            </button>
+            {!isOwnProfile && (
+              <button
+                onClick={() => {
+                  if (!showPosts && posts.length === 0) {
+                    loadUserPosts()
+                  } else {
+                    setShowPosts(!showPosts)
+                  }
+                }}
+                className="text-primary-500 hover:text-primary-400 text-sm"
+              >
+                {showPosts ? 'Ocultar' : 'Ver'}
+              </button>
+            )}
           </div>
 
-          <AnimatePresence>
-            {showPosts && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-4"
-              >
-                {loadingPosts ? (
-                  <div className="text-center py-8">
-                    <div className="w-6 h-6 border-2 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
-                  </div>
-                ) : posts.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <p className="text-sm">Este usuario aún no ha publicado nada</p>
-                  </div>
-                ) : (
-                  posts.map((post) => (
-                    <div key={post._id} className="p-4 bg-dark-200 rounded-xl">
-                      {post.content && <p className="text-gray-100 mb-3">{post.content}</p>}
-                      {post.images && post.images.length > 0 && (
-                        <div className="grid grid-cols-2 gap-2 mb-3">
-                          {post.images.slice(0, 2).map((img, idx) => (
-                            <img
-                              key={idx}
-                              src={img}
-                              alt={`Post ${idx + 1}`}
-                              className="w-full h-32 object-cover rounded-lg"
-                            />
-                          ))}
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-500">
-                        {formatDistanceToNow(new Date(post.createdAt), {
-                          addSuffix: true,
-                          locale: es
-                        })}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {(isOwnProfile || showPosts) && (
+            <ProfileFeed
+              posts={posts}
+              loading={loadingPosts}
+              emptyLabel={isOwnProfile ? 'Aún no has publicado nada' : 'Este usuario aún no ha publicado nada'}
+              onOpenRoutine={(workout, author) => setSelectedRoutine({ workout, author })}
+              currentUserId={currentUser?._id}
+              onDelete={async (postId) => {
+                if (!window.confirm('¿Eliminar esta publicación?')) return
+                try {
+                  await api.delete(`/social/${postId}`)
+                  setPosts((prev) => prev.filter((p) => (p._id || p.id) !== postId))
+                  toast.success('Publicación eliminada')
+                } catch {
+                  toast.error('No se pudo eliminar')
+                }
+              }}
+              onReact={async (postId, emoji) => {
+                try {
+                  const { data } = await api.post(`/social/${postId}/like`, { emoji })
+                  setPosts((prev) =>
+                    prev.map((p) => {
+                      if ((p._id || p.id) !== postId) return p
+                      const uid = currentUser?._id
+                      let likes = [...(p.likes || [])]
+                      const has = likes.some((id) => (id?._id || id) === uid)
+                      if (data.liked && !has) likes.push(uid)
+                      if (!data.liked) likes = likes.filter((id) => (id?._id || id) !== uid)
+                      return { ...p, likes, myReaction: data.myReaction || null }
+                    })
+                  )
+                } catch {
+                  toast.error('Error al reaccionar')
+                }
+              }}
+            />
+          )}
         </motion.div>
       )}
+
+      <RoutineDetailModal
+        open={Boolean(selectedRoutine)}
+        onClose={() => setSelectedRoutine(null)}
+        routine={selectedRoutine?.workout}
+        author={selectedRoutine?.author || user}
+        onAdopt={() => adoptRoutineFromPost(selectedRoutine?.workout)}
+      />
 
       <AnimatePresence>
         {listModal && (

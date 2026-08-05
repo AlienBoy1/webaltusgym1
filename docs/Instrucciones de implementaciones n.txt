@@ -1,0 +1,285 @@
+Instrucciones de implementaciones necesarias para la app Qyntra Gym
+
+-Para cuando se entra por primera vez a el link de la app que es https://qyntagymweb.vercel.app/ debe de cargar un bonito 
+landingpage, con contenido explicito, referente, bien estilizado y adaptado al diseño de la app y completamente tecnológico y con animaciones y transiciones que lo haga ver como una verdadera aplicación de gimnasio
+
+-El landingpage, debe de contener un botón para descargar la aplicación, se debe de descargar el instalador y es preciso que se pueda instalar en:
+-Ordenadores
+-Mobiles:
+	-Android
+	-iOS
+La app le dice al usuario que quiere descargar a travez de botones ejemplificados de que tipo de app es, si es la de Windows con un logo de Windows, si es para iOS el logo de iOS y y Android pues el logo de Android
+
+-La aplicación necesita profesionalizarse en cuanto a diseño y responsividad para el panel del administrador, ya que ninguna interfaz del panel de administración se ve completa ni bien estructurada, debe de ser completamente responsiva, totalmente adaptable a cualquier tipo de tamaño de pantalla tanto em móvil como en ordenador
+
+-La aplicación debe de tener la opción dentro de las configuraciones de la aplicación la opción de cambiar el tema de la aplicación a:
+-Oscuro
+-Claro
+-Predeterminado del sistema
+Todos los modos deben de servir en su totalidad, y los temas deben de funcionar perfectamente en todas las interfaces de la aplicación sin ninguna inconsistencia ni error en lo absoluto
+
+-El apartado de perfiles, tanto el propio del usuario cuando entra al modo 'Ver perfil publico y solicitudes' como cuando entra al perfil de otro usuario que sigue es necesario que las publicaciones ya sean propias o del usuario que se esta visitando se vean en un formato adecuado 'La app debe de tener el cuerpo, la estructura del feed de publicaciones totalmente parecido a fb, pero con la pureza y estilo nativo de la aplicación de Qyntra Gym
+
+-La configuración de acento de color debe de pdoerse aplicar en toda la app en cuanto a énfasis de colores, es demasiado necesario que este apartado funcione correctamente y no rompa ningún diseño en lo absoluto
+
+
+-Cuando un usuario abre sus historias, debe de tener la opción de pdoer ver quien ha visto sus historias e incluir en ese mismo buzon de vistas la reacción misma de quien vio su historia en aso de haber reaccionado a su historia 'Estilo Whatsapp'
+
+
+-Los usuarios además de poder crear rutinas deben de tener la opción de poder eliminarlas, editarlas e incluso compartirlas con otros usuarios, además, debe de tener la opción de poder marcar su rutina como 'Publica', cuando un usuario marque una rutina como publica, cuando esa rutina le usuario la haya completado y haya decidido compartirla con la comunidad, quien sea de su comunidad y vea su publicación puede tocar la rutina y se abre una ventana emergente totalmente adaptada que muestra la rutina del usuario, mostrando el nombre de la rutina, quien la creo y todos los ejercicios que ese usuario registro en esa rutina, ese usuario debe tener entre sus opciones al visualiar dicha rutina una opción que diga 'Rutina GymRat' Que cuando el usuario cliquee esa opción, la aplicación le diga al usuario que las rutina GymRat es una función que permite a los usuarios de QyntraGym compartir rutinas entre si mismos, dándoles a entender que el ejercicio colaborativo puede ser muy bueno no solo para socializar sino para ayudar a otras personas que no están tan familiarizadas con las rutinas
+
+-Los usuarios quye tengan rutinas publicas deben de poder verlas y explorar las de los demás usuarios que también tengan, en el apartado de entrenos, donde además de crear rutinas, debe de aparecer otro botón que diga 'Explorar rutinas' donde al darle, abra una interfaz propia para este apartado donde muestre las rutinas publicas de los demás para poder adoptar cualquier rutina que considere eficiente, sino hay rutinas publicas aún la app le dice al usuario eso y lo invita a ser el primero en compartir una rutina publica con su comunidad (Las rutinas publicas solo son publicas para quienes siguen a un usuario y a quienes sigue un usuario, entre seguidores solamente) alguien que no me sigue no vera mis rutinas publicas (Esto cambia si el usuario configura su perfil como publico dentro de sus configuraciones, entonces si todos podrán ver sus rutinas publicas)
+
+-La interfaz de perfil, debe de mostrar en la imagen o icono del usuario el contorno de historias en caso de que este usuario tenga historias activas que puedan visualizar sus seguidores desde ahí mismo, el usuario al querer interactuar con la imagen de usuario de su seguido, la app desplegara dos opciones, 'Ver foto' y 'Ver Historia' la foto de perfil de un usuario debe de bloquearse de cualquier acción (No se puede seleccionar ni descargar) solo se puede visualizar
+
+
+
+Todas y cada una de las cosas a ejecutar, deben de mantener siempre el formato y estructura de la aplicación, de manera nativa, sin errores y sin incompatibilidades, totalmente responsivo, adaptativo, interactivo, intuitivo, profesional, animado y bien transicionado
+
+este archivo debe de ser documentado a partir de aquí con que se hizo, como se hizo, para que sirve esto que se hizo y como testearlo
+
+================================================================================
+DOCUMENTACIÓN DE IMPLEMENTACIÓN — Qyntra Gym
+Fecha: 2026-08-05
+================================================================================
+
+1) LANDING PAGE + DESCARGAS
+--------------------------
+Qué se hizo:
+- Reescritura completa de `client/src/pages/Landing.jsx` con hero de marca QYNTRA,
+  animaciones Framer Motion, sección de funciones y CTA.
+- Nuevo componente `client/src/components/DownloadApps.jsx` con botones Windows /
+  Android / iOS (logos FaWindows, FaAndroid, FaApple).
+- Carpeta `client/public/downloads/` lista para colocar instaladores reales
+  (`QyntraGym-Setup.exe`, `QyntraGym.apk`). Ver README allí.
+
+Cómo funciona:
+- Windows/Android: intenta PWA `beforeinstallprompt`; si hay archivo en /downloads
+  lo descarga; si no, cae a PWA/manifest.
+- iOS: modal con guía Safari → Compartir → Agregar a pantalla de inicio.
+
+Para qué sirve:
+- Primera impresión profesional al entrar a https://qyntagymweb.vercel.app/
+- Instalación multiplataforma sin store obligatoria.
+
+Cómo testear:
+1. Abrir `/` deslogueado.
+2. Verificar hero + animaciones + sección #descargas.
+3. Pulsar Windows/Android (en Chrome/Edge debería ofrecer instalar PWA si aplica).
+4. Pulsar iOS y validar la guía.
+5. Colocar un .exe/.apk real en `public/downloads/` y verificar descarga HEAD/GET.
+
+
+2) PANEL ADMIN RESPONSIVO
+-------------------------
+Qué se hizo:
+- `client/src/layouts/AdminLayout.jsx`: sidebar desktop (lg+), drawer móvil,
+  bottom nav compacta, safe-areas, padding adaptativo.
+- `AdminDashboard.jsx`: grids y charts con `min-w-0`, tipografía responsive,
+  colores vía CSS variables.
+
+Para qué sirve:
+- Que el admin sea usable completo en móvil y escritorio.
+
+Cómo testear:
+1. Entrar como admin a `/admin`.
+2. Probar < 768px, tablet y desktop: menú, navegación, scroll y gráficas.
+
+
+3) TEMAS OSCURO / CLARO / SISTEMA + ACENTO GLOBAL
+-------------------------------------------------
+Qué se hizo:
+- `client/src/utils/theme.js`: aplica `--color-primary`, `--color-accent`,
+  clases `html.light` / `html.dark`, listener de sistema, caché local.
+- `client/src/index.css`: tokens semánticos + remapeo de utilidades dark/primary
+  para que el acento y el tema claro pequen en toda la UI.
+- Settings usa el helper; MainLayout carga settings al iniciar sesión.
+
+Para qué sirve:
+- Apariencia consistente en toda la app (no solo Settings).
+
+Cómo testear:
+1. Configuración → Apariencia → Oscuro / Claro / Sistema.
+2. Cambiar color principal y navegar Social, Entrenos, Admin, Perfil.
+3. En modo Sistema, cambiar el tema del OS y confirmar cambio automático.
+
+
+4) FEED DE PERFIL ESTILO FACEBOOK (ESTILO QYNTRA)
+-------------------------------------------------
+Qué se hizo:
+- `client/src/components/ProfileFeed.jsx`: cards de publicación con header,
+  media, métricas y rutina tocable.
+- Integrado en `UserProfile.jsx` (perfil propio vía "Ver perfil público" y
+  perfiles que sigues).
+
+Cómo testear:
+1. Perfil → Ver perfil público y solicitudes → ver publicaciones.
+2. Abrir perfil de alguien que sigues y revisar el feed.
+
+
+5) VISTAS DE HISTORIAS + REACCIONES (ESTILO WHATSAPP)
+----------------------------------------------------
+Qué se hizo:
+- API `GET /api/stories/:id/viewers` (solo autor) en `server/src/routes/stories.js`.
+- En `StoriesRail.jsx`: botón de vistas en historias propias + sheet con
+  avatar, hora y emoji de reacción.
+
+Cómo testear:
+1. Publicar historia con usuario A.
+2. Usuario B la ve y reacciona.
+3. Usuario A abre su historia → Vistas → debe ver a B + reacción.
+
+
+6) RUTINAS: EDITAR / ELIMINAR / COMPARTIR / PÚBLICA / GYMRAT / EXPLORAR
+----------------------------------------------------------------------
+Qué se hizo:
+- Migración `supabase/migrations/20260805_workout_routines.sql`.
+- Endpoints en `server/src/routes/workouts.js`:
+  GET/POST /routines, PUT/DELETE /routines/:id,
+  GET /routines/explore, POST /routines/:id/adopt.
+  Visibilidad: comunidad (seguidores↔seguidos) o perfil público.
+- `Workouts.jsx`: editar, eliminar, pública, compartir, Explorar rutinas.
+- Página `ExploreRoutines.jsx` en ruta `/explore-routines`.
+- `RoutineDetailModal.jsx`: detalle + explicación GymRat + adoptar.
+- Posts de entrenamiento en Social/Perfil abren el modal.
+
+IMPORTANTE:
+- Ejecutar la migración SQL en Supabase antes de usar explorar/públicas en prod.
+
+Cómo testear:
+1. Entrenos → Nueva rutina → marcar Pública → Guardar.
+2. Editar / Eliminar / Compartir.
+3. Explorar rutinas (otro usuario en su comunidad o con perfil público).
+4. En Social, tocar una rutina compartida → GymRat → Adoptar.
+
+
+7) AVATAR CON ANILLO DE HISTORIA + VER FOTO / VER HISTORIA + PROTECCIÓN
+----------------------------------------------------------------------
+Qué se hizo:
+- `ProfileAvatar.jsx`: anillo gradiente si hay historias, menú Ver foto /
+  Ver Historia, visor de foto sin menú contextual / sin drag (protección UI).
+- Usado en Profile y UserProfile; Ver Historia navega a
+  `/social?openUserStory=:id`.
+
+Cómo testear:
+1. Con historias activas, el avatar muestra anillo.
+2. Tap → Ver Historia abre el visor; Ver foto abre lightbox.
+3. Intentar clic derecho / arrastrar la foto: no debería permitir guardar fácil.
+
+
+CHECKLIST RÁPIDO POST-DEPLOY
+----------------------------
+[ ] Migración workout_routines aplicada en Supabase
+[ ] Landing `/` + descargas OK en Vercel
+[ ] Tema claro / oscuro / sistema en móvil y desktop
+[ ] Acento de color visible en botones y highlights
+[ ] Admin usable en 375px de ancho
+[ ] Vistas de historias con reacciones
+[ ] Explorar rutinas + GymRat modal
+[ ] Avatar: anillo + Ver foto / Ver Historia
+
+================================================================================
+FIN DOCUMENTACIÓN (v1)
+================================================================================
+
+================================================================================
+ACTUALIZACIÓN — 2026-08-05 (v2)
+================================================================================
+
+A) HISTORIAS — TEXTO, MENÚ CLARO, FAVORITOS SOLO PROPIAS
+-------------------------------------------------------
+Qué: Caption más legible (fondo negro 72% + borde + sombra). Menú de ⋮ fuerza
+chrome oscuro (no se remapea a modo claro). Favoritos solo en historias propias.
+Cómo: `StoriesRail.jsx` + CSS `.story-viewer` / `.force-dark` en `index.css`.
+Test: Modo claro → abrir historia → ⋮; caption largo; en historia ajena no
+aparece “Agregar a favoritos”.
+
+B) HISTORIAS IN-PLACE (PERFIL / CHAT, SIN IR A SOCIAL)
+-----------------------------------------------------
+Qué: `StoryViewerContext` + host global en `MainLayout`. Perfil/Chat llaman
+`openUserStory(id)` / `openStoryById(id)` y el visor abre encima.
+Test: Perfil → Ver Historia (no cambia a /social). Chat → tocar avatar con
+anillo o adjunto de historia.
+
+C) MODO CLARO — REPORTE DE ENTRENAMIENTO Y MÁS
+----------------------------------------------
+Qué: Modal de reporte en `MyWorkouts.jsx` usa tokens semánticos
+(--bg-card, --text-primary, etc.). Landing con `force-dark` para no romper
+el hero en tema claro.
+Test: Tema claro → Mis entrenamientos → abrir reporte; `/` landing visible.
+
+D) REACCIONES EN PUBLICACIONES (ESTILO FACEBOOK)
+-----------------------------------------------
+Qué: Clic = ❤️ Me gusta; mantener pulsado = picker (mismas emoji que historias).
+`PostReactionButton.jsx` + API `/social/:id/like` con `{ emoji }`.
+Migración: `20260805_chat_delivery_and_post_reactions.sql` (columna emoji).
+Test: Social y perfil — clic y long-press; conteo actualiza.
+
+E) ⋮ ELIMINAR EN PUBLICACIONES DEL PERFIL
+-----------------------------------------
+Qué: `ProfileFeed` menú ⋮ → Eliminar (solo dueño).
+Test: Ver perfil público propio → ⋮ → Eliminar.
+
+F) CHAT — TICKS WHATSAPP + ANILLO DE HISTORIA
+---------------------------------------------
+Qué: Estados sent/delivered/read (✓ / ✓✓ / ✓✓ azul). Migración `delivered`.
+Avatar de conversación con anillo si hay historia; tap abre historia.
+Test: Enviar mensaje → ✓; peer abre chat → ✓✓/leído al refrescar; avatar con
+historia.
+
+G) LANDING + CIERRE DE SESIÓN
+-----------------------------
+Qué: Landing en `/` con Ingresar + Descargar. Logout redirige a `/`.
+Test: Cerrar sesión → ver landing; Ingresar + #descargas.
+
+H) RENDIMIENTO
+--------------
+Qué: `React.lazy` + Suspense por páginas en `App.jsx`; transiciones de layout
+más livianas (solo opacity 150ms).
+Test: Navegar Entre secciones — carga por chunk, no un solo bundle enorme.
+
+I) NOMBRE → PERFIL
+------------------
+Qué: Nombres en feed de perfil y chats enlazan a `/user/:id`.
+Test: Tocar nombre en chat/lista → perfil.
+
+MIGRACIONES A APLICAR EN SUPABASE
+---------------------------------
+1. `20260805_workout_routines.sql`
+2. `20260805_chat_delivery_and_post_reactions.sql`
+
+================================================================================
+ACTUALIZACIÓN — 2026-08-05 (v3) Landing / PWA / Recordarme
+================================================================================
+
+Problema: `/` caía en el layout protegido (Route index) → `login?redirect=%2F`
+loop al pulsar «Volver al inicio».
+
+Qué se hizo:
+1. Se eliminó el `<Route index>` del MainLayout protegido.
+2. `/` ahora usa `HomeEntry.jsx`:
+   - Navegador web → Landing (+ CTA «Entrar a la app» si hay sesión).
+   - App instalada (PWA standalone) → dashboard si hay sesión, si no login.
+3. Login: «Volver al inicio» solo en web; redirect `/` tras login va a `/dashboard`.
+4. Recordarme endurecido (`tokenStorage` + interceptor API): tokens en
+   localStorage cuando está marcado; un 401 de login ya no borra la sesión;
+   refresh conserva el mismo almacenamiento.
+
+Cómo testear:
+- Web: abrir `http://localhost:5173/` → landing; Volver al inicio desde login.
+- PWA: abrir app instalada → login o dashboard (nunca landing).
+- Login con «Recordarme» → cerrar pestaña/app → reabrir → sigue logueado.
+- Sin «Recordarme» → cerrar pestaña del navegador → sesión no persiste.
+
+================================================================================
+ACTUALIZACIÓN — Landing premium (tema + motion)
+================================================================================
+Landing rediseñado (`Landing.jsx`):
+- Toggle claro/oscuro propio del landing (persistido en `qyntra:landing-theme`)
+- Hero tecnofitness abstracto: rejilla, órbitas, scanline, parallax
+- Brand QYNTRA dominante + CTAs + descargas + copy de gimnasio
+- Animaciones Framer Motion (orbs, rings, reveals, shine del logotipo)
+- Respeta `prefers-reduced-motion`
+
+Test: abrir `/` en web → alternar sol/luna → scroll con animaciones.
+================================================================================

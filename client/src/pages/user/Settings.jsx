@@ -1,20 +1,15 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiBell, FiMoon, FiSun, FiVolume2, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck } from 'react-icons/fi'
+import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
-
-const COLOR_THEMES = [
-  { id: 'orange', name: 'Naranja', primary: '#FF6B35', accent: '#00F5FF' },
-  { id: 'blue', name: 'Azul', primary: '#3B82F6', accent: '#22D3EE' },
-  { id: 'green', name: 'Verde', primary: '#22C55E', accent: '#A855F7' },
-  { id: 'purple', name: 'Púrpura', primary: '#A855F7', accent: '#F472B6' },
-  { id: 'red', name: 'Rojo', primary: '#EF4444', accent: '#FACC15' },
-  { id: 'cyan', name: 'Cian', primary: '#06B6D4', accent: '#F97316' },
-  { id: 'pink', name: 'Rosa', primary: '#EC4899', accent: '#8B5CF6' },
-  { id: 'yellow', name: 'Dorado', primary: '#EAB308', accent: '#14B8A6' },
-]
+import {
+  COLOR_THEMES,
+  applyAppearanceSettings,
+  cacheAppearance,
+  bindSystemThemeListener
+} from '../../utils/theme'
 
 const settingsSections = [
   { id: 'notifications', title: 'Notificaciones', icon: FiBell, color: 'primary' },
@@ -67,42 +62,17 @@ export default function UserSettings() {
   }
   
   const applySettings = (settingsToApply) => {
-    // Apply color theme
-    const theme = COLOR_THEMES.find(t => t.id === settingsToApply.colorTheme)
-    if (theme) {
-      document.documentElement.style.setProperty('--color-primary', theme.primary)
-      document.documentElement.style.setProperty('--color-accent', theme.accent)
-    }
-    
-    // Apply dark/light theme
-    if (settingsToApply.theme === 'light') {
-      document.documentElement.classList.remove('dark')
-      document.documentElement.classList.add('light')
-    } else if (settingsToApply.theme === 'dark') {
-      document.documentElement.classList.remove('light')
-      document.documentElement.classList.add('dark')
-    } else {
-      // System theme
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      if (prefersDark) {
-        document.documentElement.classList.remove('light')
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-        document.documentElement.classList.add('light')
-      }
-    }
-    
-    // Apply font size
-    if (settingsToApply.accessibility?.fontSize) {
-      const fontSizeMap = { small: '14px', medium: '16px', large: '18px' }
-      document.documentElement.style.setProperty('--font-size-base', fontSizeMap[settingsToApply.accessibility.fontSize] || '16px')
-    }
+    applyAppearanceSettings(settingsToApply)
+    cacheAppearance(settingsToApply)
   }
-  
+
   useEffect(() => {
     applySettings(settings)
-  }, [settings.theme, settings.colorTheme, settings.accessibility?.fontSize])
+  }, [settings.theme, settings.colorTheme, settings.accessibility?.fontSize, settings.accessibility?.reducedMotion, settings.accessibility?.highContrast])
+
+  useEffect(() => {
+    bindSystemThemeListener(() => settings.theme)
+  }, [settings.theme])
   
   const updateSetting = (category, key, value) => {
     setSettings(prev => ({ ...prev, [category]: { ...prev[category], [key]: value } }))
@@ -162,7 +132,12 @@ export default function UserSettings() {
   }
   
   const Toggle = ({ enabled, onChange }) => (
-    <button onClick={() => onChange(!enabled)} className={`w-12 h-6 rounded-full transition-colors ${enabled ? 'bg-primary-500' : 'bg-dark-300'}`}>
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      className="w-12 h-6 rounded-full transition-colors"
+      style={{ background: enabled ? 'var(--color-primary)' : 'var(--bg-muted)' }}
+    >
       <div className={`w-5 h-5 bg-white rounded-full transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
     </button>
   )

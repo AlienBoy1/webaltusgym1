@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiMail, FiLock, FiLogIn, FiX, FiKey } from 'react-icons/fi'
@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import TermsModal from '../components/TermsModal'
 import CodeAccessModal from '../components/CodeAccessModal'
 import QyntraLogo from '../components/QyntraLogo'
+import { isInstalledApp } from '../utils/appMode'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -18,28 +19,39 @@ export default function Login() {
   const [requesting, setRequesting] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
   const [showCodeAccess, setShowCodeAccess] = useState(false)
-  const { login, loading } = useAuthStore()
+  const { login, loading, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
-  
+  const installed = isInstalledApp()
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
     if (!email || !password) {
       toast.error('Completa todos los campos')
       return
     }
-    
+
     const result = await login(email, password, { remember: rememberMe })
-    
+
     if (result.success) {
       toast.success('¡Bienvenido!')
       const params = new URLSearchParams(window.location.search)
       const redirect = params.get('redirect')
       const safeRedirect =
-        redirect && redirect.startsWith('/') && !redirect.startsWith('//')
+        redirect &&
+        redirect.startsWith('/') &&
+        !redirect.startsWith('//') &&
+        redirect !== '/' &&
+        redirect !== '/login'
           ? redirect
           : '/dashboard'
-      navigate(safeRedirect)
+      navigate(safeRedirect, { replace: true })
     } else {
       toast.error(result.message)
     }
@@ -135,19 +147,24 @@ export default function Login() {
               </div>
             </div>
             
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-gray-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded bg-dark-200 border-dark-100"
-                />
-                Recordarme
-              </label>
-              <Link to="/forgot-password" className="text-primary-500 hover:text-primary-400">
-                ¿Olvidaste tu contraseña?
-              </Link>
+            <div className="flex flex-col gap-1 text-sm">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-gray-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded bg-dark-200 border-dark-100"
+                  />
+                  Recordarme en este dispositivo
+                </label>
+                <Link to="/forgot-password" className="text-primary-500 hover:text-primary-400">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </div>
+              <p className="text-[11px] text-gray-500 pl-6">
+                Guarda tu sesión al cerrar la app (recomendado para notificaciones push).
+              </p>
             </div>
             
             <button
@@ -190,12 +207,14 @@ export default function Login() {
           </div>
         </div>
         
-        {/* Back to home */}
-        <div className="mt-6 text-center">
-          <Link to="/" className="text-gray-500 hover:text-white text-sm">
-            ← Volver al inicio
-          </Link>
-        </div>
+        {/* Back to home — solo navegador web (la PWA no usa landing) */}
+        {!installed && (
+          <div className="mt-6 text-center">
+            <Link to="/" className="text-gray-500 hover:text-white text-sm">
+              ← Volver al inicio
+            </Link>
+          </div>
+        )}
       </motion.div>
       
       {/* Request Access Modal */}
