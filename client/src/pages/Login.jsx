@@ -144,7 +144,7 @@ export default function Login() {
             className="font-medium hover:opacity-90"
             style={{ color: 'var(--color-primary)' }}
           >
-            ¿Olvidaste tu contraseña?
+            Olvidé mi contraseña
           </Link>
         </div>
 
