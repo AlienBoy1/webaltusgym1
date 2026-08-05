@@ -174,18 +174,18 @@ export default function AdminClasses() {
       <AnimatePresence>
         {showCreate && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center"
+            className="app-overlay-sheet fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setShowCreate(false)} />
+            <button type="button" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreate(false)} />
             <motion.form
               onSubmit={createClass}
               initial={{ y: 24, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 16, opacity: 0 }}
-              className="relative w-full max-w-lg space-y-4 rounded-2xl border p-5"
+              className="app-modal-panel relative w-full max-w-lg space-y-4 rounded-t-3xl border p-5 sm:rounded-2xl"
               style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
             >
               <div className="flex items-center justify-between">

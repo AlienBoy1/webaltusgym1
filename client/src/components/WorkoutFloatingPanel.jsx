@@ -143,7 +143,7 @@ export default function WorkoutFloatingPanel() {
             }
             navigate(`/workouts?focus=${currentExercise?.id || ''}`)
           }}
-          className={`relative h-full w-full cursor-pointer overflow-hidden border border-white/15 bg-[#070a14]/96 text-left shadow-[0_20px_50px_rgba(0,0,0,0.45)] backdrop-blur-2xl ${
+          className={`relative h-full w-full cursor-pointer overflow-hidden border border-app bg-elevated/95 text-left shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl ${
             expanded ? 'rounded-[1.75rem]' : 'rounded-full'
           }`}
           aria-label="Entrenamiento en curso"
@@ -152,8 +152,8 @@ export default function WorkoutFloatingPanel() {
 
           {!expanded ? (
             <div className="relative flex h-full w-full flex-col items-center justify-center">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.28em] text-white/70">Live</span>
-              <span className="mt-0.5 font-mono text-base font-bold tabular-nums tracking-tight text-white">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.28em] text-app-secondary">Live</span>
+              <span className="mt-0.5 font-mono text-base font-bold tabular-nums tracking-tight text-app">
                 {formatTime(elapsed)}
               </span>
               {restLeft > 0 && (
@@ -162,7 +162,7 @@ export default function WorkoutFloatingPanel() {
                 </span>
               )}
               <svg className="pointer-events-none absolute inset-1 -rotate-90" viewBox="0 0 90 90" aria-hidden>
-                <circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+                <circle cx="45" cy="45" r="38" fill="none" stroke="var(--border-subtle)" strokeWidth="3" />
                 <circle
                   cx="45"
                   cy="45"
@@ -190,12 +190,12 @@ export default function WorkoutFloatingPanel() {
                   <FiActivity size={18} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-white">{session.activeWorkout.name}</p>
-                  <p className="truncate text-xs text-gray-400">{currentExercise?.name || 'Casi terminas'}</p>
+                  <p className="truncate text-sm font-semibold text-app">{session.activeWorkout.name}</p>
+                  <p className="truncate text-xs text-app-secondary">{currentExercise?.name || 'Casi terminas'}</p>
                 </div>
                 <button
                   type="button"
-                  className="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-gray-300"
+                  className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[10px] font-semibold text-app-secondary"
                   onClick={(e) => {
                     e.stopPropagation()
                     setExpanded(false)
@@ -207,13 +207,13 @@ export default function WorkoutFloatingPanel() {
 
               <div className="flex items-end justify-between gap-2">
                 <div>
-                  <p className="font-mono text-2xl font-bold tabular-nums text-white">{formatTime(elapsed)}</p>
-                  <p className="text-[11px] text-gray-400">
+                  <p className="font-mono text-2xl font-bold tabular-nums text-app">{formatTime(elapsed)}</p>
+                  <p className="text-[11px] text-app-secondary">
                     {session.completedExercises.length}/{session.activeWorkout.exercises.length}
                     {restLeft > 0 ? ` · descanso ${formatTime(restLeft)}` : ''}
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white">
+                <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--bg-muted)] px-2.5 py-1.5 text-[11px] font-semibold text-app">
                   Abrir <FiChevronRight size={12} />
                 </span>
               </div>

@@ -14,6 +14,8 @@ import { Avatar } from '../../utils/avatarUtils'
 import StoriesRail from '../../components/StoriesRail'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import PostReactionButton from '../../components/PostReactionButton'
+import ShareComposerModal from '../../components/ShareComposerModal'
+import SharedPostAttachment from '../../components/SharedPostAttachment'
 import { useAppDialog } from '../../components/AppDialog'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
@@ -33,6 +35,8 @@ export default function Social() {
   const { user } = useAuthStore()
   const dialog = useAppDialog()
   const [posts, setPosts] = useState([])
+  const [sharePostTarget, setSharePostTarget] = useState(null)
+  const [sharingPost, setSharingPost] = useState(false)
   const [newPost, setNewPost] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
   const [selectedMood, setSelectedMood] = useState(null)
@@ -246,13 +250,22 @@ export default function Social() {
     }
   }
 
-  const handleShare = async (postId, shareText = '') => {
+  const submitSharePost = async ({ content, mood, poll }) => {
+    if (!sharePostTarget) return
     try {
-      const { data } = await api.post(`/social/${postId}/share`, { content: shareText })
-      setPosts([data, ...posts])
-      toast.success('Publicación compartida')
+      setSharingPost(true)
+      const { data } = await api.post(`/social/${sharePostTarget._id || sharePostTarget.id}/share`, {
+        content,
+        mood,
+        poll
+      })
+      setPosts((prev) => [data, ...prev])
+      setSharePostTarget(null)
+      toast.success('Publicación compartida en tu feed')
     } catch (error) {
-      toast.error('Error al compartir')
+      toast.error(error.response?.data?.message || 'Error al compartir')
+    } finally {
+      setSharingPost(false)
     }
   }
 
@@ -578,30 +591,8 @@ export default function Social() {
                   </div>
                 </div>
 
-                {/* Shared Post Indicator */}
-                {post.sharedFrom && (
-                  <div className="mb-3 p-3 bg-dark-200 rounded-xl border-l-4 border-primary-500">
-                    <div className="text-xs text-gray-400 mb-1 flex items-center gap-1">
-                      <FiShare2 size={12} />
-                      Compartido
-                    </div>
-                    {post.sharedFrom.user && (
-                      <div className="text-sm text-gray-300">
-                        {post.sharedFrom.content}
-                      </div>
-                    )}
-                    {post.sharedFrom.images && post.sharedFrom.images.length > 0 && (
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        {post.sharedFrom.images.slice(0, 2).map((img, idx) => (
-                          <img key={idx} src={img} alt="Shared" className="w-full h-24 object-cover rounded-lg" />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Badge Share */}
-                {post.postType === 'badge' && post.badgeData && (
+                {/* Badge Share (own post only) */}
+                {!post.sharedFrom && post.postType === 'badge' && post.badgeData && (
                   <div className="mb-4 p-6 bg-gradient-to-br from-accent-yellow/20 to-orange-500/20 rounded-xl border-2 border-accent-yellow/30">
                     <div className="flex items-center gap-4">
                       <div className="text-6xl">
@@ -623,8 +614,53 @@ export default function Social() {
                   </div>
                 )}
 
-                {/* Workout share card */}
-                {(post.postType === 'workout' || post.workoutData) && post.workoutData && (
+                {/* Routine share (template) vs completed workout — omit on reshares */}
+                {!post.sharedFrom &&
+                  post.workoutData &&
+                  (post.postType === 'routine' ||
+                    post.workoutData.isRoutine ||
+                    post.workoutData.shareKind === 'routine') && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRoutineModal({
+                        ...post.workoutData,
+                        user: typeof post.user === 'object' ? post.user : null
+                      })
+                    }
+                    className="mb-4 w-full overflow-hidden rounded-2xl border border-accent-cyan/30 bg-gradient-to-br from-accent-cyan/15 to-primary-500/10 p-4 text-left transition hover:border-accent-cyan/50"
+                  >
+                    <div className="mb-3 flex items-center gap-2 text-accent-cyan">
+                      <FiActivity size={16} />
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em]">Rutina · Comunidad</span>
+                    </div>
+                    <h4 className="font-display text-xl text-app">{post.workoutData.name}</h4>
+                    <p className="mt-1 text-sm text-app-secondary">
+                      {post.workoutData.totalExercises || post.workoutData.exercises?.length || 0} ejercicios
+                      {post.workoutData.totalSets ? ` · ${post.workoutData.totalSets} series` : ''}
+                    </p>
+                    {post.workoutData.exercises?.length > 0 && (
+                      <ul className="mt-3 space-y-1 border-t border-app pt-3">
+                        {post.workoutData.exercises.slice(0, 4).map((ex, idx) => (
+                          <li key={idx} className="flex justify-between text-xs text-app-secondary">
+                            <span className="truncate pr-2">{ex.name}</span>
+                            <span className="shrink-0 opacity-70">
+                              {ex.sets}×{ex.reps}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-3 text-xs text-accent-cyan">Tocar para ver e iniciar esta rutina</p>
+                  </button>
+                )}
+
+                {!post.sharedFrom &&
+                  post.workoutData &&
+                  post.postType !== 'routine' &&
+                  !post.workoutData.isRoutine &&
+                  post.workoutData.shareKind !== 'routine' &&
+                  (post.postType === 'workout' || post.workoutData) && (
                   <button
                     type="button"
                     onClick={() => setRoutineModal({
@@ -633,56 +669,68 @@ export default function Social() {
                     })}
                     className="mb-4 w-full overflow-hidden rounded-2xl border border-primary-500/25 bg-gradient-to-br from-primary-500/15 to-accent-cyan/10 p-4 text-left transition hover:border-primary-500/50"
                   >
-                    <div className="mb-3 flex items-center gap-2 text-primary-300">
+                    <div className="mb-3 flex items-center gap-2 text-primary-500">
                       <FiActivity size={16} />
-                      <span className="text-xs font-semibold uppercase tracking-[0.2em]">Entrenamiento · GymRat</span>
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em]">Entrenamiento realizado</span>
                     </div>
-                    <h4 className="font-display text-xl text-white">{post.workoutData.name}</h4>
+                    <h4 className="font-display text-xl text-app">{post.workoutData.name}</h4>
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl bg-black/25 p-2">
-                        <p className="text-lg font-semibold text-white">
+                      <div className="rounded-xl bg-elevated border border-app p-2">
+                        <p className="text-lg font-semibold text-app">
                           {post.workoutData.completedExercises}/{post.workoutData.totalExercises}
                         </p>
-                        <p className="text-[10px] text-gray-400">Ejercicios</p>
+                        <p className="text-[10px] text-app-secondary">Ejercicios</p>
                       </div>
-                      <div className="rounded-xl bg-black/25 p-2">
-                        <p className="text-lg font-semibold text-white">{post.workoutData.totalSets || '—'}</p>
-                        <p className="text-[10px] text-gray-400">Series</p>
+                      <div className="rounded-xl bg-elevated border border-app p-2">
+                        <p className="text-lg font-semibold text-app">{post.workoutData.totalSets || '—'}</p>
+                        <p className="text-[10px] text-app-secondary">Series</p>
                       </div>
-                      <div className="rounded-xl bg-black/25 p-2">
-                        <p className="inline-flex items-center justify-center gap-1 text-lg font-semibold text-white">
-                          <FiClock size={12} className="text-primary-400" />
+                      <div className="rounded-xl bg-elevated border border-app p-2">
+                        <p className="inline-flex items-center justify-center gap-1 text-lg font-semibold text-app">
+                          <FiClock size={12} className="text-primary-500" />
                           {Math.floor((post.workoutData.durationSeconds || 0) / 60)}m
                         </p>
-                        <p className="text-[10px] text-gray-400">Tiempo</p>
+                        <p className="text-[10px] text-app-secondary">Tiempo</p>
                       </div>
                     </div>
                     {post.workoutData.exercises?.length > 0 && (
-                      <ul className="mt-3 space-y-1 border-t border-white/10 pt-3">
+                      <ul className="mt-3 space-y-1 border-t border-app pt-3">
                         {post.workoutData.exercises.slice(0, 4).map((ex, idx) => (
-                          <li key={idx} className="flex justify-between text-xs text-gray-300">
+                          <li key={idx} className="flex justify-between text-xs text-app-secondary">
                             <span className="truncate pr-2">{ex.name}</span>
-                            <span className="shrink-0 text-gray-500">{ex.sets}×{ex.reps}</span>
+                            <span className="shrink-0 opacity-70">{ex.sets}×{ex.reps}</span>
                           </li>
                         ))}
                       </ul>
                     )}
-                    <p className="mt-3 text-xs text-primary-400">Tocar para ver rutina completa</p>
+                    <p className="mt-3 text-xs text-primary-500">Tocar para ver detalle</p>
                   </button>
                 )}
 
                 {/* Post Content */}
                 {post.content && !String(post.content).includes('[workout]') && (
-                  <p className="text-gray-100 mb-4 leading-relaxed break-words">{post.content}</p>
+                  <p className="text-app mb-4 leading-relaxed break-words">{post.content}</p>
                 )}
                 {post.content && String(post.content).includes('[workout]') && (
-                  <p className="text-gray-100 mb-4 leading-relaxed break-words">
+                  <p className="text-app mb-4 leading-relaxed break-words">
                     {String(post.content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()}
                   </p>
                 )}
 
-                {/* Post Images */}
-                {post.images && post.images.length > 0 && (
+                {post.sharedFrom && (
+                  <SharedPostAttachment
+                    shared={post.sharedFrom}
+                    onOpenRoutine={(workout, author) =>
+                      setRoutineModal({
+                        ...workout,
+                        user: author || null
+                      })
+                    }
+                  />
+                )}
+
+                {/* Post Images — omit on reshares (live in attachment) */}
+                {!post.sharedFrom && post.images && post.images.length > 0 && (
                   <div className={`mb-3 sm:mb-4 grid gap-1.5 sm:gap-2 ${
                     post.images.length === 1 ? 'grid-cols-1' :
                     'grid-cols-2'
@@ -704,7 +752,7 @@ export default function Social() {
 
                 {/* Poll */}
                 {post.poll && (
-                  <div className="mb-4 p-4 bg-dark-200 rounded-xl">
+                  <div className="mb-4 p-4 bg-elevated border border-app rounded-xl">
                     <h4 className="font-semibold mb-3">{post.poll.question}</h4>
                     <div className="space-y-2">
                       {post.poll.options.map((option, idx) => {
@@ -721,20 +769,20 @@ export default function Social() {
                               postHasVoted
                                 ? userVoted
                                   ? 'bg-primary-500/30 ring-2 ring-primary-500'
-                                  : 'bg-dark-100'
-                                : 'bg-dark-100 hover:bg-dark-50'
+                                  : 'bg-app'
+                                : 'bg-app hover:opacity-90'
                             } ${postHasVoted ? 'cursor-default' : 'cursor-pointer'}`}
                           >
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-sm">{option.text}</span>
                               {postHasVoted && (
-                                <span className="text-xs text-gray-400">
+                                <span className="text-xs text-app-secondary">
                                   {votes} {votes === 1 ? 'voto' : 'votos'} ({Math.round(percentage)}%)
                                 </span>
                               )}
                             </div>
                             {postHasVoted && (
-                              <div className="h-2 bg-dark-300 rounded-full overflow-hidden">
+                              <div className="h-2 bg-app rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-primary-500 rounded-full transition-all"
                                   style={{ width: `${percentage}%` }}
@@ -746,7 +794,7 @@ export default function Social() {
                       })}
                     </div>
                     {postHasVoted && (
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="text-xs text-app-secondary mt-2">
                         Total: {pollTotalVotes} {pollTotalVotes === 1 ? 'voto' : 'votos'}
                       </p>
                     )}
@@ -754,7 +802,7 @@ export default function Social() {
                 )}
 
                 {/* Post Actions */}
-                <div className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-white/5">
+                <div className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-app">
                   <PostReactionButton
                     myReaction={myReaction}
                     likesCount={post.likes?.length || 0}
@@ -763,25 +811,16 @@ export default function Social() {
 
                   <button
                     onClick={() => setShowComments({ ...showComments, [post._id]: !showCommentSection })}
-                    className="flex items-center gap-1.5 sm:gap-2 text-gray-400 hover:text-primary-500 transition-colors min-h-[40px]"
+                    className="flex items-center gap-1.5 sm:gap-2 text-app-secondary hover:text-primary-500 transition-colors min-h-[40px]"
                   >
                     <FiMessageCircle size={18} />
                     <span className="text-sm tabular-nums">{postComments.length}</span>
                   </button>
 
                   <button
-                    onClick={async () => {
-                      const shareText = await dialog.prompt('Agrega un comentario (opcional) antes de compartir en tu feed.', {
-                        title: 'Compartir publicación',
-                        placeholder: '¿Qué quieres decir?',
-                        confirmLabel: 'Compartir',
-                        cancelLabel: 'Cancelar'
-                      })
-                      if (shareText !== null) {
-                        handleShare(post._id, shareText)
-                      }
-                    }}
-                    className="flex items-center gap-2 text-gray-400 hover:text-accent-cyan transition-colors min-h-[40px] ml-auto"
+                    onClick={() => setSharePostTarget(post)}
+                    className="flex items-center gap-2 text-app-secondary hover:text-accent-cyan transition-colors min-h-[40px] ml-auto"
+                    aria-label="Compartir publicación"
                   >
                     <FiShare2 size={18} />
                   </button>
@@ -864,6 +903,32 @@ export default function Social() {
         routine={routineModal}
         author={routineModal?.user}
         onAdopt={adoptRoutine}
+      />
+
+      <ShareComposerModal
+        open={Boolean(sharePostTarget)}
+        onClose={() => !sharingPost && setSharePostTarget(null)}
+        onSubmit={submitSharePost}
+        title="Compartir publicación"
+        subtitle="Tu comentario + la publicación original adjunta"
+        initialContent=""
+        submitLabel="Compartir"
+        loading={sharingPost}
+        attachmentPreview={
+          sharePostTarget
+            ? {
+                authorName:
+                  typeof sharePostTarget.user === 'object'
+                    ? sharePostTarget.user?.name
+                    : 'Usuario',
+                snippet:
+                  sharePostTarget.workoutData?.name ||
+                  (sharePostTarget.content
+                    ? String(sharePostTarget.content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim().slice(0, 140)
+                    : 'Publicación')
+              }
+            : null
+        }
       />
     </div>
   )

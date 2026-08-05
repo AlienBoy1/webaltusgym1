@@ -299,8 +299,10 @@ export default function UpdateCenter() {
                 animate={{ opacity: done || active ? 1 : 0.4, scale: active ? 1.04 : 1 }}
                 className={`rounded-xl border px-1 py-3 text-center ${
                   done
-                    ? 'border-primary-500/40 bg-primary-500/15 text-primary-200'
-                    : 'border-white/8 bg-white/5 text-gray-500'
+                    ? 'border-primary-500/40 bg-primary-500/15 text-primary-500'
+                    : active
+                      ? 'border-[color:var(--border-strong)] bg-[color:var(--bg-muted)] text-app'
+                      : 'border-app bg-elevated text-app-secondary opacity-60'
                 }`}
               >
                 <Icon className="mx-auto mb-1" size={14} />

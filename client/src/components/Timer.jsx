@@ -18,7 +18,6 @@ export default function Timer({
   onReset,
   isRunning
 }) {
-  // Legacy uncontrolled path kept for rare callers
   const displayTotal = total || initialTime || 60
   const timeLeft = controlled ? Math.max(0, remaining ?? 0) : Math.max(0, remaining ?? initialTime ?? 0)
 
@@ -44,7 +43,8 @@ export default function Timer({
             cy={s.circle / 2}
             r={radius}
             fill="none"
-            stroke="rgba(255,255,255,0.1)"
+            stroke="currentColor"
+            className="text-app opacity-15"
             strokeWidth={s.stroke}
           />
           <circle
@@ -63,7 +63,7 @@ export default function Timer({
 
         <div
           className={`absolute inset-0 flex items-center justify-center font-mono tabular-nums ${s.text} ${
-            timeLeft <= 5 ? 'text-red-500' : 'text-white'
+            timeLeft <= 5 ? 'text-red-500' : 'text-app'
           }`}
         >
           {formatTime(timeLeft)}
@@ -82,7 +82,7 @@ export default function Timer({
             </button>
           )}
           {onReset && (
-            <button type="button" onClick={onReset} className="rounded-full bg-dark-100 p-2 text-white">
+            <button type="button" onClick={onReset} className="rounded-full bg-elevated border border-app p-2 text-app">
               <FiRotateCcw size={20} />
             </button>
           )}

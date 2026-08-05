@@ -56,6 +56,11 @@ router.get('/templates/all', authenticate, async (req, res) => {
   res.json(defaultTemplates)
 })
 
+function normalizeDays(days) {
+  if (!Array.isArray(days)) return []
+  return [...new Set(days.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
+}
+
 function mapRoutine(row, user = null) {
   return {
     _id: row.id,
@@ -64,6 +69,7 @@ function mapRoutine(row, user = null) {
     name: row.name,
     color: row.color || 'primary',
     exercises: row.exercises || [],
+    days: normalizeDays(row.days),
     isPublic: Boolean(row.is_public),
     userId: row.user_id,
     user: user
@@ -167,7 +173,7 @@ router.get('/routines/explore', authenticate, async (req, res) => {
 
 router.post('/routines', authenticate, async (req, res) => {
   try {
-    const { name, exercises, color, isPublic, localId, id } = req.body
+    const { name, exercises, color, isPublic, localId, id, days } = req.body
     if (!name?.trim()) return res.status(400).json({ message: 'Nombre requerido' })
 
     const payload = {
@@ -175,6 +181,7 @@ router.post('/routines', authenticate, async (req, res) => {
       name: name.trim(),
       exercises: exercises || [],
       color: color || 'primary',
+      days: normalizeDays(days),
       is_public: Boolean(isPublic),
       local_id: localId || null,
       updated_at: new Date().toISOString()
@@ -230,17 +237,52 @@ router.post('/routines', authenticate, async (req, res) => {
 
     res.status(201).json(mapRoutine(row))
   } catch (error) {
+    const msg = String(error.message || '')
+    if (msg.toLowerCase().includes('days') && req.body) {
+      try {
+        const { name, exercises, color, isPublic, localId, id } = req.body
+        const payload = {
+          user_id: req.user.id,
+          name: String(name || '').trim(),
+          exercises: exercises || [],
+          color: color || 'primary',
+          is_public: Boolean(isPublic),
+          local_id: localId || null,
+          updated_at: new Date().toISOString()
+        }
+        let row
+        if (id) {
+          const retry = await supabaseAdmin
+            .from('workout_routines')
+            .update(payload)
+            .eq('id', id)
+            .eq('user_id', req.user.id)
+            .select('*')
+            .maybeSingle()
+          if (retry.error) throw retry.error
+          row = retry.data
+        } else {
+          const retry = await supabaseAdmin.from('workout_routines').insert(payload).select('*').single()
+          if (retry.error) throw retry.error
+          row = retry.data
+        }
+        return res.status(201).json(mapRoutine(row))
+      } catch (retryErr) {
+        return res.status(500).json({ message: 'Error al guardar rutina', error: retryErr.message })
+      }
+    }
     res.status(500).json({ message: 'Error al guardar rutina', error: error.message })
   }
 })
 
 router.put('/routines/:id', authenticate, async (req, res) => {
   try {
-    const { name, exercises, color, isPublic, localId } = req.body
+    const { name, exercises, color, isPublic, localId, days } = req.body
     const updateData = { updated_at: new Date().toISOString() }
     if (name !== undefined) updateData.name = name
     if (exercises !== undefined) updateData.exercises = exercises
     if (color !== undefined) updateData.color = color
+    if (days !== undefined) updateData.days = normalizeDays(days)
     if (isPublic !== undefined) updateData.is_public = Boolean(isPublic)
     if (localId !== undefined) updateData.local_id = localId
 

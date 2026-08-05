@@ -608,27 +608,65 @@ export default function StoriesRail({
       {showRail && (
       <div className="-mx-1 mb-4 overflow-x-auto scrollbar-hide px-1">
         <div className="flex gap-3 pb-1">
-          <button
-            type="button"
-            onClick={() => imageInputRef.current?.click()}
-            className="flex w-[72px] shrink-0 flex-col items-center gap-1.5"
-          >
-            <div className="relative flex h-[68px] w-[68px] items-center justify-center rounded-full bg-dark-200 ring-2 ring-dashed ring-white/20">
-              <Avatar avatar={user?.avatar} name={user?.name} size="story" />
-              <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary-500 text-black">
-                <FiPlus size={14} />
-              </span>
-            </div>
-            <span className="w-full truncate text-center text-[11px] text-gray-400">Tu historia</span>
-          </button>
+          {(() => {
+            const mineIdx = groups.findIndex((g) => (g.user?._id || g.user) === user?._id)
+            const mineGroup = mineIdx >= 0 ? groups[mineIdx] : null
+            const hasMine = Boolean(mineGroup)
+
+            const openAdd = async (e) => {
+              e?.stopPropagation?.()
+              if (!(await ensureStorageAccess())) return
+              imageInputRef.current?.click()
+            }
+
+            return (
+              <div className="flex w-[72px] shrink-0 flex-col items-center gap-1.5">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hasMine) openGroup(mineIdx)
+                      else openAdd()
+                    }}
+                    aria-label={hasMine ? 'Ver tus historias' : 'Crear historia'}
+                  >
+                    <div
+                      className={
+                        hasMine
+                          ? 'rounded-full bg-gradient-to-tr from-primary-500 to-accent-cyan p-[2px]'
+                          : 'flex h-[68px] w-[68px] items-center justify-center rounded-full bg-[color:var(--bg-muted)] ring-2 ring-dashed ring-[color:var(--border-strong)]'
+                      }
+                    >
+                      {hasMine ? (
+                        <div className="rounded-full bg-elevated p-[2px]">
+                          <Avatar avatar={user?.avatar} name={user?.name} size="story" />
+                        </div>
+                      ) : (
+                        <Avatar avatar={user?.avatar} name={user?.name} size="story" />
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openAdd}
+                    className="absolute -bottom-0.5 -right-0.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary-500 text-black shadow-md ring-2 ring-[color:var(--bg-app)]"
+                    aria-label="Agregar historia"
+                  >
+                    <FiPlus size={14} />
+                  </button>
+                </div>
+                <span className="w-full truncate text-center text-[11px] text-app-secondary">Tu historia</span>
+              </div>
+            )
+          })()}
 
           {groups.map((group, idx) => {
             const uid = group.user?._id || group.user
             const isMine = uid === user?._id
-            const ring =
-              group.hasUnseen || isMine
-                ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
-                : 'bg-white/20'
+            if (isMine) return null
+            const ring = group.hasUnseen
+              ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
+              : 'bg-[color:var(--border-strong)]'
             return (
               <button
                 key={uid}
@@ -637,12 +675,12 @@ export default function StoriesRail({
                 className="flex w-[72px] shrink-0 flex-col items-center gap-1.5"
               >
                 <div className={`rounded-full p-[2px] ${ring}`}>
-                  <div className="rounded-full bg-dark-500 p-[2px]">
+                  <div className="rounded-full bg-elevated p-[2px]">
                     <Avatar avatar={group.user?.avatar} name={group.user?.name} size="story" />
                   </div>
                 </div>
-                <span className="w-full truncate text-center text-[11px] text-gray-300">
-                  {isMine ? 'Tú' : group.user?.name?.split(' ')[0] || 'User'}
+                <span className="w-full truncate text-center text-[11px] text-app-secondary">
+                  {group.user?.name?.split(' ')[0] || 'User'}
                 </span>
               </button>
             )
@@ -659,7 +697,7 @@ export default function StoriesRail({
             if (!(await ensureStorageAccess())) return
             imageInputRef.current?.click()
           }}
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-2.5 text-xs font-medium text-gray-200 sm:flex-none sm:px-4"
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-app bg-elevated py-2.5 text-xs font-medium text-app sm:flex-none sm:px-4"
         >
           <FiImage size={14} /> Foto
         </button>
@@ -669,7 +707,7 @@ export default function StoriesRail({
             if (!(await ensureStorageAccess())) return
             videoInputRef.current?.click()
           }}
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-2.5 text-xs font-medium text-gray-200 sm:flex-none sm:px-4"
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-app bg-elevated py-2.5 text-xs font-medium text-app sm:flex-none sm:px-4"
         >
           <FiVideo size={14} /> Video 30s
         </button>

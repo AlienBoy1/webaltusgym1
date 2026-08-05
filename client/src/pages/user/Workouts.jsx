@@ -1,10 +1,23 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPlus, FiCheck, FiPlay, FiX, FiTrash2, FiSkipForward, FiShare2, FiEdit2, FiCompass, FiGlobe } from 'react-icons/fi'
+import {
+  FiPlus,
+  FiCheck,
+  FiPlay,
+  FiX,
+  FiTrash2,
+  FiSkipForward,
+  FiShare2,
+  FiEdit2,
+  FiCompass,
+  FiGlobe,
+  FiSearch
+} from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Timer from '../../components/Timer'
+import ShareComposerModal from '../../components/ShareComposerModal'
 import { useConfetti } from '../../components/Confetti'
 import {
   getWorkoutPreferences,
@@ -22,6 +35,16 @@ import {
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 const DEFAULT_REST_SECONDS = 60
 
+const WEEK_DAYS = [
+  { id: 1, short: 'Lun', full: 'Lunes' },
+  { id: 2, short: 'Mar', full: 'Martes' },
+  { id: 3, short: 'Mié', full: 'Miércoles' },
+  { id: 4, short: 'Jue', full: 'Jueves' },
+  { id: 5, short: 'Vie', full: 'Viernes' },
+  { id: 6, short: 'Sáb', full: 'Sábado' },
+  { id: 0, short: 'Dom', full: 'Domingo' }
+]
+
 const COLOR_MAP = {
   primary: 'from-primary-500/30 to-primary-700/10 border-primary-500/30',
   cyan: 'from-cyan-400/25 to-cyan-700/10 border-cyan-400/30',
@@ -34,6 +57,7 @@ const defaultTemplates = [
     id: 'workout-1',
     name: 'Pecho y Tríceps',
     color: 'primary',
+    days: [1],
     exercises: [
       { id: 'e-1', name: 'Press Banca', sets: 4, reps: 10 },
       { id: 'e-2', name: 'Press Inclinado', sets: 3, reps: 12 },
@@ -46,6 +70,7 @@ const defaultTemplates = [
     id: 'workout-2',
     name: 'Espalda y Bíceps',
     color: 'cyan',
+    days: [2],
     exercises: [
       { id: 'e-6', name: 'Dominadas', sets: 4, reps: 8 },
       { id: 'e-7', name: 'Remo con Barra', sets: 4, reps: 10 },
@@ -58,6 +83,7 @@ const defaultTemplates = [
     id: 'workout-3',
     name: 'Piernas',
     color: 'purple',
+    days: [3, 6],
     exercises: [
       { id: 'e-11', name: 'Sentadillas', sets: 4, reps: 10 },
       { id: 'e-12', name: 'Prensa', sets: 4, reps: 12 },
@@ -70,6 +96,7 @@ const defaultTemplates = [
     id: 'workout-4',
     name: 'Hombros y Core',
     color: 'green',
+    days: [4],
     exercises: [
       { id: 'e-16', name: 'Press Militar', sets: 4, reps: 10 },
       { id: 'e-17', name: 'Elevaciones Laterales', sets: 3, reps: 15 },
@@ -79,6 +106,31 @@ const defaultTemplates = [
     ]
   }
 ]
+
+function normalizeDays(days) {
+  if (!Array.isArray(days)) return []
+  return [...new Set(days.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
+}
+
+function loadTemplatesFromStorage() {
+  try {
+    const stored = localStorage.getItem(WORKOUT_TEMPLATES_KEY)
+    const source = stored ? JSON.parse(stored) : defaultTemplates
+    return source.map((template) => ({
+      ...template,
+      days: normalizeDays(template.days ?? [])
+    }))
+  } catch {
+    return defaultTemplates.map((template) => ({
+      ...template,
+      days: normalizeDays(template.days)
+    }))
+  }
+}
+
+function getDayLabel(dayId) {
+  return WEEK_DAYS.find((d) => d.id === dayId)?.short || ''
+}
 
 function createExerciseId() {
   return `ex-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -94,17 +146,17 @@ function ShareWorkoutPrompt({ workout, onShare, onClose, onViewHistory }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 sm:items-center sm:p-4"
+      className="app-overlay-sheet fixed inset-0 flex items-end justify-center bg-black/75 sm:items-center sm:p-4"
     >
       <motion.div
         initial={{ y: 30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 30, opacity: 0 }}
-        className="w-full max-w-md rounded-t-3xl border border-white/10 bg-dark-200 p-5 sm:rounded-3xl sm:p-6"
+        className="w-full max-w-md rounded-t-3xl border border-app bg-elevated p-5 sm:rounded-3xl sm:p-6"
       >
-        <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Sesión guardada</p>
-        <h3 className="mt-2 font-display text-2xl text-white">{workout.name}</h3>
-        <p className="mt-2 text-sm text-gray-400">
+        <p className="text-xs uppercase tracking-[0.3em] text-app-secondary">Sesión guardada</p>
+        <h3 className="mt-2 font-display text-2xl text-app">{workout.name}</h3>
+        <p className="mt-2 text-sm text-app-secondary">
           ¿Quieres compartir este entrenamiento en Comunidad para que lo vean quienes te siguen?
         </p>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
@@ -115,7 +167,7 @@ function ShareWorkoutPrompt({ workout, onShare, onClose, onViewHistory }) {
             Ver historial
           </button>
         </div>
-        <button type="button" onClick={onClose} className="mt-3 w-full py-2 text-sm text-gray-500 hover:text-white">
+        <button type="button" onClick={onClose} className="mt-3 w-full py-2 text-sm text-app-secondary hover:text-app">
           Ahora no
         </button>
       </motion.div>
@@ -131,14 +183,13 @@ export default function Workouts() {
   const [restHistory, setRestHistory] = useState([])
   const [lastSavedWorkout, setLastSavedWorkout] = useState(null)
   const [showSharePrompt, setShowSharePrompt] = useState(false)
-  const [templates, setTemplates] = useState(() => {
-    try {
-      const stored = localStorage.getItem(WORKOUT_TEMPLATES_KEY)
-      return stored ? JSON.parse(stored) : defaultTemplates
-    } catch {
-      return defaultTemplates
-    }
-  })
+  const [shareTarget, setShareTarget] = useState(null)
+  const [sharing, setSharing] = useState(false)
+  const [dayFilter, setDayFilter] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  /** During active session: which exercises to show in the checklist */
+  const [exerciseListFilter, setExerciseListFilter] = useState('pending') // 'pending' | 'completed'
+  const [templates, setTemplates] = useState(loadTemplatesFromStorage)
   const [activeWorkout, setActiveWorkout] = useState(null)
   const [sessionStart, setSessionStart] = useState(null)
   const [restActive, setRestActive] = useState(false)
@@ -155,6 +206,8 @@ export default function Workouts() {
         autoStartTimer: true
       }
   )
+
+  const todayId = new Date().getDay()
 
   useEffect(() => {
     const sync = () => {
@@ -181,13 +234,32 @@ export default function Workouts() {
   const [newRoutine, setNewRoutine] = useState({
     name: '',
     exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
-    isPublic: false
+    isPublic: false,
+    days: []
   })
   const { celebration } = useConfetti()
 
   useEffect(() => {
     localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify(templates))
   }, [templates])
+
+  const dayCounts = useMemo(() => {
+    const counts = { all: templates.length }
+    WEEK_DAYS.forEach(({ id }) => {
+      counts[id] = templates.filter((t) => normalizeDays(t.days).includes(id)).length
+    })
+    return counts
+  }, [templates])
+
+  const filteredTemplates = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return templates.filter((template) => {
+      const matchesSearch = !query || template.name.toLowerCase().includes(query)
+      const matchesDay =
+        dayFilter === 'all' || normalizeDays(template.days).includes(Number(dayFilter))
+      return matchesSearch && matchesDay
+    })
+  }, [templates, searchQuery, dayFilter])
 
   const syncRoutineToServer = async (routine, { remove = false } = {}) => {
     try {
@@ -201,7 +273,8 @@ export default function Workouts() {
         name: routine.name,
         exercises: routine.exercises,
         color: routine.color || 'primary',
-        isPublic: Boolean(routine.isPublic)
+        isPublic: Boolean(routine.isPublic),
+        days: normalizeDays(routine.days)
       }
       const { data } = await api.post('/workouts/routines', payload)
       return data
@@ -295,6 +368,7 @@ export default function Workouts() {
   const completedCount = completedExercises.length
   const totalExercises = activeWorkout?.exercises?.length || 0
   const progress = totalExercises ? Math.round((completedCount / totalExercises) * 100) : 0
+  const pendingCount = Math.max(0, totalExercises - completedCount)
   const currentExercise = useMemo(
     () => getCurrentExercise({ activeWorkout, completedExercises }),
     [activeWorkout, completedExercises]
@@ -303,6 +377,23 @@ export default function Workouts() {
     if (!activeWorkout || !currentExercise) return 0
     return activeWorkout.exercises.findIndex((e) => e.id === currentExercise.id)
   }, [activeWorkout, currentExercise])
+
+  const listedExercises = useMemo(() => {
+    if (!activeWorkout?.exercises) return []
+    return activeWorkout.exercises
+      .map((exercise, index) => ({ exercise, index }))
+      .filter(({ exercise }) => {
+        const done = completedExercises.includes(exercise.id)
+        return exerciseListFilter === 'completed' ? done : !done
+      })
+  }, [activeWorkout, completedExercises, exerciseListFilter])
+
+  // If pending list empties while filter is pending, keep showing empty pending (user can switch)
+  useEffect(() => {
+    if (!activeWorkout) {
+      setExerciseListFilter('pending')
+    }
+  }, [activeWorkout])
 
   const startRest = (exerciseId) => {
     const prefs = getWorkoutPreferences() || preferences
@@ -363,6 +454,7 @@ export default function Workouts() {
     setCompletedExercises([])
     setWorkoutTime(0)
     setRestHistory([])
+    setExerciseListFilter('pending')
     clearRestState()
     await sendWorkoutNotification({
       activeWorkout: workout,
@@ -499,6 +591,21 @@ export default function Workouts() {
     }))
   }
 
+  const toggleRoutineDay = (dayId) => {
+    setNewRoutine((current) => {
+      const days = normalizeDays(current.days)
+      const next = days.includes(dayId) ? days.filter((d) => d !== dayId) : [...days, dayId]
+      return { ...current, days: next }
+    })
+  }
+
+  const resetNewRoutine = () => ({
+    name: '',
+    exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
+    isPublic: false,
+    days: []
+  })
+
   const saveNewRoutine = async () => {
     if (!newRoutine.name.trim() || newRoutine.exercises.some((exercise) => !exercise.name.trim())) {
       toast.error('Completa todos los campos antes de guardar la rutina')
@@ -515,7 +622,8 @@ export default function Workouts() {
             ...t,
             name: newRoutine.name.trim(),
             exercises: newRoutine.exercises,
-            isPublic: Boolean(newRoutine.isPublic)
+            isPublic: Boolean(newRoutine.isPublic),
+            days: normalizeDays(newRoutine.days)
           }
           return updatedRoutine
         })
@@ -525,7 +633,14 @@ export default function Workouts() {
         if (synced?.id || synced?._id) {
           setTemplates((current) =>
             current.map((t) =>
-              t.id === editingId ? { ...t, serverId: synced.id || synced._id, isPublic: synced.isPublic } : t
+              t.id === editingId
+                ? {
+                    ...t,
+                    serverId: synced.id || synced._id,
+                    isPublic: synced.isPublic,
+                    days: normalizeDays(synced.days ?? t.days)
+                  }
+                : t
             )
           )
         }
@@ -537,14 +652,21 @@ export default function Workouts() {
         name: newRoutine.name.trim(),
         id: createWorkoutId(),
         color: colors[templates.length % colors.length],
-        isPublic: Boolean(newRoutine.isPublic)
+        isPublic: Boolean(newRoutine.isPublic),
+        days: normalizeDays(newRoutine.days)
       }
       setTemplates((current) => [...current, created])
       const synced = await syncRoutineToServer(created)
       if (synced?.id || synced?._id) {
         setTemplates((current) =>
           current.map((t) =>
-            t.id === created.id ? { ...t, serverId: synced.id || synced._id } : t
+            t.id === created.id
+              ? {
+                  ...t,
+                  serverId: synced.id || synced._id,
+                  days: normalizeDays(synced.days ?? t.days)
+                }
+              : t
           )
         )
       }
@@ -553,11 +675,7 @@ export default function Workouts() {
 
     setShowCreateModal(false)
     setEditingId(null)
-    setNewRoutine({
-      name: '',
-      exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
-      isPublic: false
-    })
+    setNewRoutine(resetNewRoutine())
   }
 
   const openEditRoutine = (template) => {
@@ -565,7 +683,8 @@ export default function Workouts() {
     setNewRoutine({
       name: template.name,
       exercises: template.exercises.map((ex) => ({ ...ex })),
-      isPublic: Boolean(template.isPublic)
+      isPublic: Boolean(template.isPublic),
+      days: normalizeDays(template.days)
     })
     setShowCreateModal(true)
   }
@@ -585,26 +704,61 @@ export default function Workouts() {
     if (synced?.id || synced?._id) {
       setTemplates((current) =>
         current.map((t) =>
-          t.id === template.id ? { ...t, serverId: synced.id || synced._id, isPublic: synced.isPublic } : t
+          t.id === template.id
+            ? {
+                ...t,
+                serverId: synced.id || synced._id,
+                isPublic: synced.isPublic,
+                days: normalizeDays(synced.days ?? t.days)
+              }
+            : t
         )
       )
     }
     toast.success(next ? 'Rutina marcada como pública' : 'Rutina ahora es privada')
   }
 
-  const shareRoutineToCommunity = async (template) => {
+  const submitShareRoutine = async (payload) => {
+    if (!shareTarget) return
+    setSharing(true)
+    const template = shareTarget
     try {
+      let currentTemplate = template
+      if (!template.isPublic) {
+        const updated = { ...template, isPublic: true }
+        setTemplates((current) => current.map((t) => (t.id === template.id ? updated : t)))
+        const synced = await syncRoutineToServer(updated)
+        if (synced?.id || synced?._id) {
+          currentTemplate = {
+            ...updated,
+            serverId: synced.id || synced._id,
+            isPublic: synced.isPublic ?? true,
+            days: normalizeDays(synced.days ?? updated.days)
+          }
+          setTemplates((current) =>
+            current.map((t) => (t.id === template.id ? currentTemplate : t))
+          )
+        } else {
+          currentTemplate = updated
+        }
+      }
+
       await api.post('/social', {
-        content: `Comparte mi rutina GymRat: ${template.name}`,
-        postType: 'workout',
+        content: payload.content || `Comparto mi rutina: ${template.name}`,
+        postType: 'routine',
+        mood: payload.mood,
+        poll: payload.poll,
         workoutData: {
           name: template.name,
+          shareKind: 'routine',
+          isRoutine: true,
           completedExercises: template.exercises.length,
           totalExercises: template.exercises.length,
           totalSets: template.exercises.reduce((s, e) => s + (Number(e.sets) || 0), 0),
           durationSeconds: 0,
-          routineId: template.serverId || template.id,
-          isPublicRoutine: Boolean(template.isPublic),
+          routineId: currentTemplate.serverId || currentTemplate.id,
+          isPublicRoutine: true,
+          days: normalizeDays(template.days),
           exercises: template.exercises.map((e) => ({
             name: e.name,
             sets: e.sets,
@@ -612,35 +766,34 @@ export default function Workouts() {
           }))
         }
       })
-      if (!template.isPublic) {
-        await togglePublic({ ...template, isPublic: false })
-      }
       toast.success('Rutina compartida en Comunidad')
+      setShareTarget(null)
       navigate('/social')
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo compartir')
+    } finally {
+      setSharing(false)
     }
   }
 
   if (activeWorkout) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 pb-28 sm:space-y-5 sm:pb-8 px-0.5">
-        {/* Compact session bar — single source for name / time / progress */}
+      <div className="mx-auto max-w-3xl space-y-4 px-1 pb-28 sm:space-y-5 sm:pb-8">
         <motion.header
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="sticky top-0 z-20 -mx-0.5 rounded-2xl border border-white/10 bg-[#0a0c14]/95 px-3 py-2.5 backdrop-blur-xl sm:px-5 sm:py-3"
+          className="sticky top-0 z-20 -mx-1 rounded-2xl border border-app bg-elevated/95 backdrop-blur-xl"
         >
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="relative h-10 w-10 shrink-0 sm:h-11 sm:w-11">
-              <svg className="h-full w-full -rotate-90" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+          <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5 sm:py-3">
+            <div className="relative h-11 w-11 shrink-0 sm:h-12 sm:w-12">
+              <svg className="h-full w-full -rotate-90" viewBox="0 0 44 44" aria-hidden>
+                <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border-subtle)" strokeWidth="3" />
                 <circle
                   cx="22"
                   cy="22"
                   r="18"
                   fill="none"
-                  stroke="#FF6B35"
+                  stroke="var(--color-primary)"
                   strokeWidth="3"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 18}`}
@@ -648,52 +801,93 @@ export default function Workouts() {
                   className="transition-[stroke-dashoffset] duration-500"
                 />
               </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold tabular-nums text-app sm:text-[11px]">
                 {progress}%
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-white sm:text-base">{activeWorkout.name}</p>
-              <p className="font-mono text-xs tabular-nums text-primary-300 sm:text-sm">{formatTime(workoutTime)}</p>
+              <p className="truncate text-sm font-semibold leading-tight text-app sm:text-base">
+                {activeWorkout.name}
+              </p>
+              <p className="mt-0.5 font-mono text-xs tabular-nums text-primary-500 sm:text-sm">
+                {formatTime(workoutTime)}
+              </p>
             </div>
-            <button type="button" onClick={cancelWorkout} className="rounded-xl px-2.5 py-2 text-xs text-gray-400 hover:bg-white/5 hover:text-white sm:px-3 sm:text-sm">
+            <button
+              type="button"
+              onClick={cancelWorkout}
+              className="shrink-0 rounded-xl px-2.5 py-2 text-xs text-app-secondary transition-colors hover:bg-[color:var(--bg-muted)] hover:text-app sm:px-3 sm:text-sm"
+            >
               Salir
             </button>
             <button
               type="button"
               onClick={finishWorkout}
               disabled={saving}
-              className="btn-primary px-3 py-2 text-xs sm:px-4 sm:text-sm disabled:opacity-60"
+              className="btn-primary shrink-0 px-3 py-2 text-xs sm:px-4 sm:text-sm disabled:opacity-60"
             >
-              {saving ? '…' : 'Listo'}
+              {saving ? '…' : 'Finalizar'}
             </button>
+          </div>
+
+          <div
+            className="flex gap-0.5 px-3 pb-2.5 sm:gap-1 sm:px-5 sm:pb-3"
+            role="progressbar"
+            aria-valuenow={completedCount}
+            aria-valuemin={0}
+            aria-valuemax={totalExercises}
+            aria-label={`${completedCount} de ${totalExercises} ejercicios completados`}
+          >
+            {activeWorkout.exercises.map((exercise, index) => {
+              const done = completedExercises.includes(exercise.id)
+              const isCurrent = currentExercise?.id === exercise.id && !done
+              return (
+                <div
+                  key={exercise.id}
+                  className={`h-1 flex-1 rounded-full transition-colors duration-300 sm:h-1.5 ${
+                    done
+                      ? 'bg-accent-green'
+                      : isCurrent
+                        ? 'bg-primary-500 shadow-[0_0_8px_rgba(var(--color-primary-rgb),0.55)]'
+                        : 'bg-[color:var(--bg-muted)]'
+                  }`}
+                  title={`${index + 1}. ${exercise.name}${done ? ' ✓' : isCurrent ? ' (actual)' : ''}`}
+                />
+              )
+            })}
           </div>
         </motion.header>
 
-        {/* Focus: rest OR current exercise — never both duplicating the same stats */}
         <AnimatePresence mode="wait">
           {restActive ? (
             <motion.section
               key="rest"
-              initial={{ opacity: 0, scale: 0.97 }}
+              initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.97 }}
-              className="relative overflow-hidden rounded-[1.75rem] border border-accent-cyan/20 bg-gradient-to-b from-[#0c1520] to-[#080a10] px-5 py-8 text-center"
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.25 }}
+              className="relative overflow-hidden rounded-[1.75rem] border border-app bg-elevated px-4 py-10 text-center sm:px-8 sm:py-14"
             >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,245,255,0.08),transparent_65%)]" />
-              <p className="relative text-xs font-semibold uppercase tracking-[0.35em] text-accent-cyan">Descanso</p>
-              <div className="relative mt-6 flex justify-center">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,245,255,0.07),transparent_70%)]" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-cyan/40 to-transparent" />
+              <p className="relative text-[11px] font-semibold uppercase tracking-[0.4em] text-accent-cyan sm:text-xs">
+                Descanso
+              </p>
+              <div className="relative mx-auto mt-8 flex max-w-xs justify-center sm:mt-10">
                 <Timer remaining={restRemaining} total={restTotal} size="lg" />
               </div>
-              <p className="relative mt-5 text-sm text-gray-400">
-                Siguiente: <span className="text-white">{currentExercise?.name || 'Último ejercicio'}</span>
-              </p>
+              <div className="relative mt-8 space-y-1 sm:mt-10">
+                <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-app-secondary">Siguiente</p>
+                <p className="font-display text-xl text-app sm:text-2xl">
+                  {currentExercise?.name || 'Último ejercicio'}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={skipRest}
-                className="relative mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+                className="relative mt-8 inline-flex items-center gap-2 rounded-full border border-app bg-[color:var(--bg-muted)] px-5 py-2.5 text-sm text-app transition-colors hover:border-accent-cyan/30 hover:bg-elevated sm:mt-10"
               >
-                <FiSkipForward size={14} /> Saltar descanso
+                <FiSkipForward size={15} /> Saltar descanso
               </button>
             </motion.section>
           ) : (
@@ -702,83 +896,221 @@ export default function Workouts() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-gradient-to-br from-[#121622] to-[#090b12] p-6 sm:p-8"
+              transition={{ duration: 0.25 }}
+              className="relative overflow-hidden rounded-[1.75rem] border border-app bg-elevated px-5 py-7 sm:px-8 sm:py-10"
             >
-              <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary-500/15 blur-3xl" />
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-gray-500">
+              <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-primary-500/12 blur-3xl" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--color-primary)]/35 to-transparent" />
+              <p className="relative text-[11px] font-semibold uppercase tracking-[0.35em] text-app-secondary sm:text-xs">
                 Ejercicio {currentIndex + 1} de {totalExercises}
               </p>
-              <h2 className="mt-3 font-display text-3xl text-white sm:text-4xl">
+              <h2 className="relative mt-3 font-display text-[1.75rem] leading-tight text-app sm:mt-4 sm:text-4xl">
                 {currentExercise?.name || 'Sesión completa'}
               </h2>
               {currentExercise && (
-                <p className="mt-2 text-lg text-gray-400">
-                  {currentExercise.sets} series · {currentExercise.reps} reps
-                </p>
+                <div className="relative mt-4 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center rounded-full border border-app bg-[color:var(--bg-muted)] px-3 py-1 text-sm font-medium text-app">
+                    {currentExercise.sets} series
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-app bg-[color:var(--bg-muted)] px-3 py-1 text-sm font-medium text-app">
+                    {currentExercise.reps} reps
+                  </span>
+                </div>
               )}
               {currentExercise && !completedExercises.includes(currentExercise.id) && (
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.97 }}
                   onClick={() => toggleExercise(currentExercise.id)}
-                  className="btn-primary mt-7 inline-flex w-full items-center justify-center gap-2 py-3.5 sm:w-auto sm:min-w-[220px]"
+                  className="btn-primary relative mt-8 inline-flex w-full items-center justify-center gap-2 py-4 text-base shadow-[0_0_24px_rgba(var(--color-primary-rgb),0.28)] sm:mt-10 sm:w-auto sm:min-w-[240px]"
                 >
-                  <FiCheck size={18} /> Completar ejercicio
+                  <FiCheck size={20} /> Completar
                 </motion.button>
               )}
               {completedCount === totalExercises && (
-                <p className="mt-6 text-accent-green">Todo listo — finaliza para guardar.</p>
+                <p className="relative mt-8 text-center text-sm text-accent-green sm:mt-10">
+                  Todo listo — pulsa Finalizar para guardar.
+                </p>
               )}
             </motion.section>
           )}
         </AnimatePresence>
 
-        {/* Exercise checklist — progress implied by checks only */}
         <section>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">Lista</p>
-          <div className="space-y-2">
-            {activeWorkout.exercises.map((exercise, index) => {
-              const done = completedExercises.includes(exercise.id)
-              const isCurrent = currentExercise?.id === exercise.id && !done
-              return (
-                <motion.button
-                  id={`workout-exercise-${exercise.id}`}
-                  key={exercise.id}
-                  type="button"
-                  layout
-                  whileTap={{ scale: 0.985 }}
-                  onClick={() => toggleExercise(exercise.id)}
-                  className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
-                    done
-                      ? 'border-accent-green/30 bg-accent-green/10'
-                      : isCurrent
-                        ? 'border-primary-500/40 bg-primary-500/10'
-                        : 'border-white/8 bg-white/[0.03] hover:border-white/15'
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-baseline justify-between gap-2 sm:block">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-app-secondary sm:text-xs">
+                Ejercicios
+              </p>
+              <p className="text-xs tabular-nums text-app-secondary sm:mt-1">
+                {completedCount}/{totalExercises} hechos
+              </p>
+            </div>
+            <div
+              className="grid grid-cols-2 rounded-xl border border-app bg-elevated p-0.5"
+              role="tablist"
+              aria-label="Filtrar ejercicios"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={exerciseListFilter === 'pending'}
+                onClick={() => setExerciseListFilter('pending')}
+                className={`rounded-[10px] px-3 py-2 text-center text-xs font-semibold transition-colors sm:text-sm ${
+                  exerciseListFilter === 'pending'
+                    ? 'bg-primary-500 text-black shadow-sm'
+                    : 'text-app-secondary hover:text-app'
+                }`}
+              >
+                Pendientes
+                <span
+                  className={`ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full px-1 py-0.5 text-[10px] tabular-nums ${
+                    exerciseListFilter === 'pending' ? 'bg-black/15' : 'bg-[color:var(--bg-muted)]'
                   }`}
                 >
-                  <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  {pendingCount}
+                </span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={exerciseListFilter === 'completed'}
+                onClick={() => setExerciseListFilter('completed')}
+                className={`rounded-[10px] px-3 py-2 text-center text-xs font-semibold transition-colors sm:text-sm ${
+                  exerciseListFilter === 'completed'
+                    ? 'bg-accent-green text-black shadow-sm'
+                    : 'text-app-secondary hover:text-app'
+                }`}
+              >
+                Completados
+                <span
+                  className={`ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full px-1 py-0.5 text-[10px] tabular-nums ${
+                    exerciseListFilter === 'completed' ? 'bg-black/15' : 'bg-[color:var(--bg-muted)]'
+                  }`}
+                >
+                  {completedCount}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {listedExercises.map(({ exercise, index }) => {
+                const done = completedExercises.includes(exercise.id)
+                const isCurrent = currentExercise?.id === exercise.id && !done
+                return (
+                  <motion.button
+                    id={`workout-exercise-${exercise.id}`}
+                    key={exercise.id}
+                    type="button"
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: exerciseListFilter === 'pending' ? 24 : -24, scale: 0.98 }}
+                    transition={{ duration: 0.2 }}
+                    whileTap={{ scale: 0.985 }}
+                    onClick={() => toggleExercise(exercise.id)}
+                    className={`flex w-full items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all sm:px-4 sm:py-3.5 ${
                       done
-                        ? 'bg-accent-green text-black'
+                        ? 'border-accent-green/25 bg-accent-green/8'
                         : isCurrent
-                          ? 'bg-primary-500 text-black'
-                          : 'bg-white/10 text-gray-400'
+                          ? 'border-primary-500/45 bg-primary-500/10 shadow-[0_0_0_1px_rgba(var(--color-primary-rgb),0.12)]'
+                          : 'border-app bg-elevated hover:border-[color:var(--color-primary)]/25'
                     }`}
                   >
-                    {done ? <FiCheck size={14} /> : index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className={`block truncate font-medium ${done ? 'text-accent-green line-through opacity-80' : 'text-white'}`}>
-                      {exercise.name}
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold sm:h-8 sm:w-8 ${
+                        done
+                          ? 'bg-accent-green text-black'
+                          : isCurrent
+                            ? 'bg-primary-500 text-black'
+                            : 'border border-app bg-[color:var(--bg-muted)] text-app-secondary'
+                      }`}
+                    >
+                      {done ? <FiCheck size={14} /> : index + 1}
                     </span>
-                    <span className="text-xs text-gray-500">
-                      {exercise.sets}×{exercise.reps}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`block truncate font-medium ${
+                            done ? 'text-accent-green' : isCurrent ? 'text-app' : 'text-app-secondary'
+                          }`}
+                        >
+                          {exercise.name}
+                        </span>
+                        {isCurrent && (
+                          <span className="shrink-0 rounded-md bg-primary-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary-500">
+                            En curso
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`mt-0.5 inline-block rounded-md px-1.5 py-0.5 text-[11px] ${
+                          done
+                            ? 'bg-accent-green/10 text-accent-green'
+                            : isCurrent
+                              ? 'bg-[color:var(--bg-muted)] text-app-secondary'
+                              : 'text-app-secondary opacity-70'
+                        }`}
+                      >
+                        {exercise.sets}×{exercise.reps}
+                      </span>
                     </span>
-                  </span>
-                  {isCurrent && <FiPlay className="shrink-0 text-primary-400" size={16} />}
-                </motion.button>
-              )
-            })}
+                    {isCurrent && (
+                      <FiPlay className="shrink-0 text-primary-500" size={16} aria-hidden />
+                    )}
+                    {done && (
+                      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-accent-green">
+                        Hecho
+                      </span>
+                    )}
+                  </motion.button>
+                )
+              })}
+            </AnimatePresence>
+
+            {listedExercises.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-app bg-elevated/60 px-4 py-8 text-center">
+                {exerciseListFilter === 'pending' ? (
+                  <>
+                    <p className="text-sm font-medium text-app">
+                      {completedCount === totalExercises
+                        ? 'Todos los ejercicios estánados'
+                        : 'No hay pendientes'}
+                    </p>
+                    <p className="mt-1 text-xs text-app-secondary">
+                      {completedCount === totalExercises
+                        ? 'Pulsa Finalizar para guardar la sesión.'
+                        : 'Cambia al filtro Completados para revisarlos.'}
+                    </p>
+                    {completedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setExerciseListFilter('completed')}
+                        className="btn-secondary mt-4 px-4 py-2 text-sm"
+                      >
+                        Ver completados ({completedCount})
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-app">Aún no hay completados</p>
+                    <p className="mt-1 text-xs text-app-secondary">
+                      Al marcar un ejercicio, aparecerá aquí.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setExerciseListFilter('pending')}
+                      className="btn-secondary mt-4 px-4 py-2 text-sm"
+                    >
+                      Ver pendientes ({pendingCount})
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -801,10 +1133,23 @@ export default function Workouts() {
         )}
       </AnimatePresence>
 
+      <ShareComposerModal
+        open={Boolean(shareTarget)}
+        onClose={() => setShareTarget(null)}
+        onSubmit={submitShareRoutine}
+        title="Compartir rutina"
+        subtitle={shareTarget ? shareTarget.name : ''}
+        initialContent={shareTarget ? `Comparto mi rutina: ${shareTarget.name}` : ''}
+        submitLabel="Publicar rutina"
+        loading={sharing}
+      />
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
-          <h1 className="font-display text-3xl text-white sm:text-5xl">Entrenamientos</h1>
-          <p className="mt-2 max-w-lg text-sm text-gray-400 sm:text-base">Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.</p>
+          <h1 className="font-display text-3xl text-app sm:text-5xl">Entrenamientos</h1>
+          <p className="mt-2 max-w-lg text-sm text-app-secondary sm:text-base">
+            Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.
+          </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:self-start">
           <button
@@ -818,11 +1163,7 @@ export default function Workouts() {
             type="button"
             onClick={() => {
               setEditingId(null)
-              setNewRoutine({
-                name: '',
-                exercises: [{ id: createExerciseId(), name: '', sets: 3, reps: 10 }],
-                isPublic: false
-              })
+              setNewRoutine(resetNewRoutine())
               setShowCreateModal(true)
             }}
             className="btn-primary inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm sm:w-auto"
@@ -832,93 +1173,201 @@ export default function Workouts() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        {templates.map((template, i) => (
-          <motion.article
-            key={template.id}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.04 }}
-            whileHover={{ y: -3 }}
-            className={`group relative overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-5 sm:p-6 ${COLOR_MAP[template.color] || COLOR_MAP.primary}`}
+      <div className="space-y-3">
+        <div className="relative">
+          <FiSearch
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-app-secondary"
+            size={16}
+          />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar rutina por nombre…"
+            className="input-field w-full pl-10"
+          />
+        </div>
+
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+          <button
+            type="button"
+            onClick={() => setDayFilter('all')}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+              dayFilter === 'all'
+                ? 'border-primary-500 bg-primary-500/15 text-primary-500'
+                : 'border-app bg-elevated text-app-secondary hover:text-app'
+            }`}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-400">
-                  {template.exercises.length} ejercicios
-                  {template.isPublic ? ' · Pública' : ''}
-                </p>
-                <h2 className="mt-2 font-display text-2xl text-white">{template.name}</h2>
-              </div>
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/30 text-lg font-bold text-white/80">
-                {template.exercises.length}
-              </span>
-            </div>
-            <ul className="mt-4 space-y-1.5">
-              {template.exercises.slice(0, 3).map((ex) => (
-                <li key={ex.id} className="truncate text-sm text-gray-400">
-                  {ex.name}
-                  <span className="text-gray-600"> · {ex.sets}×{ex.reps}</span>
-                </li>
-              ))}
-              {template.exercises.length > 3 && (
-                <li className="text-xs text-gray-500">+{template.exercises.length - 3} más</li>
-              )}
-            </ul>
-            <div className="mt-4 flex flex-wrap gap-2">
+            Todos
+            <span className="ml-1.5 text-xs opacity-70">{dayCounts.all}</span>
+          </button>
+          {WEEK_DAYS.map((day) => {
+            const isToday = day.id === todayId
+            const active = dayFilter === day.id
+            return (
               <button
+                key={day.id}
                 type="button"
-                onClick={() => openEditRoutine(template)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => setDayFilter(day.id)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                  active
+                    ? 'border-primary-500 bg-primary-500/15 text-primary-500'
+                    : isToday
+                      ? 'border-accent-cyan/40 bg-accent-cyan/10 text-app'
+                      : 'border-app bg-elevated text-app-secondary hover:text-app'
+                }`}
               >
-                <FiEdit2 size={14} /> Editar
+                {day.short}
+                {isToday && !active && <span className="ml-1 text-[10px] uppercase text-accent-cyan">Hoy</span>}
+                <span className="ml-1.5 text-xs opacity-70">{dayCounts[day.id]}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => togglePublic(template)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              >
-                <FiGlobe size={14} /> {template.isPublic ? 'Privada' : 'Pública'}
-              </button>
-              <button
-                type="button"
-                onClick={() => shareRoutineToCommunity(template)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              >
-                <FiShare2 size={14} /> Compartir
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteRoutine(template)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-black/25 px-3 py-2 text-xs text-red-300 hover:bg-black/40"
-              >
-                <FiTrash2 size={14} /> Eliminar
-              </button>
-            </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {filteredTemplates.length === 0 ? (
+        <div className="rounded-[1.75rem] border border-app bg-elevated px-6 py-12 text-center">
+          <p className="font-display text-xl text-app">Sin rutinas</p>
+          <p className="mt-2 text-sm text-app-secondary">
+            {searchQuery.trim() || dayFilter !== 'all'
+              ? 'No hay rutinas que coincidan con tu búsqueda o filtro.'
+              : 'Crea tu primera rutina para empezar a entrenar.'}
+          </p>
+          {(searchQuery.trim() || dayFilter !== 'all') && (
             <button
               type="button"
-              onClick={() => startWorkout(template)}
-              className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3"
+              onClick={() => {
+                setSearchQuery('')
+                setDayFilter('all')
+              }}
+              className="btn-secondary mt-4 px-4 py-2 text-sm"
             >
-              <FiPlay size={16} /> Iniciar
+              Limpiar filtros
             </button>
-          </motion.article>
-        ))}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+          {filteredTemplates.map((template, i) => {
+            const templateDays = normalizeDays(template.days)
+            return (
+              <motion.article
+                key={template.id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                whileHover={{ y: -3 }}
+                className={`group relative overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-5 sm:p-6 ${
+                  COLOR_MAP[template.color] || COLOR_MAP.primary
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-app-secondary">
+                      {template.exercises.length} ejercicios
+                      {template.isPublic ? ' · Pública' : ''}
+                    </p>
+                    <h2 className="mt-2 font-display text-2xl text-app">{template.name}</h2>
+                    {templateDays.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {templateDays.map((dayId) => {
+                          const isToday = dayId === todayId
+                          return (
+                            <span
+                              key={dayId}
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                isToday
+                                  ? 'bg-accent-cyan/20 text-accent-cyan'
+                                  : 'bg-[color:var(--bg-muted)] text-app-secondary'
+                              }`}
+                            >
+                              {getDayLabel(dayId)}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--bg-muted)] text-lg font-bold text-app">
+                    {template.exercises.length}
+                  </span>
+                </div>
+                <ul className="mt-4 space-y-1.5">
+                  {template.exercises.slice(0, 3).map((ex) => (
+                    <li key={ex.id} className="truncate text-sm text-app-secondary">
+                      {ex.name}
+                      <span className="opacity-60"> · {ex.sets}×{ex.reps}</span>
+                    </li>
+                  ))}
+                  {template.exercises.length > 3 && (
+                    <li className="text-xs text-app-secondary opacity-70">
+                      +{template.exercises.length - 3} más
+                    </li>
+                  )}
+                </ul>
+                <div className="mt-4 flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openEditRoutine(template)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
+                    title="Editar"
+                  >
+                    <FiEdit2 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => togglePublic(template)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
+                    title={template.isPublic ? 'Hacer privada' : 'Hacer pública'}
+                  >
+                    <FiGlobe size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShareTarget(template)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
+                    title="Compartir"
+                  >
+                    <FiShare2 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteRoutine(template)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-red-400 hover:opacity-80"
+                    title="Eliminar"
+                  >
+                    <FiTrash2 size={13} />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startWorkout(template)}
+                  className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3"
+                >
+                  <FiPlay size={16} /> Iniciar
+                </button>
+              </motion.article>
+            )
+          })}
+        </div>
+      )}
 
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 sm:px-6 sm:py-8">
+          <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 sm:px-6 sm:py-8">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="card max-h-[calc(100vh-3rem)] w-full max-w-3xl overflow-y-auto p-5 sm:p-6"
+              className="app-modal-panel card w-full max-w-3xl p-5 sm:p-6"
             >
               <div className="mb-6 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm text-gray-400">{editingId ? 'Editar rutina' : 'Nueva rutina'}</p>
-                  <h2 className="font-display text-2xl">{editingId ? 'Actualiza tu plan' : 'Crea tu plan'}</h2>
+                  <p className="text-sm text-app-secondary">{editingId ? 'Editar rutina' : 'Nueva rutina'}</p>
+                  <h2 className="font-display text-2xl text-app">
+                    {editingId ? 'Actualiza tu plan' : 'Crea tu plan'}
+                  </h2>
                 </div>
                 <button
                   type="button"
@@ -926,7 +1375,7 @@ export default function Workouts() {
                     setShowCreateModal(false)
                     setEditingId(null)
                   }}
-                  className="text-gray-400 hover:text-white"
+                  className="text-app-secondary hover:text-app"
                 >
                   <FiX size={24} />
                 </button>
@@ -934,7 +1383,7 @@ export default function Workouts() {
 
               <div className="space-y-5">
                 <div>
-                  <label className="mb-2 block text-sm text-gray-400">Nombre</label>
+                  <label className="mb-2 block text-sm text-app-secondary">Nombre</label>
                   <input
                     type="text"
                     value={newRoutine.name}
@@ -944,24 +1393,56 @@ export default function Workouts() {
                   />
                 </div>
 
-                <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div>
+                  <p className="mb-2 text-sm text-app-secondary">Días de la semana</p>
+                  <div className="flex flex-wrap gap-2">
+                    {WEEK_DAYS.map((day) => {
+                      const selected = normalizeDays(newRoutine.days).includes(day.id)
+                      const isToday = day.id === todayId
+                      return (
+                        <button
+                          key={day.id}
+                          type="button"
+                          onClick={() => toggleRoutineDay(day.id)}
+                          className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                            selected
+                              ? 'border-primary-500 bg-primary-500/15 text-primary-500'
+                              : isToday
+                                ? 'border-accent-cyan/40 bg-accent-cyan/10 text-app'
+                                : 'border-app bg-elevated text-app-secondary hover:text-app'
+                          }`}
+                        >
+                          {day.full}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-app bg-[color:var(--bg-muted)] px-4 py-3">
                   <span>
-                    <span className="block font-medium">Rutina pública</span>
-                    <span className="text-xs text-gray-500">Visible para tu comunidad GymRat</span>
+                    <span className="block font-medium text-app">Rutina pública</span>
+                    <span className="text-xs text-app-secondary">Visible para tu comunidad GymRat</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => setNewRoutine((c) => ({ ...c, isPublic: !c.isPublic }))}
-                    className={`h-6 w-12 rounded-full transition-colors ${newRoutine.isPublic ? 'bg-primary-500' : 'bg-dark-300'}`}
+                    className={`h-6 w-12 rounded-full transition-colors ${newRoutine.isPublic ? 'bg-primary-500' : 'bg-[color:var(--bg-muted)]'}`}
                   >
-                    <span className={`block h-5 w-5 rounded-full bg-white transition-transform ${newRoutine.isPublic ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                    <span
+                      className={`block h-5 w-5 rounded-full bg-white transition-transform ${newRoutine.isPublic ? 'translate-x-6' : 'translate-x-0.5'}`}
+                    />
                   </button>
                 </label>
 
                 <div>
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm text-gray-400">Ejercicios</p>
-                    <button type="button" onClick={addExerciseField} className="inline-flex items-center gap-2 text-sm text-primary-500 hover:text-primary-400">
+                    <p className="text-sm text-app-secondary">Ejercicios</p>
+                    <button
+                      type="button"
+                      onClick={addExerciseField}
+                      className="inline-flex items-center gap-2 text-sm text-primary-500 hover:text-primary-400"
+                    >
                       <FiPlus /> Agregar
                     </button>
                   </div>
@@ -991,7 +1472,11 @@ export default function Workouts() {
                           placeholder="Reps"
                         />
                         {newRoutine.exercises.length > 1 ? (
-                          <button type="button" onClick={() => removeExercise(index)} className="text-red-500 hover:text-red-400">
+                          <button
+                            type="button"
+                            onClick={() => removeExercise(index)}
+                            className="text-red-500 hover:text-red-400"
+                          >
                             <FiTrash2 size={20} />
                           </button>
                         ) : null}

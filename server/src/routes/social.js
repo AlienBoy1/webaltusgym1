@@ -86,14 +86,29 @@ async function enrichPosts(posts, viewerId = null) {
     if (row.shared_from && sharedMap[row.shared_from]) {
       const s = sharedMap[row.shared_from]
       const sAuthor = userMap[s.user_id]
+      let nestedWorkout = s.workout_data || null
+      if (!nestedWorkout && s.content && String(s.content).includes('[workout]')) {
+        try {
+          const match = String(s.content).match(/\[workout\]([\s\S]*?)\[\/workout\]/)
+          if (match) nestedWorkout = JSON.parse(match[1])
+        } catch {
+          /* ignore */
+        }
+      }
       sharedFrom = {
         _id: s.id,
         id: s.id,
         user: sAuthor
-          ? { _id: sAuthor.id, id: sAuthor.id, name: sAuthor.name, avatar: sAuthor.avatar }
+          ? { _id: sAuthor.id, id: sAuthor.id, name: sAuthor.name, avatar: sAuthor.avatar, stats: sAuthor.stats }
           : s.user_id,
         content: s.content,
-        images: s.images || []
+        images: s.images || [],
+        mood: s.mood || null,
+        poll: s.poll || null,
+        badgeData: s.badge_data || null,
+        workoutData: nestedWorkout,
+        postType: s.post_type || 'text',
+        createdAt: s.created_at
       }
     }
 
@@ -192,7 +207,11 @@ router.post('/', authenticate, async (req, res) => {
     const { content, images, mood, poll, postType, badgeData, workoutData } = req.body
 
     let finalPostType = postType || 'text'
-    if (workoutData) {
+    const isRoutineShare =
+      postType === 'routine' || Boolean(workoutData?.isRoutine) || Boolean(workoutData?.shareKind === 'routine')
+    if (workoutData && isRoutineShare) {
+      finalPostType = 'routine'
+    } else if (workoutData) {
       finalPostType = 'workout'
     } else if (badgeData) {
       finalPostType = 'badge'
@@ -259,6 +278,7 @@ router.post('/', authenticate, async (req, res) => {
         const ids = (followers || []).map((f) => f.follower_id)
         const preview =
           (content && String(content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()) ||
+          (isRoutineShare && workoutData?.name && `Compartió rutina: ${workoutData.name}`) ||
           (workoutData?.name && `Completó: ${workoutData.name}`) ||
           (badgeData?.badgeName && `Compartió la insignia ${badgeData.badgeName}`) ||
           (mood && 'Compartió un estado') ||
@@ -451,10 +471,10 @@ router.post('/:id/comment', authenticate, async (req, res) => {
   }
 })
 
-// Share post
+// Share / reshare — Facebook-style: your caption + original post attached (not duplicated as yours)
 router.post('/:id/share', authenticate, async (req, res) => {
   try {
-    const { content } = req.body
+    const { content, mood, poll } = req.body
     const { data: originalPost } = await supabaseAdmin
       .from('posts')
       .select('*')
@@ -471,15 +491,35 @@ router.post('/:id/share', authenticate, async (req, res) => {
       .eq('id', originalPost.user_id)
       .maybeSingle()
 
+    let postType = 'mixed'
+    if (poll) postType = 'poll'
+    else if (mood) postType = 'mood'
+    else if (content?.trim()) postType = 'text'
+
+    const insertPayload = {
+      user_id: req.user.id,
+      content: (content && String(content).trim()) || `Compartido de ${author?.name || 'usuario'}`,
+      images: [],
+      mood: mood || null,
+      poll: poll
+        ? {
+            question: poll.question,
+            options: (poll.options || []).map((opt) => ({
+              text: typeof opt === 'string' ? opt : opt.text,
+              votes: []
+            })),
+            endsAt: poll.endsAt || null
+          }
+        : null,
+      badge_data: null,
+      workout_data: null,
+      shared_from: originalPost.id,
+      post_type: postType
+    }
+
     const { data: sharedPost, error } = await supabaseAdmin
       .from('posts')
-      .insert({
-        user_id: req.user.id,
-        content: content || `Compartido de ${author?.name || 'usuario'}`,
-        images: originalPost.images || [],
-        shared_from: originalPost.id,
-        post_type: 'mixed'
-      })
+      .insert(insertPayload)
       .select('*')
       .single()
 

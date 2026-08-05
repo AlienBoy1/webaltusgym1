@@ -289,6 +289,26 @@ html.dark {
   .text-app { color: var(--text-primary); }
   .text-app-secondary { color: var(--text-secondary); }
   .border-app { border-color: var(--border-subtle); }
+
+  /* Bottom sheets / modals above nav (z-50) with safe clearance */
+  .app-overlay-sheet {
+    z-index: 90;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .app-modal-panel {
+    max-height: min(92svh, 720px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (max-width: 767px) {
+    .app-modal-panel {
+      max-height: calc(100svh - 5.75rem - env(safe-area-inset-bottom, 0px));
+      padding-bottom: max(5.5rem, calc(4.25rem + env(safe-area-inset-bottom, 0px)));
+    }
+  }
 }
 
 html.reduce-motion *,

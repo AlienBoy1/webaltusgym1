@@ -29,6 +29,35 @@ const VARIANTS = {
   }
 }
 
+function useResolvedTheme() {
+  const [mode, setMode] = useState(() => {
+    if (typeof document === 'undefined') return 'dark'
+    if (document.documentElement.classList.contains('light')) return 'light'
+    if (document.documentElement.classList.contains('dark')) return 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    const sync = () => {
+      if (root.classList.contains('light')) setMode('light')
+      else if (root.classList.contains('dark')) setMode('dark')
+      else setMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    }
+    sync()
+    const obs = new MutationObserver(sync)
+    obs.observe(root, { attributes: true, attributeFilter: ['class'] })
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    mq.addEventListener?.('change', sync)
+    return () => {
+      obs.disconnect()
+      mq.removeEventListener?.('change', sync)
+    }
+  }, [])
+
+  return mode
+}
+
 function OrbitRing({ size, delay = 0, reverse = false, color, reduceMotion }) {
   return (
     <motion.div
@@ -58,6 +87,7 @@ function OrbitRing({ size, delay = 0, reverse = false, color, reduceMotion }) {
 
 /**
  * Branded full-screen theater for boot, login/logout and update flows.
+ * Respects light / dark / system theme via html class + CSS variables.
  */
 export default function SessionTheater({
   visible = true,
@@ -70,6 +100,8 @@ export default function SessionTheater({
   className = ''
 }) {
   const reduceMotion = useReducedMotion()
+  const theme = useResolvedTheme()
+  const isLight = theme === 'light'
   const meta = VARIANTS[variant] || VARIANTS.auth
   const heading = title ?? meta.title
   const line = subtitle ?? meta.subtitle
@@ -102,12 +134,15 @@ export default function SessionTheater({
   )
 
   const stageLabel = status || meta.stages[stageIdx] || line
+  const gridLine = isLight ? 'rgba(15,15,20,0.06)' : 'rgba(255,255,255,0.035)'
+  const trackBg = isLight ? 'rgba(15,15,20,0.08)' : 'rgba(255,255,255,0.1)'
+  const idleDot = isLight ? 'rgba(15,15,20,0.18)' : 'rgba(255,255,255,0.2)'
 
   return (
     <AnimatePresence>
       {visible && (
         <motion.div
-          key={`theater-${variant}`}
+          key={`theater-${variant}-${theme}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, filter: 'blur(8px)' }}
@@ -116,21 +151,25 @@ export default function SessionTheater({
           role="status"
           aria-live="polite"
           data-variant={variant}
+          data-theme={theme}
         >
-          <div className="pointer-events-none absolute inset-0" style={{ background: '#05050A' }} />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ background: 'var(--bg-app)' }}
+          />
           <div
             className="pointer-events-none absolute inset-0"
             style={{
               background: isLogout
-                ? 'radial-gradient(ellipse at 50% 35%, rgba(0,245,255,0.14), transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(255,107,53,0.1), transparent 45%)'
-                : 'radial-gradient(ellipse at 50% 32%, rgba(255,107,53,0.22), transparent 52%), radial-gradient(ellipse at 20% 80%, rgba(0,245,255,0.12), transparent 45%)'
+                ? 'radial-gradient(ellipse at 50% 35%, rgba(0,245,255,0.12), transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(255,107,53,0.08), transparent 45%)'
+                : 'radial-gradient(ellipse at 50% 32%, rgba(255,107,53,0.16), transparent 52%), radial-gradient(ellipse at 20% 80%, rgba(0,245,255,0.1), transparent 45%)'
             }}
           />
           <div
-            className="pointer-events-none absolute inset-0 opacity-[0.35]"
+            className="pointer-events-none absolute inset-0"
             style={{
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)',
+              opacity: isLight ? 0.55 : 0.35,
+              backgroundImage: `linear-gradient(${gridLine} 1px, transparent 1px), linear-gradient(90deg, ${gridLine} 1px, transparent 1px)`,
               backgroundSize: '48px 48px',
               maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 72%)'
             }}
@@ -146,7 +185,7 @@ export default function SessionTheater({
                   top: p.top,
                   width: p.size,
                   height: p.size,
-                  background: iColor(p.id, isLogout)
+                  background: iColor(p.id, isLogout, isLight)
                 }}
                 animate={{ opacity: [0.1, 0.75, 0.1], y: [0, -18, 0], scale: [1, 1.35, 1] }}
                 transition={{
@@ -163,10 +202,10 @@ export default function SessionTheater({
               className="pointer-events-none absolute inset-x-0 h-px"
               style={{
                 background: isLogout
-                  ? 'linear-gradient(90deg, transparent, rgba(0,245,255,0.7), transparent)'
-                  : 'linear-gradient(90deg, transparent, rgba(255,107,53,0.75), transparent)'
+                  ? 'linear-gradient(90deg, transparent, rgba(0,245,255,0.55), transparent)'
+                  : 'linear-gradient(90deg, transparent, rgba(255,107,53,0.6), transparent)'
               }}
-              animate={{ top: ['12%', '88%', '12%'], opacity: [0.15, 0.55, 0.15] }}
+              animate={{ top: ['12%', '88%', '12%'], opacity: [0.15, 0.5, 0.15] }}
               transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
             />
           )}
@@ -186,7 +225,8 @@ export default function SessionTheater({
             <motion.p
               initial={{ opacity: 0, letterSpacing: '0.5em' }}
               animate={{ opacity: 1, letterSpacing: '0.35em' }}
-              className="mb-7 text-[10px] font-semibold uppercase text-white/55"
+              className="mb-7 text-[10px] font-semibold uppercase"
+              style={{ color: 'var(--text-muted)' }}
             >
               {meta.kicker}
             </motion.p>
@@ -208,7 +248,7 @@ export default function SessionTheater({
               <OrbitRing
                 size="56%"
                 delay={0.8}
-                color="rgba(255,255,255,0.12)"
+                color={isLight ? 'rgba(15,15,20,0.12)' : 'rgba(255,255,255,0.12)'}
                 reduceMotion={reduceMotion}
               />
 
@@ -223,8 +263,8 @@ export default function SessionTheater({
                     style={{
                       background: isLogout ? '#00F5FF' : '#FF6B35',
                       boxShadow: isLogout
-                        ? '0 0 16px rgba(0,245,255,0.8)'
-                        : '0 0 16px rgba(255,107,53,0.8)'
+                        ? '0 0 16px rgba(0,245,255,0.55)'
+                        : '0 0 16px rgba(255,107,53,0.55)'
                     }}
                   />
                 </motion.div>
@@ -238,7 +278,7 @@ export default function SessionTheater({
                         scale: [1, 1.05, 1],
                         filter: [
                           'drop-shadow(0 0 0 rgba(255,107,53,0))',
-                          'drop-shadow(0 0 28px rgba(255,107,53,0.55))',
+                          `drop-shadow(0 0 24px rgba(255,107,53,${isLight ? 0.35 : 0.55}))`,
                           'drop-shadow(0 0 0 rgba(255,107,53,0))'
                         ]
                       }
@@ -254,22 +294,24 @@ export default function SessionTheater({
               key={heading}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              className="font-display text-5xl tracking-[0.08em] text-white sm:text-6xl"
+              className="font-display text-5xl tracking-[0.08em] sm:text-6xl"
+              style={{ color: 'var(--text-primary)' }}
             >
-              <span className="session-theater-gradient">{heading}</span>
+              <span className={`session-theater-gradient${isLight ? ' is-light' : ''}`}>{heading}</span>
             </motion.h1>
 
             <motion.p
               key={line}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mt-3 max-w-sm text-sm text-white/65 sm:text-base"
+              className="mt-3 max-w-sm text-sm sm:text-base"
+              style={{ color: 'var(--text-secondary)' }}
             >
               {line}
             </motion.p>
 
             <div className="mt-7 flex w-full max-w-xs flex-col items-center gap-3">
-              <div className="relative h-[3px] w-full overflow-hidden rounded-full bg-white/10">
+              <div className="relative h-[3px] w-full overflow-hidden rounded-full" style={{ background: trackBg }}>
                 {typeof progress === 'number' ? (
                   <motion.div
                     className="absolute inset-y-0 left-0 rounded-full"
@@ -300,7 +342,8 @@ export default function SessionTheater({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.28 }}
-                  className="text-xs font-medium tracking-wide text-white/50"
+                  className="text-xs font-medium tracking-wide"
+                  style={{ color: 'var(--text-muted)' }}
                 >
                   {stageLabel}
                   {typeof progress === 'number' ? ` · ${Math.round(progress)}%` : ''}
@@ -319,7 +362,7 @@ export default function SessionTheater({
                           ? isLogout
                             ? '#00F5FF'
                             : '#FF6B35'
-                          : 'rgba(255,255,255,0.2)'
+                          : idleDot
                     }}
                   />
                 ))}
@@ -338,6 +381,12 @@ export default function SessionTheater({
               color: transparent;
               animation: session-theater-shine 4.8s ease-in-out infinite;
             }
+            .session-theater-gradient.is-light {
+              background: linear-gradient(105deg, #FF6B35 0%, #1a1a22 45%, #0891b2 100%);
+              background-size: 200% 100%;
+              -webkit-background-clip: text;
+              background-clip: text;
+            }
             @keyframes session-theater-shine {
               0%, 100% { background-position: 0% 50%; }
               50% { background-position: 100% 50%; }
@@ -352,7 +401,15 @@ export default function SessionTheater({
   )
 }
 
-function iColor(i, isLogout) {
-  if (isLogout) return i % 2 === 0 ? 'rgba(0,245,255,0.55)' : 'rgba(255,255,255,0.35)'
-  return i % 2 === 0 ? 'rgba(255,107,53,0.6)' : 'rgba(0,245,255,0.4)'
+function iColor(i, isLogout, isLight) {
+  if (isLogout) {
+    return i % 2 === 0
+      ? `rgba(0,245,255,${isLight ? 0.45 : 0.55})`
+      : isLight
+        ? 'rgba(15,15,20,0.25)'
+        : 'rgba(255,255,255,0.35)'
+  }
+  return i % 2 === 0
+    ? `rgba(255,107,53,${isLight ? 0.5 : 0.6})`
+    : `rgba(0,245,255,${isLight ? 0.35 : 0.4})`
 }
