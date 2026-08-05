@@ -75,6 +75,7 @@ export function getWorkoutPreferences() {
 export function setWorkoutPreferences(preferences) {
   try {
     window.localStorage.setItem(WORKOUT_PREFERENCES_KEY, JSON.stringify(preferences))
+    window.dispatchEvent(new CustomEvent('qyntra:workout-preferences'))
   } catch {
     // ignore
   }

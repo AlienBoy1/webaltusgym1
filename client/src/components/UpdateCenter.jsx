@@ -73,6 +73,24 @@ export default function UpdateCenter() {
     if (worker) waitingWorkerRef.current = worker
     setPhase('prompt')
     setVisible(true)
+
+    // Notify users with persisted session / granted notifications
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const n = new Notification('Qyntra Gym · Actualización disponible', {
+          body: `Hay una nueva versión${version?.version ? ` (v${version.version})` : ''} lista. Entra a la app para actualizar.`,
+          icon: '/icons/icon-192.png',
+          tag: 'qyntra-app-update',
+          renotify: true
+        })
+        n.onclick = () => {
+          window.focus()
+          n.close()
+        }
+      }
+    } catch {
+      /* ignore */
+    }
   }, [])
 
   useEffect(() => {
@@ -303,17 +321,17 @@ export default function UpdateCenter() {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center"
-        style={{ background: '#07070c' }}
+        style={{ background: 'color-mix(in srgb, var(--bg-app) 88%, #000)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/30 via-transparent to-accent-cyan/20" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/25 via-transparent to-accent-cyan/15" />
         <motion.div
-          className="pointer-events-none absolute -left-20 top-1/3 h-72 w-72 rounded-full bg-primary-500/30 blur-[100px]"
+          className="pointer-events-none absolute -left-20 top-1/3 h-72 w-72 rounded-full bg-primary-500/25 blur-[100px]"
           animate={{ opacity: [0.35, 0.6, 0.35], scale: [1, 1.08, 1] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
         />
         <motion.div
-          className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-accent-cyan/20 blur-[110px]"
+          className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-accent-cyan/15 blur-[110px]"
           animate={{ opacity: [0.25, 0.45, 0.25] }}
           transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -322,7 +340,12 @@ export default function UpdateCenter() {
           initial={{ y: 56, opacity: 0, scale: 0.96 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           transition={{ type: 'spring', damping: 22, stiffness: 260 }}
-          className="relative z-10 w-full max-w-md overflow-hidden rounded-t-3xl border border-white/10 bg-dark-200/95 shadow-2xl backdrop-blur-xl sm:rounded-3xl"
+          className="relative z-10 w-full max-w-md overflow-hidden rounded-t-3xl border shadow-2xl backdrop-blur-xl sm:rounded-3xl"
+          style={{
+            background: 'var(--bg-elevated)',
+            borderColor: 'var(--border-subtle)',
+            color: 'var(--text-primary)'
+          }}
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="update-title"
@@ -345,11 +368,13 @@ export default function UpdateCenter() {
               <h2 id="update-title" className="font-display text-3xl tracking-wide">
                 <span className="text-primary-500">QYNTRA</span> Update
               </h2>
-              <p className="px-1 text-sm leading-relaxed text-gray-400 sm:text-base">
+              <p className="px-1 text-sm leading-relaxed sm:text-base" style={{ color: 'var(--text-secondary)' }}>
                 Hay una versión nueva lista. Actualiza ahora para continuar con las últimas mejoras.
               </p>
               {remoteVersion?.version && (
-                <p className="font-mono text-xs text-gray-500">v{remoteVersion.version}</p>
+                <p className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+                  v{remoteVersion.version}
+                </p>
               )}
               <div className="pt-4">
                 <motion.button

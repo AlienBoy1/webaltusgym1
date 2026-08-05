@@ -45,23 +45,42 @@ export default function Progress() {
     }
   }
   
-  const badges = user?.badges || [
-    { id: 1, name: 'Primera Semana', icon: '🌟', earnedAt: new Date() },
-  ]
-  
-  const allBadges = [
-    { id: 1, name: 'Primera Semana', icon: '🌟', earned: true },
-    { id: 2, name: '10 Entrenamientos', icon: '💪', earned: (user?.stats?.totalWorkouts || 0) >= 10 },
-    { id: 3, name: 'Racha de 7 días', icon: '🔥', earned: (user?.stats?.longestStreak || 0) >= 7 },
-    { id: 4, name: '100kg Sentadilla', icon: '🏆', earned: false },
-    { id: 5, name: 'Mes Completo', icon: '📅', earned: false },
-    { id: 6, name: 'Social Star', icon: '⭐', earned: false },
-  ]
-  
+  const badges = user?.badges || []
+  const [totalBadges, setTotalBadges] = useState(0)
+
+  useEffect(() => {
+    api
+      .get('/users/badges/definitions')
+      .then(({ data }) => setTotalBadges(Array.isArray(data) ? data.length : 0))
+      .catch(() => setTotalBadges(0))
+  }, [])
+
+  const xpTotal = user?.stats?.xp || 0
+  const xpIntoLevel = xpTotal % 100
+  const xpForNextLevel = 100
+
   const goals = [
-    { name: 'Entrenamientos/mes', current: user?.stats?.totalWorkouts || 0, target: 20, unit: '', progress: Math.min(100, ((user?.stats?.totalWorkouts || 0) / 20) * 100) },
-    { name: 'Racha de días', current: user?.stats?.currentStreak || 0, target: 30, unit: 'días', progress: Math.min(100, ((user?.stats?.currentStreak || 0) / 30) * 100) },
-    { name: 'XP Total', current: user?.stats?.xp || 0, target: 1000, unit: 'XP', progress: Math.min(100, ((user?.stats?.xp || 0) / 1000) * 100) },
+    {
+      name: 'Entrenamientos/mes',
+      current: user?.stats?.totalWorkouts || 0,
+      target: 20,
+      unit: '',
+      progress: Math.min(100, ((user?.stats?.totalWorkouts || 0) / 20) * 100)
+    },
+    {
+      name: 'Racha de días',
+      current: user?.stats?.currentStreak || 0,
+      target: 30,
+      unit: 'días',
+      progress: Math.min(100, ((user?.stats?.currentStreak || 0) / 30) * 100)
+    },
+    {
+      name: 'XP hacia siguiente nivel',
+      current: xpIntoLevel,
+      target: xpForNextLevel,
+      unit: 'XP',
+      progress: Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)
+    }
   ]
   
   return (
@@ -74,7 +93,7 @@ export default function Progress() {
           { label: 'Entrenamientos', value: user?.stats?.totalWorkouts || 0, change: 'total', positive: true },
           { label: 'Mejor racha', value: `${user?.stats?.longestStreak || 0} días`, change: 'récord', positive: true },
           { label: 'Nivel', value: user?.stats?.level || 1, change: `${user?.stats?.xp || 0} XP`, positive: true },
-          { label: 'Logros', value: `${badges.length}/12`, change: `${Math.round((badges.length / 12) * 100)}%`, positive: true },
+          { label: 'Logros', value: `${badges.length}/${totalBadges || '…'}`, change: totalBadges ? `${Math.round((badges.length / totalBadges) * 100)}%` : 'cargando', positive: true },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -198,23 +217,23 @@ export default function Progress() {
           <h2 className="font-display text-xl">Logros</h2>
         </div>
         
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
-          {allBadges.map((badge) => (
+        <div className="grid grid-cols-3 gap-4 md:grid-cols-6">
+          {(badges.length ? badges : [{ id: 'empty', name: 'Sin logros', icon: '—' }]).slice(0, 12).map((badge) => (
             <div
-              key={badge.id}
-              className={`text-center p-3 rounded-xl transition-all ${
-                badge.earned 
-                  ? 'bg-dark-100' 
-                  : 'bg-dark-300 opacity-40'
-              }`}
+              key={badge.id || badge.name}
+              className="rounded-xl p-3 text-center transition-all"
+              style={{ background: 'var(--bg-muted)' }}
             >
-              <div className="text-3xl mb-2">{badge.icon}</div>
-              <div className={`text-xs ${badge.earned ? 'text-gray-300' : 'text-gray-500'}`}>
-                {badge.name}
+              <div className="mb-2 text-3xl">{badge.icon || '🏅'}</div>
+              <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {badge.name || badge.id}
               </div>
             </div>
           ))}
         </div>
+        <p className="mt-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+          {badges.length} de {totalBadges || '…'} logros desbloqueados · Total XP: {xpTotal}
+        </p>
       </motion.div>
     </div>
   )

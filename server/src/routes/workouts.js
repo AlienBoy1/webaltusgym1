@@ -116,7 +116,7 @@ router.get('/routines/explore', authenticate, async (req, res) => {
       .filter((p) => p.settings?.privacy?.profilePublic === true)
       .map((p) => p.id)
 
-    const allowedIds = [...new Set([...communityIds, ...openProfileIds])]
+    const allowedIds = [...new Set([req.user.id, ...communityIds, ...openProfileIds])]
     if (!allowedIds.length) {
       return res.json([])
     }
@@ -142,8 +142,9 @@ router.get('/routines/explore', authenticate, async (req, res) => {
       for (const p of extra || []) profileMap[p.id] = p
     }
 
-    // Community members always visible; others only if profilePublic
+    // Community members + own public routines always visible; others only if profilePublic
     const filtered = (data || []).filter((row) => {
+      if (row.user_id === req.user.id) return true
       if (communityIds.includes(row.user_id)) return true
       return profileMap[row.user_id]?.settings?.privacy?.profilePublic === true
     })

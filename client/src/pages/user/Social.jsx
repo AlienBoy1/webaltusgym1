@@ -14,6 +14,7 @@ import { Avatar } from '../../utils/avatarUtils'
 import StoriesRail from '../../components/StoriesRail'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import PostReactionButton from '../../components/PostReactionButton'
+import { useAppDialog } from '../../components/AppDialog'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
@@ -30,6 +31,7 @@ const moods = [
 
 export default function Social() {
   const { user } = useAuthStore()
+  const dialog = useAppDialog()
   const [posts, setPosts] = useState([])
   const [newPost, setNewPost] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
@@ -255,11 +257,17 @@ export default function Social() {
   }
 
   const handleDelete = async (postId) => {
-    if (!confirm('¿Eliminar esta publicación?')) return
+    const ok = await dialog.confirm('¿Eliminar esta publicación? Esta acción no se puede deshacer.', {
+      title: 'Eliminar publicación',
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+      tone: 'danger'
+    })
+    if (!ok) return
 
     try {
       await api.delete(`/social/${postId}`)
-      setPosts(posts.filter(p => p._id !== postId))
+      setPosts(posts.filter((p) => p._id !== postId))
       toast.success('Publicación eliminada')
     } catch (error) {
       toast.error('Error al eliminar')
@@ -762,8 +770,13 @@ export default function Social() {
                   </button>
 
                   <button
-                    onClick={() => {
-                      const shareText = prompt('Agrega un comentario (opcional):')
+                    onClick={async () => {
+                      const shareText = await dialog.prompt('Agrega un comentario (opcional) antes de compartir en tu feed.', {
+                        title: 'Compartir publicación',
+                        placeholder: '¿Qué quieres decir?',
+                        confirmLabel: 'Compartir',
+                        cancelLabel: 'Cancelar'
+                      })
                       if (shareText !== null) {
                         handleShare(post._id, shareText)
                       }

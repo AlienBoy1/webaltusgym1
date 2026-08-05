@@ -148,7 +148,33 @@ export default function Workouts() {
   const [restTimerSource, setRestTimerSource] = useState(null)
   const [completedExercises, setCompletedExercises] = useState([])
   const [workoutTime, setWorkoutTime] = useState(0)
-  const [preferences] = useState(() => getWorkoutPreferences() || { restTimerDefault: DEFAULT_REST_SECONDS })
+  const [preferences, setPreferences] = useState(
+    () =>
+      getWorkoutPreferences() || {
+        restTimerDefault: DEFAULT_REST_SECONDS,
+        autoStartTimer: true
+      }
+  )
+
+  useEffect(() => {
+    const sync = () => {
+      const next =
+        getWorkoutPreferences() || {
+          restTimerDefault: DEFAULT_REST_SECONDS,
+          autoStartTimer: true
+        }
+      setPreferences(next)
+    }
+    sync()
+    window.addEventListener('storage', sync)
+    window.addEventListener('qyntra:workout-preferences', sync)
+    const id = setInterval(sync, 5000)
+    return () => {
+      window.removeEventListener('storage', sync)
+      window.removeEventListener('qyntra:workout-preferences', sync)
+      clearInterval(id)
+    }
+  }, [])
   const [saving, setSaving] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -279,7 +305,9 @@ export default function Workouts() {
   }, [activeWorkout, currentExercise])
 
   const startRest = (exerciseId) => {
-    const restSeconds = preferences?.restTimerDefault || DEFAULT_REST_SECONDS
+    const prefs = getWorkoutPreferences() || preferences
+    if (prefs.autoStartTimer === false) return
+    const restSeconds = Number(prefs.restTimerDefault) || DEFAULT_REST_SECONDS
     const endsAt = new Date(Date.now() + restSeconds * 1000).toISOString()
     restStartedAt.current = Date.now()
     setRestTotal(restSeconds)

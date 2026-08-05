@@ -36,6 +36,7 @@ const ExploreRoutines = lazy(() => import('./pages/user/ExploreRoutines'))
 
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
 const Users = lazy(() => import('./pages/admin/Users'))
+const AdminClasses = lazy(() => import('./pages/admin/Classes'))
 const Memberships = lazy(() => import('./pages/admin/Memberships'))
 const Attendance = lazy(() => import('./pages/admin/Attendance'))
 const Reports = lazy(() => import('./pages/admin/Reports'))
@@ -202,6 +203,7 @@ function App() {
           >
             <Route index element={<AdminDashboard />} />
             <Route path="users" element={<Users />} />
+            <Route path="classes" element={<AdminClasses />} />
             <Route path="memberships" element={<Memberships />} />
             <Route path="attendance" element={<Attendance />} />
             <Route path="reports" element={<Reports />} />

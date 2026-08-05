@@ -22,6 +22,7 @@ import ProfileAvatar from '../../components/ProfileAvatar'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
+import { useAppDialog } from '../../components/AppDialog'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -31,6 +32,7 @@ const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 export default function UserProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const dialog = useAppDialog()
   const { user: currentUser } = useAuthStore()
   const { openUserStory } = useStoryViewer()
   const [user, setUser] = useState(null)
@@ -548,7 +550,12 @@ export default function UserProfile() {
               onOpenRoutine={(workout, author) => setSelectedRoutine({ workout, author })}
               currentUserId={currentUser?._id}
               onDelete={async (postId) => {
-                if (!window.confirm('¿Eliminar esta publicación?')) return
+                const ok = await dialog.confirm('¿Eliminar esta publicación? Esta acción no se puede deshacer.', {
+                  title: 'Eliminar publicación',
+                  confirmLabel: 'Eliminar',
+                  tone: 'danger'
+                })
+                if (!ok) return
                 try {
                   await api.delete(`/social/${postId}`)
                   setPosts((prev) => prev.filter((p) => (p._id || p.id) !== postId))

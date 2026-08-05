@@ -1,12 +1,13 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiGrid, FiUsers, FiCreditCard, FiFileText, FiSettings, FiArrowLeft, FiClock, FiMenu, FiX } from 'react-icons/fi'
+import { FiGrid, FiUsers, FiCreditCard, FiFileText, FiSettings, FiArrowLeft, FiClock, FiMenu, FiX, FiCalendar } from 'react-icons/fi'
 import QyntraLogo from '../components/QyntraLogo'
 
 const sidebarItems = [
   { path: '/admin', icon: FiGrid, label: 'Dashboard', exact: true },
   { path: '/admin/users', icon: FiUsers, label: 'Usuarios' },
+  { path: '/admin/classes', icon: FiCalendar, label: 'Clases' },
   { path: '/admin/memberships', icon: FiCreditCard, label: 'Membresías' },
   { path: '/admin/attendance', icon: FiClock, label: 'Asistencias' },
   { path: '/admin/reports', icon: FiFileText, label: 'Reportes' },

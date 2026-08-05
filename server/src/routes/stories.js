@@ -84,7 +84,7 @@ async function enrichStories(rows, viewerId) {
       reactions: storyReactions,
       reactionCounts: counts,
       myReaction,
-      viewCount: (viewsByStory[row.id] || []).length,
+      viewCount: (viewsByStory[row.id] || []).filter((id) => id !== row.user_id).length,
       viewed: (viewsByStory[row.id] || []).includes(viewerId)
     })
   })
@@ -440,6 +440,19 @@ router.get('/:id', authenticate, async (req, res) => {
 
 router.post('/:id/view', authenticate, async (req, res) => {
   try {
+    const { data: story } = await supabaseAdmin
+      .from('stories')
+      .select('id, user_id')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (!story) return res.status(404).json({ message: 'Historia no encontrada' })
+
+    // Never count the author as a viewer of their own story
+    if (story.user_id === req.user.id) {
+      return res.json({ ok: true, skipped: true })
+    }
+
     const { error } = await supabaseAdmin.from('story_views').upsert(
       {
         story_id: req.params.id,

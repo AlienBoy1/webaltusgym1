@@ -158,20 +158,25 @@ export default function AdminUsers() {
         <h1 className="font-display text-3xl">Gestión de Usuarios</h1>
         
         {/* Tabs */}
-        <div className="flex gap-2 bg-dark-200 p-1 rounded-lg">
+        <div
+          className="flex gap-2 rounded-xl p-1"
+          style={{ background: 'var(--bg-muted)' }}
+        >
           <button
             onClick={() => setActiveTab('users')}
-            className={`px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'users' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
+            className={`rounded-lg px-4 py-2 transition-colors ${
+              activeTab === 'users' ? 'bg-primary-500 text-white' : ''
             }`}
+            style={activeTab === 'users' ? undefined : { color: 'var(--text-secondary)' }}
           >
             Usuarios
           </button>
           <button
             onClick={() => setActiveTab('requests')}
-            className={`px-4 py-2 rounded-md transition-colors relative ${
-              activeTab === 'requests' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
+            className={`relative rounded-lg px-4 py-2 transition-colors ${
+              activeTab === 'requests' ? 'bg-primary-500 text-white' : ''
             }`}
+            style={activeTab === 'requests' ? undefined : { color: 'var(--text-secondary)' }}
           >
             Solicitudes
             {registrationRequests.length > 0 && (

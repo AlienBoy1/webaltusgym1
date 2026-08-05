@@ -19,6 +19,8 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { Avatar } from '../utils/avatarUtils'
+import { getStorageAccessGranted } from '../utils/storageAccess'
+import { useAppDialog } from './AppDialog'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -42,6 +44,7 @@ export default function StoriesRail({
   onForceClose = null
 } = {}) {
   const { user } = useAuthStore()
+  const dialog = useAppDialog()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [groups, setGroups] = useState([])
@@ -518,6 +521,16 @@ export default function StoriesRail({
     }
   }
 
+  const ensureStorageAccess = async () => {
+    if (getStorageAccessGranted()) return true
+    await dialog.alert(
+      'Para subir historias, primero activa el acceso a almacenamiento de Qyntra Gym en Configuración.',
+      { title: 'Acceso a almacenamiento requerido', confirmLabel: 'Ir a permisos' }
+    )
+    navigate('/settings?section=permissions')
+    return false
+  }
+
   const resetCompose = () => {
     setComposeOpen(false)
     setCaption('')
@@ -642,14 +655,20 @@ export default function StoriesRail({
       <div className="mb-3 flex gap-2 px-1">
         <button
           type="button"
-          onClick={() => imageInputRef.current?.click()}
+          onClick={async () => {
+            if (!(await ensureStorageAccess())) return
+            imageInputRef.current?.click()
+          }}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-2.5 text-xs font-medium text-gray-200 sm:flex-none sm:px-4"
         >
           <FiImage size={14} /> Foto
         </button>
         <button
           type="button"
-          onClick={() => videoInputRef.current?.click()}
+          onClick={async () => {
+            if (!(await ensureStorageAccess())) return
+            videoInputRef.current?.click()
+          }}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-2.5 text-xs font-medium text-gray-200 sm:flex-none sm:px-4"
         >
           <FiVideo size={14} /> Video 30s

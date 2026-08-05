@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck } from 'react-icons/fi'
+import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -10,10 +11,14 @@ import {
   cacheAppearance,
   bindSystemThemeListener
 } from '../../utils/theme'
+import { setWorkoutPreferences } from '../../utils/workoutSession'
+import { getStorageAccessGranted, setStorageAccessGranted } from '../../utils/storageAccess'
+import { useAppDialog } from '../../components/AppDialog'
 
 const settingsSections = [
   { id: 'notifications', title: 'Notificaciones', icon: FiBell, color: 'primary' },
   { id: 'privacy', title: 'Privacidad', icon: FiEye, color: 'cyan' },
+  { id: 'permissions', title: 'Permisos', icon: FiHardDrive, color: 'orange' },
   { id: 'workout', title: 'Entrenamiento', icon: FiActivity, color: 'green' },
   { id: 'appearance', title: 'Apariencia', icon: FiMoon, color: 'purple' },
   { id: 'accessibility', title: 'Accesibilidad', icon: FiUser, color: 'yellow' },
@@ -22,7 +27,10 @@ const settingsSections = [
 
 export default function UserSettings() {
   const { user } = useAuthStore()
-  const [activeSection, setActiveSection] = useState('notifications')
+  const dialog = useAppDialog()
+  const [searchParams] = useSearchParams()
+  const [activeSection, setActiveSection] = useState(() => searchParams.get('section') || 'notifications')
+  const [storageAccess, setStorageAccess] = useState(() => getStorageAccessGranted())
   const [settings, setSettings] = useState({
     notifications: { push: false, email: true, workoutReminders: true, socialActivity: true, challenges: true, marketing: false },
     privacy: { profilePublic: true, showProgress: true, showWorkouts: true, allowMessages: true },
@@ -34,6 +42,31 @@ export default function UserSettings() {
     units: { weight: 'kg', distance: 'km', height: 'cm' }
   })
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const section = searchParams.get('section')
+    if (section) {
+      setActiveSection(section)
+      // Scroll permissions block into view on first-time redirect
+      if (section === 'permissions') {
+        requestAnimationFrame(() => {
+          document.getElementById('settings-permissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        })
+      }
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (settings.workout) {
+      setWorkoutPreferences({
+        restTimerDefault: Number(settings.workout.restTimerDefault) || 60,
+        autoStartTimer: settings.workout.autoStartTimer !== false,
+        vibration: settings.workout.vibration !== false,
+        sound: settings.workout.sound !== false,
+        keepScreenOn: settings.workout.keepScreenOn !== false
+      })
+    }
+  }, [settings.workout])
   
   useEffect(() => {
     if (user?._id) {
@@ -198,6 +231,53 @@ export default function UserSettings() {
                       <Toggle enabled={settings.privacy?.[item.key]} onChange={(v) => updateSetting('privacy', item.key, v)} />
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {activeSection === 'permissions' && (
+              <div id="settings-permissions" className="space-y-6">
+                <h2 className="font-display flex items-center gap-2 text-xl">
+                  <FiHardDrive className="text-primary-500" /> Permisos del dispositivo
+                </h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/5 py-3">
+                    <div>
+                      <div className="font-medium">Acceso a almacenamiento</div>
+                      <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        Permite a Qyntra Gym usar fotos y videos de tu galería para historias y publicaciones.
+                      </div>
+                    </div>
+                    <Toggle
+                      enabled={storageAccess}
+                      onChange={async (v) => {
+                        if (v) {
+                          const ok = await dialog.confirm(
+                            'Qyntra Gym necesita acceso a tu almacenamiento para subir historias y medios a tu feed. ¿Deseas permitir el acceso?',
+                            {
+                              title: 'Permitir almacenamiento',
+                              confirmLabel: 'Permitir acceso',
+                              cancelLabel: 'Ahora no',
+                              tone: 'info'
+                            }
+                          )
+                          if (!ok) return
+                          setStorageAccessGranted(true)
+                          setStorageAccess(true)
+                          toast.success('Acceso a almacenamiento activado')
+                        } else {
+                          setStorageAccessGranted(false)
+                          setStorageAccess(false)
+                          toast.success('Acceso a almacenamiento desactivado')
+                        }
+                      }}
+                    />
+                  </div>
+                  {!storageAccess && (
+                    <p className="rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)', background: 'var(--bg-muted)' }}>
+                      Sin este permiso no podrás subir historias. Actívalo aquí cuando quieras compartir en comunidad.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

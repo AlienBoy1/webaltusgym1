@@ -61,7 +61,7 @@ function MembershipSection({ user }) {
         className="card"
       >
         <div className="text-center py-4">
-          <div className="w-6 h-6 border-2 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
+          <div className="w-6 h-6 border-2 border-[color:var(--border-subtle)] border-t-primary-500 rounded-full animate-spin mx-auto" />
         </div>
       </motion.div>
     )
@@ -89,8 +89,8 @@ function MembershipSection({ user }) {
         </div>
 
         <div className="space-y-4">
-          <div className="p-4 bg-dark-200 rounded-xl">
-            <div className="flex items-center justify-between mb-2">
+          <div className="rounded-xl bg-[color:var(--bg-muted)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div className="font-semibold text-lg">
                 {currentMembership?.name || `Plan ${user?.membership?.plan?.toUpperCase() || 'Básico'}`}
               </div>
@@ -106,7 +106,7 @@ function MembershipSection({ user }) {
 
             {currentMembership && (
               <>
-                <div className="flex items-center gap-4 text-sm text-gray-400 mb-3">
+                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {currentMembership.price > 0 && (
                     <div className="flex items-center gap-1">
                       <FiDollarSign size={14} />
@@ -120,15 +120,15 @@ function MembershipSection({ user }) {
                 </div>
 
                 {currentMembership.description && (
-                  <p className="text-gray-300 text-sm mb-3">{currentMembership.description}</p>
+                  <p className="mb-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{currentMembership.description}</p>
                 )}
 
                 {currentMembership.benefits && currentMembership.benefits.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-xs text-gray-400 font-medium">Beneficios:</div>
+                    <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Beneficios:</div>
                     <div className="space-y-1">
                       {currentMembership.benefits.map((benefit, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-sm text-gray-300">
+                        <div key={idx} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
                           <FiCheck size={14} className="text-accent-green flex-shrink-0" />
                           <span>{benefit}</span>
                         </div>
@@ -139,7 +139,7 @@ function MembershipSection({ user }) {
               </>
             )}
 
-            <div className="mt-4 pt-4 border-t border-white/5 text-xs text-gray-400">
+            <div className="mt-4 border-t border-[color:var(--border-subtle)] pt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
               {user?.membership?.endDate ? (
                 <>
                   Vence: {new Date(user.membership.endDate).toLocaleDateString('es-ES', {
@@ -170,7 +170,7 @@ function MembershipSection({ user }) {
                 <h2 className="font-display text-2xl">Membresías Disponibles</h2>
                 <button
                   onClick={() => setShowAllMemberships(false)}
-                  className="p-2 hover:bg-dark-200 rounded-lg"
+                  className="rounded-lg p-2 transition-colors hover:bg-[color:var(--bg-muted)]"
                 >
                   <FiX size={24} />
                 </button>
@@ -182,10 +182,10 @@ function MembershipSection({ user }) {
                   return (
                     <div
                       key={membership._id || membership.plan}
-                      className={`p-4 rounded-xl border-2 ${
+                      className={`rounded-xl border-2 p-4 ${
                         isCurrent
-                          ? 'bg-primary-500/10 border-primary-500'
-                          : 'bg-dark-200 border-white/10'
+                          ? 'border-primary-500 bg-primary-500/10'
+                          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -199,7 +199,7 @@ function MembershipSection({ user }) {
                             )}
                           </div>
                           {membership.description && (
-                            <p className="text-gray-400 text-sm mb-2">{membership.description}</p>
+                            <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{membership.description}</p>
                           )}
                         </div>
                         {membership.price > 0 && (
@@ -207,7 +207,7 @@ function MembershipSection({ user }) {
                             <div className="text-2xl font-bold text-primary-500">
                               ${membership.price}
                             </div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                               / {membership.duration} días
                             </div>
                           </div>
@@ -216,13 +216,13 @@ function MembershipSection({ user }) {
 
                       {membership.benefits && membership.benefits.length > 0 && (
                         <div className="space-y-2 mb-3">
-                          <div className="text-xs text-gray-400 font-medium flex items-center gap-1">
+                          <div className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
                             <FiGift size={12} />
                             Beneficios:
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             {membership.benefits.map((benefit, idx) => (
-                              <div key={idx} className="flex items-center gap-2 text-sm text-gray-300">
+                              <div key={idx} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
                                 <FiCheck size={12} className="text-accent-green flex-shrink-0" />
                                 <span>{benefit}</span>
                               </div>
@@ -232,16 +232,16 @@ function MembershipSection({ user }) {
                       )}
 
                       {membership.features && (
-                        <div className="pt-3 border-t border-white/5">
+                        <div className="border-t border-[color:var(--border-subtle)] pt-3">
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             {Object.entries(membership.features).map(([key, value]) => (
                               <div key={key} className="flex items-center gap-2">
                                 {value ? (
                                   <FiCheck size={12} className="text-accent-green" />
                                 ) : (
-                                  <FiX size={12} className="text-gray-600" />
+                                  <FiX size={12} style={{ color: 'var(--text-muted)' }} />
                                 )}
-                                <span className={value ? 'text-gray-300' : 'text-gray-600'}>
+                                <span style={{ color: value ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
                                   {key === 'accessToClasses' && 'Clases'}
                                   {key === 'accessToChallenges' && 'Retos'}
                                   {key === 'accessToSocial' && 'Social'}
@@ -260,7 +260,7 @@ function MembershipSection({ user }) {
                 })}
               </div>
 
-              <div className="mt-6 pt-6 border-t border-white/10 text-center text-sm text-gray-400">
+              <div className="mt-6 border-t border-[color:var(--border-subtle)] pt-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                 <p>Los pagos se realizan en persona con el administrador del gimnasio</p>
               </div>
             </motion.div>
@@ -332,12 +332,18 @@ export default function Profile() {
   }
 
 
+  const xpTotal = user?.stats?.xp || 0
+  const xpIntoLevel = xpTotal % 100
+  const xpToNextLevel = 100 - xpIntoLevel
+  const levelProgress = Math.min(100, (xpIntoLevel / 100) * 100)
+  const currentLevel = user?.stats?.level || 1
+
   const getPlanColor = (plan) => {
     switch (plan) {
       case 'elite': return 'text-accent-purple'
       case 'premium': return 'text-primary-500'
       case 'annual': return 'text-accent-cyan'
-      default: return 'text-gray-400'
+      default: return 'text-[color:var(--text-secondary)]'
     }
   }
 
@@ -352,134 +358,142 @@ export default function Profile() {
   if (loading && !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-4 border-dark-100 border-t-primary-500 rounded-full animate-spin" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[color:var(--border-subtle)] border-t-primary-500" />
       </div>
     )
   }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Profile Header */}
+      {/* Profile hero: header, stats & level progress */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="card text-center"
+        className="card overflow-hidden p-0"
       >
-        <div className="relative inline-block mb-4">
-          <ProfileAvatar
-            avatar={user?.avatar}
-            name={user?.name}
-            size="xl"
-            hasStories={hasStories}
-            onViewStory={() => openUserStory(user?._id)}
-          />
-          <button
-            type="button"
-            onClick={() => setShowAvatarPicker(true)}
-            className="absolute bottom-1 right-1 z-10 w-8 h-8 bg-dark-100 rounded-full flex items-center justify-center border border-white/10 hover:border-primary-500 transition-colors"
-          >
-            <FiCamera size={16} />
-          </button>
-        </div>
-
-        {editing ? (
-          <div className="mb-4">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="input-field text-center mb-2"
+        <div
+          className="px-4 pt-6 pb-5 text-center sm:px-6"
+          style={{ background: 'linear-gradient(180deg, rgba(var(--color-primary-rgb), 0.1) 0%, transparent 72%)' }}
+        >
+          <div className="relative mx-auto mb-4 inline-block">
+            <ProfileAvatar
+              avatar={user?.avatar}
+              name={user?.name}
+              size="xl"
+              hasStories={hasStories}
+              onViewStory={() => openUserStory(user?._id)}
             />
-            <div className="flex gap-2 justify-center">
-              <button onClick={() => setEditing(false)} className="btn-secondary py-2 px-4 text-sm">
-                Cancelar
-              </button>
-              <button onClick={handleSave} disabled={saving} className="btn-primary py-2 px-4 text-sm">
-                {saving ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowAvatarPicker(true)}
+              className="absolute bottom-1 right-1 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] transition-colors hover:border-primary-500"
+            >
+              <FiCamera size={16} />
+            </button>
           </div>
-        ) : (
-          <>
-            <h1 className="font-display text-2xl mb-1">{user?.name || 'Usuario'}</h1>
-            <p className="text-gray-400 mb-4 break-all text-sm sm:text-base">{user?.email}</p>
-            {user?._id && (
-              <Link
-                to={`/user/${user._id}`}
-                className="text-primary-500 text-sm hover:text-primary-400 mb-4 inline-block"
-              >
-                Ver perfil público y solicitudes
-              </Link>
-            )}
-          </>
-        )}
 
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(user?.membership?.status)}`}>
-            {user?.membership?.status === 'active' ? 'Activo' :
-              user?.membership?.status === 'expiring' ? 'Por vencer' : 'Vencido'}
-          </span>
-          <span className={`px-3 py-1 bg-dark-100 rounded-full text-sm ${getPlanColor(user?.membership?.plan)}`}>
-            {user?.membership?.plan?.toUpperCase() || 'BÁSICO'}
-          </span>
-          {user?.role === 'admin' && (
-            <span className="px-3 py-1 bg-accent-purple/20 text-accent-purple rounded-full text-sm">
-              Admin
+          {editing ? (
+            <div className="mb-4">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input-field mb-2 text-center"
+              />
+              <div className="flex flex-wrap justify-center gap-2">
+                <button onClick={() => setEditing(false)} className="btn-secondary px-4 py-2 text-sm">
+                  Cancelar
+                </button>
+                <button onClick={handleSave} disabled={saving} className="btn-primary px-4 py-2 text-sm">
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 className="font-display mb-1 text-2xl sm:text-3xl">{user?.name || 'Usuario'}</h1>
+              <p className="mb-3 break-all text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
+                {user?.email}
+              </p>
+              {user?._id && (
+                <Link
+                  to={`/user/${user._id}`}
+                  className="mb-4 inline-block text-sm text-primary-500 hover:text-primary-400"
+                >
+                  Ver perfil público y solicitudes
+                </Link>
+              )}
+            </>
+          )}
+
+          <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-medium sm:text-sm ${getStatusColor(user?.membership?.status)}`}>
+              {user?.membership?.status === 'active' ? 'Activo' :
+                user?.membership?.status === 'expiring' ? 'Por vencer' : 'Vencido'}
             </span>
+            <span className={`rounded-full bg-[color:var(--bg-muted)] px-3 py-1 text-xs sm:text-sm ${getPlanColor(user?.membership?.plan)}`}>
+              {user?.membership?.plan?.toUpperCase() || 'BÁSICO'}
+            </span>
+            {user?.role === 'admin' && (
+              <span className="rounded-full bg-accent-purple/20 px-3 py-1 text-xs text-accent-purple sm:text-sm">
+                Admin
+              </span>
+            )}
+          </div>
+
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="btn-secondary mx-auto flex items-center gap-2"
+            >
+              <FiEdit2 size={16} /> Editar Perfil
+            </button>
           )}
         </div>
 
-        {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            className="btn-secondary flex items-center gap-2 mx-auto"
-          >
-            <FiEdit2 size={16} /> Editar Perfil
-          </button>
-        )}
-      </motion.div>
-
-      {/* Stats */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-3 gap-4"
-      >
-        {[
-          { label: 'Entrenamientos', value: user?.stats?.totalWorkouts || 0 },
-          { label: 'Días Activo', value: user?.stats?.longestStreak || 0 },
-          { label: 'Nivel', value: user?.stats?.level || 1 },
-        ].map((stat) => (
-          <div key={stat.label} className="card text-center">
-            <div className="font-display text-2xl text-primary-500">{stat.value}</div>
-            <div className="text-gray-400 text-sm">{stat.label}</div>
-          </div>
-        ))}
-      </motion.div>
-
-      {/* XP Total */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="card"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <FiZap className="text-accent-yellow" size={20} />
-            <span className="text-gray-400">XP Total</span>
-          </div>
-          <span className="font-bold text-accent-yellow">{user?.stats?.xp || 0} XP</span>
+        <div
+          className="grid grid-cols-3 border-t border-[color:var(--border-subtle)]"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          {[
+            { label: 'Entrenamientos', value: user?.stats?.totalWorkouts || 0 },
+            { label: 'Días Activo', value: user?.stats?.longestStreak || 0 },
+            { label: 'Nivel', value: currentLevel },
+          ].map((stat, index) => (
+            <div
+              key={stat.label}
+              className={`min-w-0 px-2 py-3 text-center sm:px-3 sm:py-4 ${
+                index > 0 ? 'border-l border-[color:var(--border-subtle)]' : ''
+              }`}
+            >
+              <div className="font-display text-xl text-primary-500 sm:text-2xl">{stat.value}</div>
+              <div className="truncate text-[10px] sm:text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {stat.label}
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="h-3 bg-dark-300 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-accent-yellow to-orange-500 rounded-full transition-all"
-            style={{ width: `${Math.min(100, ((user?.stats?.xp || 0) % 100))}%` }}
-          />
-        </div>
-        <div className="text-xs text-gray-500 mt-1">
-          {100 - ((user?.stats?.xp || 0) % 100)} XP hasta el siguiente nivel
+
+        <div className="border-t border-[color:var(--border-subtle)] px-4 py-4 sm:px-6">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FiZap className="text-accent-yellow" size={18} />
+              <span className="text-sm font-medium">Nivel {currentLevel}</span>
+            </div>
+            <span className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
+              {xpTotal.toLocaleString('es-ES')} XP total
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-[color:var(--bg-muted)] sm:h-3">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-accent-yellow to-orange-500 transition-all"
+              style={{ width: `${levelProgress}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span>{xpIntoLevel} / 100 XP en este nivel</span>
+            <span>{xpToNextLevel} XP al nivel {currentLevel + 1}</span>
+          </div>
         </div>
       </motion.div>
 
@@ -507,28 +521,28 @@ export default function Profile() {
         </div>
 
         {user?.badges && user.badges.length > 0 ? (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-2 sm:gap-3">
             {user.badges.slice(0, 8).map((badge, index) => (
               <div
                 key={badge.id || badge._id || index}
-                className="text-center p-3 bg-dark-200 rounded-xl hover:bg-dark-100 transition-colors cursor-pointer"
+                className="cursor-pointer rounded-xl bg-[color:var(--bg-muted)] p-2 text-center transition-colors hover:bg-[color:var(--bg-elevated)] sm:p-3"
                 onClick={() => setShowBadges(true)}
               >
-                <div className="text-3xl mb-1">{badge.icon}</div>
-                <div className="text-xs text-gray-400 truncate">{badge.name}</div>
+                <div className="mb-1 text-2xl sm:text-3xl">{badge.icon}</div>
+                <div className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>{badge.name}</div>
               </div>
             ))}
             {user.badges.length > 8 && (
               <div
-                className="text-center p-3 bg-dark-200 rounded-xl hover:bg-dark-100 transition-colors cursor-pointer flex items-center justify-center"
+                className="flex cursor-pointer items-center justify-center rounded-xl bg-[color:var(--bg-muted)] p-3 transition-colors hover:bg-[color:var(--bg-elevated)]"
                 onClick={() => setShowBadges(true)}
               >
-                <div className="text-gray-400 text-sm">+{user.badges.length - 8}</div>
+                <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>+{user.badges.length - 8}</div>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-center py-8 text-gray-400">
+          <div className="py-8 text-center" style={{ color: 'var(--text-secondary)' }}>
             <FiAward size={32} className="mx-auto mb-2 opacity-50" />
             <p className="text-sm">Aún no tienes insignias</p>
           </div>
@@ -554,9 +568,9 @@ export default function Profile() {
             </div>
             <div className="flex-1">
               <div className="font-semibold">Panel de Administración</div>
-              <div className="text-gray-400 text-sm">Gestiona usuarios, membresías y más</div>
+              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Gestiona usuarios, membresías y más</div>
             </div>
-            <FiChevronRight className="text-gray-400" />
+            <FiChevronRight style={{ color: 'var(--text-muted)' }} />
           </Link>
         </motion.div>
       )}
@@ -572,12 +586,12 @@ export default function Profile() {
           <Link
             key={item.label}
             to={item.to}
-            className={`w-full flex items-center gap-4 p-4 hover:bg-dark-100 transition-colors ${
-              i !== menuItems.length - 1 ? 'border-b border-white/5' : ''
+            className={`flex w-full items-center gap-4 p-4 transition-colors hover:bg-[color:var(--bg-muted)] ${
+              i !== menuItems.length - 1 ? 'border-b border-[color:var(--border-subtle)]' : ''
             }`}
           >
-            <div className="w-10 h-10 bg-dark-300 rounded-xl flex items-center justify-center relative">
-              <item.icon size={20} className="text-gray-400" />
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--bg-muted)]">
+              <item.icon size={20} style={{ color: 'var(--text-secondary)' }} />
               {item.badge && unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-4 px-1 bg-primary-500 rounded-full text-[10px] flex items-center justify-center text-white">
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -585,7 +599,7 @@ export default function Profile() {
               )}
             </div>
             <span className="flex-1 text-left">{item.label}</span>
-            <FiChevronRight className="text-gray-500" />
+            <FiChevronRight style={{ color: 'var(--text-muted)' }} />
           </Link>
         ))}
       </motion.div>
@@ -603,7 +617,7 @@ export default function Profile() {
       </motion.button>
 
       {/* App Info */}
-      <div className="text-center text-gray-500 text-sm py-4">
+      <div className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
         <p>QYNTRA GYM v1.0.0</p>
         <p className="mt-1">Hecho con 💪 para atletas</p>
       </div>
