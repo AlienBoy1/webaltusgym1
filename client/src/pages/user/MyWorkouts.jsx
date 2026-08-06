@@ -160,7 +160,7 @@ export default function MyWorkouts() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 pb-24 sm:pb-8">
+    <div data-tour="tour-my-workouts" className="mx-auto max-w-3xl space-y-5 pb-24 sm:pb-8">
       <div className="flex items-center gap-3">
         <Link
           to="/profile"

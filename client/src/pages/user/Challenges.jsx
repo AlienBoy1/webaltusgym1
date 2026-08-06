@@ -455,7 +455,7 @@ export default function Challenges() {
         </div>
       </div>
 
-      <div data-tour="tour-challenges-list" className="contents">
+      <div data-tour="tour-challenges-list" className="space-y-4">
 
       {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2">

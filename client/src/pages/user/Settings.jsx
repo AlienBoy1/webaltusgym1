@@ -242,7 +242,7 @@ export default function UserSettings() {
   )
   
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div data-tour="tour-settings-panel" className="max-w-4xl mx-auto space-y-6">
       <h1 className="font-display text-3xl">Configuración</h1>
       
       <div className="grid md:grid-cols-3 gap-6">

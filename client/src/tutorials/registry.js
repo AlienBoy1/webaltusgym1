@@ -250,7 +250,7 @@ const PROFILE_STEPS = [
   {
     id: 'profile-settings-hint',
     path: '/settings',
-    target: null,
+    target: 'tour-settings-panel',
     title: 'Configuración de la app',
     body: 'Desde Configuración controlas privacidad, tema, notificaciones y preferencias. También puedes abrirla desde el menú de tu avatar.'
   }
@@ -281,7 +281,7 @@ const WORKOUT_STEPS = [
   {
     id: 'wo-history',
     path: '/my-workouts',
-    target: null,
+    target: 'tour-my-workouts',
     title: 'Historial de entrenamientos',
     body: 'Revisa el historial de sesiones completadas y vuelve a compartir tus avances con la comunidad.'
   }
@@ -343,7 +343,7 @@ const CHALLENGE_STEPS = [
   {
     id: 'ch-session',
     path: '/challenges',
-    target: null,
+    target: 'tour-challenges-list',
     title: 'Completar un reto',
     body: 'Inicia el reto, registra progreso (o pausa si descansas) y al alcanzar el objetivo celebra y comparte.'
   }

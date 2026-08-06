@@ -252,7 +252,11 @@ export default function MainLayout() {
     <PresenceManager />
     <div className="min-h-screen bg-dark-500">
       {/* Header */}
-      <header className="glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
+      <header
+        className={`glass fixed top-0 left-0 right-0 px-4 py-3 ${
+          avatarMenuOpen ? 'z-[150]' : 'z-50'
+        }`}
+      >
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {canGoBack && (
@@ -267,6 +271,27 @@ export default function MainLayout() {
               <QyntraLogo size="sm" rounded="lg" />
               <span className="font-display text-xl tracking-wider hidden sm:block">QYNTRA</span>
             </NavLink>
+
+            {/* Desktop primary nav (also used as tutorial targets when bottom nav is hidden) */}
+            <nav className="ml-2 hidden items-center gap-0.5 md:flex" aria-label="Navegación principal">
+              {navItems.map((item) => (
+                <NavLink
+                  key={`desk-${item.path}`}
+                  to={item.path}
+                  data-tour={item.tour}
+                  className={({ isActive }) =>
+                    `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                      isActive
+                        ? 'bg-[rgba(var(--color-primary-rgb),0.14)] text-primary-500'
+                        : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                    }`
+                  }
+                >
+                  <item.icon size={16} />
+                  <span className="hidden lg:inline">{item.label}</span>
+                </NavLink>
+              ))}
+            </nav>
             
             {/* Search Bar */}
             <div className="relative flex-1 max-w-md hidden md:block">
@@ -386,7 +411,7 @@ export default function MainLayout() {
                     initial={{ opacity: 0, y: -8, scale: 0.96 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                    className="absolute right-0 top-full mt-2 w-64 z-[100] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-64 z-[160] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
                   >
                     <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
                       <p className="font-semibold text-sm truncate">{user?.name}</p>

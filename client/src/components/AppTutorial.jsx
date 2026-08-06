@@ -30,42 +30,173 @@ function setAvatarMenuOpen(open) {
   window.dispatchEvent(new CustomEvent('qyntra:avatar-menu', { detail: { open: Boolean(open) } }))
 }
 
-const SPOTLIGHT_PAD = 10
-const CARD_GAP = 16
+const SPOTLIGHT_PAD = 8
+const CARD_GAP = 14
+const HEADER_SAFE = 72
+const BOTTOM_NAV_SAFE = 84
+const EDGE = 12
+const MAX_WAIT_TRIES = 36
+
+function isElementVisible(el) {
+  if (!el || typeof window === 'undefined') return false
+  const style = window.getComputedStyle(el)
+  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+    return false
+  }
+  const r = el.getBoundingClientRect()
+  if (r.width < 2 || r.height < 2) return false
+  // Off-screen far beyond viewport (allow slight overflow)
+  if (r.bottom < -40 || r.top > window.innerHeight + 40) return false
+  if (r.right < -40 || r.left > window.innerWidth + 40) return false
+  return true
+}
+
+/** Prefer the first visible matching tour target (desktop vs mobile duplicates). */
+function findTourElement(tourId) {
+  if (!tourId || typeof document === 'undefined') return null
+  const nodes = Array.from(document.querySelectorAll(`[data-tour="${tourId}"]`))
+  if (!nodes.length) return null
+  return nodes.find(isElementVisible) || nodes.find((el) => {
+    const r = el.getBoundingClientRect()
+    return r.width >= 2 && r.height >= 2
+  }) || nodes[0]
+}
 
 function getTargetRect(tourId) {
-  if (!tourId || typeof document === 'undefined') return null
-  const el = document.querySelector(`[data-tour="${tourId}"]`)
+  const el = findTourElement(tourId)
   if (!el) return null
   const r = el.getBoundingClientRect()
-  if (r.width < 2 && r.height < 2) return null
+  if (r.width < 2 || r.height < 2) return null
+
+  // Cap huge targets so the tip card still has room
+  const maxH = Math.min(r.height, Math.max(120, window.innerHeight * 0.42))
+  const maxW = Math.min(r.width, Math.max(160, window.innerWidth * 0.92))
+  const width = maxW
+  const height = maxH
+  const left = r.left + (r.width - width) / 2
+  const top = r.top
+
   return {
-    top: r.top - SPOTLIGHT_PAD,
-    left: r.left - SPOTLIGHT_PAD,
-    width: r.width + SPOTLIGHT_PAD * 2,
-    height: r.height + SPOTLIGHT_PAD * 2,
-    bottom: r.bottom + SPOTLIGHT_PAD,
-    right: r.right + SPOTLIGHT_PAD,
-    midY: r.top + r.height / 2
+    el,
+    top: top - SPOTLIGHT_PAD,
+    left: left - SPOTLIGHT_PAD,
+    width: width + SPOTLIGHT_PAD * 2,
+    height: height + SPOTLIGHT_PAD * 2,
+    bottom: top + height + SPOTLIGHT_PAD,
+    right: left + width + SPOTLIGHT_PAD,
+    midY: top + height / 2,
+    raw: r
   }
 }
 
-function placeCard(rect, cardH = 220) {
-  if (!rect) {
-    return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', maxWidth: 360 }
+function scrollTargetIntoView(tourId) {
+  const el = findTourElement(tourId)
+  if (!el) return false
+  try {
+    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' })
+  } catch {
+    el.scrollIntoView()
   }
-  const vw = window.innerWidth
+  return true
+}
+
+function safeInsets() {
   const vh = window.innerHeight
-  const maxW = Math.min(360, vw - 32)
-  let top = rect.bottom + CARD_GAP
-  if (top + cardH > vh - 16) {
-    top = Math.max(16, rect.top - CARD_GAP - cardH)
+  const vw = window.innerWidth
+  const isNarrow = vw < 768
+  return {
+    vw,
+    vh,
+    top: HEADER_SAFE,
+    bottom: isNarrow ? BOTTOM_NAV_SAFE : EDGE + 16,
+    left: EDGE,
+    right: EDGE,
+    isNarrow
   }
-  let left = Math.min(Math.max(16, rect.left), vw - maxW - 16)
-  if (rect.midY < vh * 0.35 && rect.bottom + cardH + CARD_GAP > vh - 16) {
-    top = Math.min(vh - cardH - 16, rect.bottom + CARD_GAP)
+}
+
+/**
+ * Place tip card fully inside the safe viewport. Prefer below target, then above,
+ * then dock so the full message stays readable without covering bottom nav targets.
+ */
+function placeCard(rect, cardH = 210, cardW = 360) {
+  const { vw, vh, top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight, isNarrow } =
+    safeInsets()
+  const maxW = Math.min(cardW, vw - safeLeft - safeRight)
+  const usableBottom = vh - safeBottom
+  const usableTop = safeTop
+  const maxCardH = Math.max(140, usableBottom - usableTop - 8)
+  const h = Math.min(cardH || 210, maxCardH)
+
+  const dockBottom = () => ({
+    mode: 'dock',
+    top: Math.max(usableTop, usableBottom - h),
+    left: safeLeft,
+    width: vw - safeLeft - safeRight,
+    maxWidth: vw - safeLeft - safeRight,
+    maxHeight: maxCardH,
+    transform: 'none'
+  })
+
+  const dockTop = () => ({
+    mode: 'dock',
+    top: usableTop,
+    left: safeLeft,
+    width: vw - safeLeft - safeRight,
+    maxWidth: vw - safeLeft - safeRight,
+    maxHeight: maxCardH,
+    transform: 'none'
+  })
+
+  if (!rect) {
+    return isNarrow ? dockBottom() : {
+      mode: 'center',
+      top: '50%',
+      left: '50%',
+      maxWidth: Math.min(360, vw - 32),
+      maxHeight: maxCardH,
+      transform: 'translate(-50%, -50%)'
+    }
   }
-  return { top, left, maxWidth: maxW, transform: 'none' }
+
+  // Target in bottom band (mobile nav / lower chrome): tip goes to top so it is fully readable
+  const targetNearBottom = rect.midY > vh * 0.62 || rect.bottom > usableBottom - 8
+  if (isNarrow && targetNearBottom) return dockTop()
+  if (isNarrow) return dockBottom()
+
+  const candidates = []
+  candidates.push({
+    top: rect.bottom + CARD_GAP,
+    left: Math.min(Math.max(safeLeft, rect.left), vw - maxW - safeRight)
+  })
+  candidates.push({
+    top: rect.top - CARD_GAP - h,
+    left: Math.min(Math.max(safeLeft, rect.left), vw - maxW - safeRight)
+  })
+  candidates.push({
+    top: Math.min(Math.max(usableTop, rect.top), usableBottom - h),
+    left: rect.right + CARD_GAP
+  })
+
+  for (const c of candidates) {
+    if (
+      c.top >= usableTop - 2 &&
+      c.top + h <= usableBottom + 2 &&
+      c.left >= safeLeft - 2 &&
+      c.left + maxW <= vw - safeRight + 2
+    ) {
+      return { top: c.top, left: c.left, maxWidth: maxW, maxHeight: maxCardH, transform: 'none', mode: 'float' }
+    }
+  }
+
+  return targetNearBottom ? dockTop() : dockBottom()
+}
+
+function pathMatches(current, expected) {
+  if (!expected) return true
+  const a = (current || '').replace(/\/+$/, '') || '/'
+  const b = (expected || '').replace(/\/+$/, '') || '/'
+  return a === b
 }
 
 export default function AppTutorial() {
@@ -77,8 +208,10 @@ export default function AppTutorial() {
   const [stepIndex, setStepIndex] = useState(0)
   const [rect, setRect] = useState(null)
   const [cardStyle, setCardStyle] = useState(() => placeCard(null))
+  const [ready, setReady] = useState(false)
   const completingRef = useRef(false)
   const cardRef = useRef(null)
+  const alignGen = useRef(0)
 
   const steps = getTutorialSteps(tutorialId)
   const meta = getTutorialMeta(tutorialId)
@@ -86,12 +219,70 @@ export default function AppTutorial() {
   const isLast = stepIndex >= steps.length - 1
   const isFirst = stepIndex === 0
 
-  const measure = useCallback(() => {
-    const next = getTargetRect(step?.target)
+  const applyMeasure = useCallback(() => {
+    const next = step?.target ? getTargetRect(step.target) : null
     setRect(next)
-    const h = cardRef.current?.offsetHeight || 220
-    setCardStyle(placeCard(next, h))
+    const measuredH = cardRef.current?.offsetHeight || 210
+    setCardStyle(placeCard(next, measuredH))
+    return next
   }, [step?.target])
+
+  const alignStep = useCallback(async () => {
+    const gen = ++alignGen.current
+    setReady(false)
+
+    if (!step) return
+
+    // 1) Navigate to the step route and wait for it
+    if (step.path && !pathMatches(window.location.pathname, step.path)) {
+      navigate(step.path)
+    }
+
+    // 2) Open / close avatar menu as needed
+    const needsMenu = Boolean(step.openAvatarMenu) || step.id === 'avatar'
+    setAvatarMenuOpen(needsMenu)
+
+    // 3) Wait until path + target are ready, scrolling target into view
+    let tries = 0
+    while (tries < MAX_WAIT_TRIES && gen === alignGen.current) {
+      const onPath = !step.path || pathMatches(window.location.pathname, step.path)
+      if (onPath) {
+        if (needsMenu) setAvatarMenuOpen(true)
+        if (!step.target) {
+          if (gen === alignGen.current) {
+            setRect(null)
+            setCardStyle(placeCard(null, cardRef.current?.offsetHeight || 210))
+            setReady(true)
+          }
+          return
+        }
+        scrollTargetIntoView(step.target)
+        const found = getTargetRect(step.target)
+        if (found) {
+          // Second scroll+measure after layout settles
+          await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, 40)))
+          if (gen !== alignGen.current) return
+          scrollTargetIntoView(step.target)
+          applyMeasure()
+          // Remeasure with real card height
+          await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, 30)))
+          if (gen !== alignGen.current) return
+          applyMeasure()
+          setReady(true)
+          return
+        }
+      }
+      tries += 1
+      await new Promise((r) => window.setTimeout(r, 80))
+    }
+
+    // Fallback: show centered / docked tip even if target missing
+    if (gen === alignGen.current) {
+      setRect(null)
+      setCardStyle(placeCard(null, cardRef.current?.offsetHeight || 210))
+      setReady(true)
+    }
+  }, [step, navigate, applyMeasure])
 
   const start = useCallback(
     (id = TUTORIAL_IDS.QUICK_START) => {
@@ -101,6 +292,7 @@ export default function AppTutorial() {
       setTutorialId(nextId)
       setStepIndex(0)
       setOpen(true)
+      setReady(false)
       document.body.dataset.qyntraTutorial = '1'
       setAvatarMenuOpen(false)
       const firstPath = nextSteps[0]?.path || '/dashboard'
@@ -115,7 +307,6 @@ export default function AppTutorial() {
     return () => window.removeEventListener(TUTORIAL_START_EVENT, onStart)
   }, [start])
 
-  // Auto-show quick-start after username when never completed
   useEffect(() => {
     if (!user || open) return
     if (!user.username) return
@@ -124,7 +315,6 @@ export default function AppTutorial() {
     return () => window.clearTimeout(t)
   }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, open, start])
 
-  // Auto-show profile tutorial on first profile visit
   useEffect(() => {
     if (!user || open) return
     if (!user.username) return
@@ -136,56 +326,35 @@ export default function AppTutorial() {
   }, [user, open, start, location.pathname])
 
   useEffect(() => {
-    if (!open || !step?.path) return
-    if (window.location.pathname !== step.path) {
-      navigate(step.path)
-    }
-  }, [open, step?.path, stepIndex, navigate])
-
-  useEffect(() => {
     if (!open) return
-    setAvatarMenuOpen(Boolean(step?.openAvatarMenu) || step?.id === 'avatar')
-  }, [open, step?.id, step?.openAvatarMenu, stepIndex])
-
-  useLayoutEffect(() => {
-    if (!open) return
-    let cancelled = false
-    let tries = 0
-    const tick = () => {
-      if (cancelled) return
-      if (step?.openAvatarMenu || step?.id === 'avatar') {
-        setAvatarMenuOpen(true)
-      }
-      measure()
-      tries += 1
-      if (step?.target && !getTargetRect(step.target) && tries < 18) {
-        window.setTimeout(tick, 70)
-      }
-    }
-    const id = window.requestAnimationFrame(() => {
-      window.setTimeout(tick, step?.openAvatarMenu ? 90 : 40)
-    })
+    alignStep()
     return () => {
-      cancelled = true
-      window.cancelAnimationFrame(id)
+      alignGen.current += 1
     }
-  }, [open, stepIndex, step?.target, step?.openAvatarMenu, step?.id, measure])
+  }, [open, stepIndex, tutorialId, alignStep])
 
+  // Keep spotlit when scrolling/resizing
   useEffect(() => {
-    if (!open) return
-    const onResize = () => measure()
-    window.addEventListener('resize', onResize)
-    window.addEventListener('scroll', onResize, true)
+    if (!open || !ready) return
+    const onRelayout = () => applyMeasure()
+    window.addEventListener('resize', onRelayout)
+    window.addEventListener('scroll', onRelayout, true)
+    const ro = typeof ResizeObserver !== 'undefined' && cardRef.current
+      ? new ResizeObserver(() => applyMeasure())
+      : null
+    if (ro && cardRef.current) ro.observe(cardRef.current)
     return () => {
-      window.removeEventListener('resize', onResize)
-      window.removeEventListener('scroll', onResize, true)
+      window.removeEventListener('resize', onRelayout)
+      window.removeEventListener('scroll', onRelayout, true)
+      ro?.disconnect()
     }
-  }, [open, measure])
+  }, [open, ready, applyMeasure, stepIndex])
 
   const finish = useCallback(async () => {
     if (completingRef.current) return
     completingRef.current = true
     setOpen(false)
+    setReady(false)
     setAvatarMenuOpen(false)
     delete document.body.dataset.qyntraTutorial
     const currentMeta = getTutorialMeta(tutorialId)
@@ -223,11 +392,17 @@ export default function AppTutorial() {
 
   const next = () => {
     if (isLast) finish()
-    else setStepIndex((i) => Math.min(i + 1, steps.length - 1))
+    else {
+      setReady(false)
+      setStepIndex((i) => Math.min(i + 1, steps.length - 1))
+    }
   }
 
   const prev = () => {
-    if (!isFirst) setStepIndex((i) => Math.max(i - 1, 0))
+    if (!isFirst) {
+      setReady(false)
+      setStepIndex((i) => Math.max(i - 1, 0))
+    }
   }
 
   useEffect(() => {
@@ -236,15 +411,24 @@ export default function AppTutorial() {
 
   if (!open || !step) return null
 
+  const cardInlineStyle = {
+    top: cardStyle.top,
+    left: cardStyle.left,
+    maxWidth: cardStyle.maxWidth,
+    width: cardStyle.width || undefined,
+    maxHeight: cardStyle.maxHeight,
+    transform: cardStyle.transform || 'none'
+  }
+
   const overlay = (
     <AnimatePresence>
       <motion.div
         key={`app-tutorial-${tutorialId}`}
-        className="fixed inset-0 z-[95] pointer-events-auto"
+        className="fixed inset-0 z-[140] pointer-events-auto"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
+        transition={{ duration: 0.18 }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="app-tutorial-title"
@@ -255,15 +439,15 @@ export default function AppTutorial() {
           {rect ? (
             <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <mask id="qyntra-tour-mask">
+                <mask id={`qyntra-tour-mask-${tutorialId}-${step.id}`}>
                   <rect width="100%" height="100%" fill="white" />
                   <rect
                     x={rect.left}
                     y={rect.top}
                     width={rect.width}
                     height={rect.height}
-                    rx="16"
-                    ry="16"
+                    rx="14"
+                    ry="14"
                     fill="black"
                   />
                 </mask>
@@ -272,7 +456,7 @@ export default function AppTutorial() {
                 width="100%"
                 height="100%"
                 fill="rgba(0,0,0,0.72)"
-                mask="url(#qyntra-tour-mask)"
+                mask={`url(#qyntra-tour-mask-${tutorialId}-${step.id})`}
               />
             </svg>
           ) : (
@@ -301,37 +485,42 @@ export default function AppTutorial() {
 
         <motion.div
           ref={cardRef}
-          key={step.id}
-          initial={{ opacity: 0, y: 12, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="absolute z-[3] w-[calc(100%-2rem)] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl p-4 sm:p-5"
-          style={cardStyle}
+          key={`${tutorialId}-${step.id}`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: ready ? 1 : 0.85, y: 0 }}
+          className="absolute z-[3] flex flex-col overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 shadow-2xl sm:p-5"
+          style={cardInlineStyle}
         >
-          <div className="mb-2 flex items-start justify-between gap-2">
-            <div>
+          <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-primary)]">
                 {meta.title} · {stepIndex + 1}/{steps.length}
               </p>
-              <h2 id="app-tutorial-title" className="mt-1 font-display text-xl tracking-wide text-[color:var(--text-primary)]">
+              <h2
+                id="app-tutorial-title"
+                className="mt-1 font-display text-lg tracking-wide text-[color:var(--text-primary)] sm:text-xl"
+              >
                 {step.title}
               </h2>
             </div>
             <button
               type="button"
               onClick={finish}
-              className="rounded-lg p-1.5 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
+              className="shrink-0 rounded-lg p-1.5 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
               aria-label="Saltar tutorial"
             >
               <FiX size={18} />
             </button>
           </div>
-          <p className="text-sm leading-relaxed text-[color:var(--text-secondary)]">{step.body}</p>
-          <div className="mt-4 flex items-center justify-between gap-2">
+          <p className="min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed text-[color:var(--text-secondary)] whitespace-pre-wrap break-words">
+            {step.body}
+          </p>
+          <div className="mt-4 flex shrink-0 items-center justify-between gap-2">
             <button
               type="button"
               onClick={prev}
               disabled={isFirst}
-              className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] disabled:opacity-30 hover:bg-[color:var(--bg-muted)]"
+              className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)] disabled:opacity-30"
             >
               <FiArrowLeft size={16} /> Atrás
             </button>
