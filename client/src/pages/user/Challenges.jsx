@@ -976,85 +976,70 @@ export default function Challenges() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Tipo *</label>
-                    <div className="space-y-2">
-                      {challengeTypes.length > 0 ? (
-                        challengeTypes.map(ct => (
-                          <button
-                            key={ct.id}
-                            type="button"
-                            onClick={() => {
-                              setCreateForm({
-                                ...createForm,
-                                type: ct.id,
-                                reward: { ...createForm.reward, xp: ct.default_xp }
-                              })
-                            }}
-                            className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all text-sm ${
-                              createForm.type === ct.id
-                                ? 'bg-primary-500/15 border border-primary-500/50 text-white'
-                                : 'bg-dark-200 border border-transparent text-gray-400 hover:text-white hover:bg-dark-300'
-                            }`}
-                          >
-                            <span className="text-lg">{ct.icon}</span>
-                            <span className="flex-1 font-medium">{ct.name}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-accent-yellow/20 text-accent-yellow text-xs font-semibold">
-                              {ct.default_xp} XP
-                            </span>
-                          </button>
-                        ))
-                      ) : (
-                        <select
-                          value={createForm.type}
-                          onChange={(e) => setCreateForm({ ...createForm, type: e.target.value })}
-                          className="input-field w-full"
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tipo *</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {challengeTypes.length > 0 ? (
+                      challengeTypes.map(ct => (
+                        <button
+                          key={ct.id}
+                          type="button"
+                          onClick={() => {
+                            setCreateForm({
+                              ...createForm,
+                              type: ct.id,
+                              reward: { ...createForm.reward, xp: ct.default_xp }
+                            })
+                          }}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all text-sm ${
+                            createForm.type === ct.id
+                              ? 'bg-primary-500/15 border border-primary-500/50 text-white'
+                              : 'bg-dark-200 border border-transparent text-gray-400 hover:text-white hover:bg-dark-300'
+                          }`}
                         >
-                          <option value="workouts">Entrenamientos</option>
-                          <option value="streak">Racha</option>
-                          <option value="calories">Calorías</option>
-                          <option value="distance">Distancia</option>
-                          <option value="weight_lifted">Peso Levantado</option>
-                          <option value="social">Social</option>
-                          <option value="custom">Personalizado</option>
-                        </select>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Objetivo *</label>
-                      <input
-                        type="number"
-                        value={createForm.goal}
-                        onChange={(e) => setCreateForm({ ...createForm, goal: e.target.value })}
+                          <span className="text-lg">{ct.icon}</span>
+                          <span className="flex-1 font-medium">{ct.name}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-accent-yellow/20 text-accent-yellow text-xs font-semibold whitespace-nowrap">
+                            {ct.default_xp} XP
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <select
+                        value={createForm.type}
+                        onChange={(e) => setCreateForm({ ...createForm, type: e.target.value })}
                         className="input-field w-full"
-                        placeholder="Ej: 30"
-                        min="1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">XP de Recompensa</label>
-                      <input
-                        type="number"
-                        value={createForm.reward.xp}
-                        onChange={(e) => setCreateForm({
-                          ...createForm,
-                          reward: { ...createForm.reward, xp: parseInt(e.target.value) || 0 }
-                        })}
-                        className="input-field w-full"
-                        min="1"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Por defecto: {getDefaultXp(createForm.type)} XP para este tipo
-                      </p>
-                    </div>
+                      >
+                        <option value="workouts">Entrenamientos</option>
+                        <option value="streak">Racha</option>
+                        <option value="calories">Calorías</option>
+                        <option value="distance">Distancia</option>
+                        <option value="weight_lifted">Peso Levantado</option>
+                        <option value="social">Social</option>
+                        <option value="custom">Personalizado</option>
+                      </select>
+                    )}
                   </div>
+                  {challengeTypes.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      El XP se asigna automáticamente según el tipo ({getDefaultXp(createForm.type)} XP).
+                    </p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Objetivo *</label>
+                  <input
+                    type="number"
+                    value={createForm.goal}
+                    onChange={(e) => setCreateForm({ ...createForm, goal: e.target.value })}
+                    className="input-field w-full"
+                    placeholder="Ej: 30"
+                    min="1"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2">Fecha Inicio *</label>
                     <input

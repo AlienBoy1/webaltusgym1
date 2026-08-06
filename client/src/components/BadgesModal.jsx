@@ -121,7 +121,7 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
           style={{
             background: 'var(--bg-card)',
             maxHeight: 'min(92svh, 720px)',
-            paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))'
+            paddingBottom: 'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))'
           }}
         >
           <div
@@ -140,7 +140,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+          <div
+            className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
+            style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
+          >
             {loading ? (
               <div className="text-center py-12">
                 <div className="w-8 h-8 border-4 border-[color:var(--border-subtle)] border-t-primary-500 rounded-full animate-spin mx-auto" />
@@ -267,7 +270,7 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
               className="w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] p-5 sm:p-6"
               style={{
                 background: 'var(--bg-card)',
-                paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))'
+                paddingBottom: 'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))'
               }}
             >
               <div className="flex items-center justify-between mb-5">

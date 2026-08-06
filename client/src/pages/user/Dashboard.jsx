@@ -338,18 +338,27 @@ export default function Dashboard() {
         <h2 className="font-display mb-4 text-2xl tracking-wide">Tu actividad semanal</h2>
         <div className="flex justify-center gap-2">
           {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, i) => {
-            const completed = i < (user?.stats?.currentStreak || 0) % 7
+            // Align labels with local week starting Monday (L=0 … D=6)
+            const mondayBasedToday = (new Date().getDay() + 6) % 7
+            const isToday = i === mondayBasedToday
+            const streak = user?.stats?.currentStreak || 0
+            const daysBack = (mondayBasedToday - i + 7) % 7
+            const completed =
+              streak > 0 && i <= mondayBasedToday && daysBack < streak
             return (
               <div
                 key={day}
-                className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium ${
-                  completed ? 'bg-primary-500 text-white' : ''
-                }`}
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition ${
+                  isToday
+                    ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-[color:var(--bg-card)]'
+                    : ''
+                } ${completed ? 'bg-primary-500 text-white' : ''}`}
                 style={
                   completed
                     ? undefined
                     : { background: 'var(--bg-muted)', color: 'var(--text-muted)' }
                 }
+                title={isToday ? 'Hoy' : undefined}
               >
                 {day}
               </div>

@@ -61,11 +61,7 @@ export default function ProfileFeed({
         const created = post.createdAt || post.created_at
         const workout = post.workoutData || post.workout_data
         const isOwner = currentUserId && (authorId === currentUserId || post.userId === currentUserId)
-        const myReaction =
-          post.myReaction ||
-          (Array.isArray(post.likes) && post.likes.some((id) => (id?._id || id) === currentUserId)
-            ? '❤️'
-            : null)
+        const myReaction = post.myReaction || null
 
         return (
           <article

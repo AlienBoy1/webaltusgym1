@@ -55,6 +55,9 @@ router.put('/profile', authenticate, async (req, res) => {
         .eq('id', req.user.id)
         .single()
       updateData.profile = { ...(cur?.profile || {}), ...profile }
+      if (updateData.profile.coverUrl === null || updateData.profile.coverUrl === '') {
+        delete updateData.profile.coverUrl
+      }
     }
 
     const { data, error } = await supabaseAdmin

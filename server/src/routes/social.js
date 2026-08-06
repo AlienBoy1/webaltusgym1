@@ -482,7 +482,33 @@ router.post('/:id/like', authenticate, async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('post_id', post.id)
 
-    res.json({ liked, likesCount: count || 0, myReaction })
+    // Re-read stored emoji so client gets the real value (not a silent heart fallback)
+    if (liked) {
+      const { data: stored } = await supabaseAdmin
+        .from('post_likes')
+        .select('emoji')
+        .eq('post_id', post.id)
+        .eq('user_id', req.user.id)
+        .maybeSingle()
+      if (stored?.emoji) myReaction = stored.emoji
+      else if (emoji) myReaction = emoji
+    }
+
+    // Build summary for nested reaction chips
+    const { data: likeRows } = await supabaseAdmin
+      .from('post_likes')
+      .select('emoji')
+      .eq('post_id', post.id)
+    const summaryMap = {}
+    for (const row of likeRows || []) {
+      const e = row.emoji || '❤️'
+      summaryMap[e] = (summaryMap[e] || 0) + 1
+    }
+    const reactionSummary = Object.entries(summaryMap)
+      .map(([emojiKey, c]) => ({ emoji: emojiKey, count: c }))
+      .sort((a, b) => b.count - a.count)
+
+    res.json({ liked, likesCount: count || 0, myReaction, reactionSummary })
   } catch (error) {
     res.status(500).json({ message: 'Error al dar like', error: error.message })
   }

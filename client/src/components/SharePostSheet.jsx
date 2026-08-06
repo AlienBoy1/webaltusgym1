@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FiX,
@@ -35,7 +36,7 @@ function postAuthorName(post) {
 
 async function buildWhatsAppCard(post) {
   const w = 720
-  const h = 900
+  const h = 1280
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
@@ -44,60 +45,154 @@ async function buildWhatsAppCard(post) {
 
   const grad = ctx.createLinearGradient(0, 0, w, h)
   grad.addColorStop(0, '#0A0A0F')
-  grad.addColorStop(0.55, '#1A120C')
+  grad.addColorStop(0.45, '#16121A')
   grad.addColorStop(1, '#FF6B35')
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, w, h)
 
   ctx.fillStyle = 'rgba(255,255,255,0.08)'
   ctx.beginPath()
-  ctx.arc(w - 80, 80, 140, 0, Math.PI * 2)
+  ctx.arc(w - 60, 100, 160, 0, Math.PI * 2)
   ctx.fill()
 
   ctx.fillStyle = '#FFFFFF'
-  ctx.font = 'bold 42px system-ui, sans-serif'
-  ctx.fillText('QYNTRA GYM', 48, 80)
+  ctx.font = 'bold 44px system-ui, sans-serif'
+  ctx.fillText('QYNTRA GYM', 48, 88)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.fillStyle = 'rgba(255,255,255,0.72)'
   ctx.font = '24px system-ui, sans-serif'
-  ctx.fillText('Publicación compartida', 48, 120)
+  ctx.fillText('Publicación compartida', 48, 128)
 
-  // Card
-  const cardX = 40
+  const cardX = 36
   const cardY = 170
-  const cardW = w - 80
-  const cardH = 520
-  ctx.fillStyle = 'rgba(20,20,28,0.92)'
-  roundRect(ctx, cardX, cardY, cardW, cardH, 28)
+  const cardW = w - 72
+  const cardH = 860
+  ctx.fillStyle = 'rgba(16,16,22,0.94)'
+  roundRect(ctx, cardX, cardY, cardW, cardH, 32)
   ctx.fill()
 
+  // Brand accent bar
+  ctx.fillStyle = '#FF6B35'
+  roundRect(ctx, cardX, cardY, 10, cardH, 8)
+  ctx.fill()
+
+  const author = postAuthorName(post)
+  const typeLabel =
+    post.postType === 'workout' || post.workoutData
+      ? 'Entrenamiento'
+      : post.postType === 'challenge' || post.workoutData?.shareKind === 'challenge'
+        ? 'Reto'
+        : post.postType === 'badge' || post.badgeData
+          ? 'Insignia'
+          : post.postType === 'poll' || post.poll
+            ? 'Encuesta'
+            : 'Publicación'
+
+  ctx.fillStyle = 'rgba(255,107,53,0.22)'
+  roundRect(ctx, cardX + 36, cardY + 28, 180, 36, 18)
+  ctx.fill()
+  ctx.fillStyle = '#FFB089'
+  ctx.font = 'bold 18px system-ui, sans-serif'
+  ctx.fillText(typeLabel.toUpperCase(), cardX + 52, cardY + 52)
+
   ctx.fillStyle = '#FFFFFF'
-  ctx.font = 'bold 32px system-ui, sans-serif'
-  ctx.fillText(postAuthorName(post), cardX + 36, cardY + 70)
+  ctx.font = 'bold 34px system-ui, sans-serif'
+  ctx.fillText(author.slice(0, 28), cardX + 36, cardY + 110)
 
-  const snippet = postSnippet(post)
-  ctx.fillStyle = 'rgba(255,255,255,0.88)'
+  let y = cardY + 160
+  const content = postSnippet(post)
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
   ctx.font = '28px system-ui, sans-serif'
-  wrapText(ctx, snippet, cardX + 36, cardY + 130, cardW - 72, 40)
+  wrapText(ctx, content, cardX + 36, y, cardW - 72, 38)
+  y += Math.min(160, Math.ceil(content.length / 28) * 38 + 20)
 
-  if (post.images?.[0]) {
+  const wd = post.workoutData
+  if (wd) {
+    const stats = [
+      wd.name ? `💪 ${wd.name}` : null,
+      wd.completedExercises != null
+        ? `${wd.completedExercises}/${wd.totalExercises || wd.completedExercises} ejercicios`
+        : null,
+      wd.totalSets != null ? `${wd.totalSets} series` : null,
+      wd.durationSeconds != null
+        ? `${Math.floor((wd.durationSeconds || 0) / 60)} min`
+        : null,
+      wd.xpAwarded != null ? `+${wd.xpAwarded} XP` : null,
+      wd.challengeGoal != null
+        ? `Meta: ${wd.challengeGoal}${wd.challengeUnit ? ` ${wd.challengeUnit}` : ''}`
+        : null
+    ].filter(Boolean)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.06)'
+    roundRect(ctx, cardX + 28, y, cardW - 56, Math.max(120, stats.length * 42 + 36), 20)
+    ctx.fill()
+
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = '24px system-ui, sans-serif'
+    stats.forEach((line, idx) => {
+      ctx.fillText(line.slice(0, 40), cardX + 48, y + 48 + idx * 42)
+    })
+    y += Math.max(120, stats.length * 42 + 56)
+  }
+
+  if (post.badgeData?.name) {
+    ctx.fillStyle = 'rgba(234,179,8,0.18)'
+    roundRect(ctx, cardX + 28, y, cardW - 56, 90, 20)
+    ctx.fill()
+    ctx.fillStyle = '#FACC15'
+    ctx.font = 'bold 28px system-ui, sans-serif'
+    ctx.fillText(`${post.badgeData.icon || '🏅'} ${post.badgeData.name}`, cardX + 48, y + 55)
+    y += 110
+  }
+
+  if (post.mood) {
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'
+    ctx.font = '22px system-ui, sans-serif'
+    ctx.fillText(`Estado: ${post.mood}`, cardX + 36, y + 10)
+    y += 40
+  }
+
+  if (post.poll?.question) {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.font = '24px system-ui, sans-serif'
+    wrapText(ctx, `📊 ${post.poll.question}`, cardX + 36, y + 10, cardW - 72, 34)
+    y += 80
+  }
+
+  const imageSrc = post.images?.[0]
+  if (imageSrc && y < cardY + cardH - 240) {
     try {
-      const img = await loadImage(post.images[0])
-      const ih = 220
+      const img = await loadImage(imageSrc)
+      const ih = Math.min(280, cardY + cardH - y - 40)
       const iw = cardW - 72
       ctx.save()
-      roundRect(ctx, cardX + 36, cardY + 260, iw, ih, 18)
+      roundRect(ctx, cardX + 36, y, iw, ih, 18)
       ctx.clip()
-      ctx.drawImage(img, cardX + 36, cardY + 260, iw, ih)
+      ctx.drawImage(img, cardX + 36, y, iw, ih)
       ctx.restore()
     } catch {
       /* ignore image */
     }
+  } else if (!wd && !post.badgeData && !imageSrc) {
+    // Fill empty space with Qyntra message so card never looks blank
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    roundRect(ctx, cardX + 28, Math.min(y + 20, cardY + cardH - 220), cardW - 56, 180, 20)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.font = '26px system-ui, sans-serif'
+    wrapText(
+      ctx,
+      content || 'Mira esta publicación en la comunidad de Qyntra Gym.',
+      cardX + 52,
+      Math.min(y + 80, cardY + cardH - 150),
+      cardW - 104,
+      36
+    )
   }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
   ctx.font = '22px system-ui, sans-serif'
-  ctx.fillText('Abre Qyntra Gym para ver más', 48, h - 60)
+  ctx.fillText('Abre Qyntra Gym para ver más', 48, h - 70)
 
   return canvas.toDataURL('image/png')
 }
@@ -168,6 +263,7 @@ export default function SharePostSheet({
   onShareCommunity,
   sharingCommunity = false
 }) {
+  const navigate = useNavigate()
   const [step, setStep] = useState('menu') // menu | community | users
   const [contacts, setContacts] = useState([])
   const [query, setQuery] = useState('')
@@ -276,10 +372,8 @@ export default function SharePostSheet({
   const addToStories = async () => {
     if (!post) return
     try {
-      let mediaUrl = post.images?.[0] || null
-      if (!mediaUrl) {
-        mediaUrl = await buildWhatsAppCard(post)
-      }
+      // Always use branded card so shared stories look complete (like WhatsApp share)
+      const mediaUrl = await buildWhatsAppCard(post)
       if (!mediaUrl) {
         toast.error('No se pudo preparar la miniatura')
         return
@@ -295,9 +389,16 @@ export default function SharePostSheet({
           snippet: postSnippet(post)
         })
       )
-      window.dispatchEvent(new CustomEvent('qyntra:open-story-compose'))
-      toast.success('Listo para publicar en historias')
       onClose?.()
+      // Ensure we are on a screen with StoryViewerProvider; then open compose
+      if (!window.location.pathname.includes('/social')) {
+        navigate('/social')
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('qyntra:open-story-compose'))
+        }, 220)
+      } else {
+        window.dispatchEvent(new CustomEvent('qyntra:open-story-compose'))
+      }
     } catch {
       toast.error('No se pudo añadir a historias')
     }

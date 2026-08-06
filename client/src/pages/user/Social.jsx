@@ -222,6 +222,11 @@ export default function Social() {
           const uid = user._id
           let likes = [...(post.likes || [])]
           const has = likes.some((id) => (id?._id || id) === uid)
+          // Prefer the emoji the user selected when liked (avoid heart fallback wiping 🔥 etc.)
+          const nextReaction = data.liked
+            ? (emoji || data.myReaction || '❤️')
+            : null
+
           if (data.liked && !has) likes.push(uid)
           if (!data.liked) likes = likes.filter((id) => (id?._id || id) !== uid)
 
@@ -234,20 +239,20 @@ export default function Social() {
               .filter((r) => r.count > 0)
             reactors = reactors.filter((r) => r.userId !== uid)
           }
-          if (data.myReaction) {
-            const existing = reactionSummary.find((r) => r.emoji === data.myReaction)
+          if (nextReaction) {
+            const existing = reactionSummary.find((r) => r.emoji === nextReaction)
             if (existing) {
               reactionSummary = reactionSummary.map((r) =>
-                r.emoji === data.myReaction ? { ...r, count: r.count + 1 } : r
+                r.emoji === nextReaction ? { ...r, count: r.count + 1 } : r
               )
             } else {
-              reactionSummary = [...reactionSummary, { emoji: data.myReaction, count: 1 }]
+              reactionSummary = [...reactionSummary, { emoji: nextReaction, count: 1 }]
             }
             reactors = [
               ...reactors.filter((r) => r.userId !== uid),
               {
                 userId: uid,
-                emoji: data.myReaction,
+                emoji: nextReaction,
                 name: user.name,
                 avatar: user.avatar
               }
@@ -257,8 +262,8 @@ export default function Social() {
           return {
             ...post,
             likes,
-            myReaction: data.myReaction || null,
-            reactionSummary,
+            myReaction: nextReaction,
+            reactionSummary: Array.isArray(data.reactionSummary) ? data.reactionSummary : reactionSummary,
             reactors
           }
         })
@@ -576,7 +581,7 @@ export default function Social() {
         <div className="space-y-3 sm:space-y-4">
           {posts.map((post, i) => {
             const isOwner = post.user?._id === user?._id
-            const myReaction = post.myReaction || (post.likes?.some(id => (id?._id || id) === user?._id) ? '❤️' : null)
+            const myReaction = post.myReaction || null
             const badge = getLevelBadge(post.user?.stats?.level || 1)
             const postComments = post.comments || []
             const showCommentSection = showComments[post._id]

@@ -25,6 +25,7 @@ const Dashboard = lazy(() => import('./pages/user/Dashboard'))
 const Social = lazy(() => import('./pages/user/Social'))
 const Workouts = lazy(() => import('./pages/user/Workouts'))
 const MyWorkouts = lazy(() => import('./pages/user/MyWorkouts'))
+const MyChallenges = lazy(() => import('./pages/user/MyChallenges'))
 const Progress = lazy(() => import('./pages/user/Progress'))
 const Profile = lazy(() => import('./pages/user/Profile'))
 const UserProfile = lazy(() => import('./pages/user/UserProfile'))
@@ -185,6 +186,7 @@ function App() {
             <Route path="workouts" element={<Workouts />} />
             <Route path="explore-routines" element={<ExploreRoutines />} />
             <Route path="my-workouts" element={<MyWorkouts />} />
+            <Route path="my-challenges" element={<MyChallenges />} />
             <Route path="progress" element={<Progress />} />
             <Route path="profile" element={<Profile />} />
             <Route path="user/:id" element={<UserProfile />} />

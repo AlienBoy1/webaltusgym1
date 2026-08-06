@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity, FiShare2 } from 'react-icons/fi'
+import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity, FiShare2, FiEye, FiTrash2 } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { Link, useNavigate } from 'react-router-dom'
@@ -15,6 +15,7 @@ import { useStoryViewer } from '../../components/StoryViewerContext'
 
 const menuItems = [
   { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
+  { icon: FiTarget, label: 'Mis retos', to: '/my-challenges' },
   { icon: FiSettings, label: 'Configuración', to: '/settings' },
   { icon: FiBell, label: 'Notificaciones', to: '/notifications', badge: true },
   { icon: FiMessageCircle, label: 'Mensajes', to: '/chat' },
@@ -348,7 +349,7 @@ function MyChallengesSection() {
           Mis Retos
         </h2>
         <Link
-          to="/challenges"
+          to="/my-challenges"
           className="text-primary-500 hover:text-primary-400 text-sm"
         >
           Ver todos
@@ -491,6 +492,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [hasStories, setHasStories] = useState(false)
   const coverInputRef = useRef(null)
+  const [coverMenuOpen, setCoverMenuOpen] = useState(false)
+  const [viewCoverOpen, setViewCoverOpen] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -554,11 +557,39 @@ export default function Profile() {
         })
         updateUser(data.user)
         toast.success('Portada actualizada')
+        setCoverMenuOpen(false)
       } catch {
         toast.error('Error al actualizar portada')
       }
     }
     reader.readAsDataURL(file)
+  }
+
+  const handleRemoveCover = async () => {
+    try {
+      const { data } = await api.put('/users/profile', {
+        profile: { ...(user?.profile || {}), coverUrl: null }
+      })
+      updateUser(data.user)
+      toast.success('Portada eliminada')
+      setCoverMenuOpen(false)
+      setViewCoverOpen(false)
+    } catch {
+      toast.error('No se pudo eliminar la portada')
+    }
+  }
+
+  const openCoverPicker = () => {
+    setCoverMenuOpen(false)
+    window.setTimeout(() => coverInputRef.current?.click(), 80)
+  }
+
+  const onCoverPencilClick = () => {
+    if (user?.profile?.coverUrl) {
+      setCoverMenuOpen(true)
+    } else {
+      coverInputRef.current?.click()
+    }
   }
 
   const xpTotal = user?.stats?.xp || 0
@@ -656,14 +687,15 @@ export default function Profile() {
                 'linear-gradient(to top, rgba(var(--color-primary-rgb),0.12), rgba(var(--color-primary-rgb),0.04) 45%, transparent)'
             }}
           />
-          <label
-            htmlFor="profile-cover-input"
+          <button
+            type="button"
+            onClick={onCoverPencilClick}
             className="absolute bottom-4 right-3 z-30 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-[0_8px_20px_rgba(0,0,0,0.28)] backdrop-blur-md hover:bg-black/65 transition-colors"
-            aria-label="Editar portada"
-            title="Editar portada"
+            aria-label="Opciones de portada"
+            title="Opciones de portada"
           >
             <FiEdit2 size={15} />
-          </label>
+          </button>
           <input
             id="profile-cover-input"
             ref={coverInputRef}
@@ -937,6 +969,90 @@ export default function Profile() {
         onClose={() => setShowAvatarPicker(false)}
         onSave={handleAvatarSave}
       />
+
+      <AnimatePresence>
+        {coverMenuOpen && (
+          <motion.div
+            className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              aria-label="Cerrar"
+              onClick={() => setCoverMenuOpen(false)}
+            />
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              className="relative w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden pb-[max(1rem,env(safe-area-inset-bottom))]"
+            >
+              <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
+                <h3 className="font-display text-lg">Foto de portada</h3>
+              </div>
+              <div className="p-2 space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCoverMenuOpen(false)
+                    setViewCoverOpen(true)
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                >
+                  <FiEye size={18} className="text-primary-500" />
+                  Ver portada
+                </button>
+                <button
+                  type="button"
+                  onClick={openCoverPicker}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                >
+                  <FiEdit2 size={18} className="text-accent-cyan" />
+                  Editar portada
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveCover}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-red-400 hover:bg-red-500/10 transition"
+                >
+                  <FiTrash2 size={18} />
+                  Eliminar portada
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {viewCoverOpen && user?.profile?.coverUrl && (
+          <motion.div
+            className="fixed inset-0 z-[85] flex items-center justify-center bg-black/90 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setViewCoverOpen(false)}
+          >
+            <button
+              type="button"
+              className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white"
+              aria-label="Cerrar"
+              onClick={() => setViewCoverOpen(false)}
+            >
+              <FiX size={22} />
+            </button>
+            <img
+              src={user.profile.coverUrl}
+              alt="Portada"
+              className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Badges Modal */}
       <BadgesModal

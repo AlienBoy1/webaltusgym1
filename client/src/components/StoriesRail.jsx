@@ -102,10 +102,13 @@ export default function StoriesRail({
         /* ignore */
       }
     }
+    // Only the hidden global rail (showRail=false) owns shared drafts,
+    // so the Social rail instance cannot steal/clear sessionStorage.
+    if (showRail) return undefined
     window.addEventListener('qyntra:open-story-compose', openDraft)
     openDraft()
     return () => window.removeEventListener('qyntra:open-story-compose', openDraft)
-  }, [])
+  }, [showRail])
 
   const load = useCallback(async () => {
     try {
@@ -787,14 +790,13 @@ export default function StoriesRail({
       )}
 
       {/* Full-screen WhatsApp-style story preview composer (always dark chrome) */}
-      {showRail && (
       <AnimatePresence>
         {composeOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="story-composer force-dark fixed inset-0 z-[70] bg-black"
+            className="story-composer force-dark fixed inset-0 z-[90] bg-black"
           >
             <div className="relative mx-auto flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -871,7 +873,6 @@ export default function StoriesRail({
           </motion.div>
         )}
       </AnimatePresence>
-      )}
 
       {/* Viewer — always dark chrome */}
       <AnimatePresence>

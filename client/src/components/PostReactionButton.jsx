@@ -60,7 +60,12 @@ export default function PostReactionButton({
   const display = myReaction || null
   const active = Boolean(display)
 
-  const stacked = (Array.isArray(reactionSummary) ? reactionSummary : [])
+  const stacked = (Array.isArray(reactionSummary) && reactionSummary.length
+    ? reactionSummary
+    : myReaction
+      ? [{ emoji: myReaction, count: 1 }]
+      : []
+  )
     .filter((r) => r?.emoji && r.count > 0)
     .sort((a, b) => b.count - a.count)
     .slice(0, 3)
