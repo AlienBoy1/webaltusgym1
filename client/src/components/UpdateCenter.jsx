@@ -4,6 +4,7 @@ import { FiDownloadCloud, FiCheck, FiZap, FiShield, FiHardDrive, FiCpu } from 'r
 import { useAuthStore } from '../store/authStore'
 import SessionTheater from './SessionTheater'
 import QyntraLogo from './QyntraLogo'
+import { setUpdateBlocking, setUpdateSettled } from '../utils/appGate'
 
 const VERSION_KEY = 'qyntra_app_version'
 const POLL_MS = 90_000
@@ -75,6 +76,8 @@ export default function UpdateCenter() {
     if (worker) waitingWorkerRef.current = worker
     setPhase('prompt')
     setVisible(true)
+    setUpdateBlocking(true)
+    setUpdateSettled(true)
 
     // Notify users with persisted session / granted notifications
     try {
@@ -112,35 +115,67 @@ export default function UpdateCenter() {
       setVisible(false)
       setPhase('idle')
       updatingRef.current = false
+      setUpdateBlocking(false)
+      setUpdateSettled(false)
       return undefined
+    }
+
+    // Don't settle / show update until username is claimed (listeners still mount)
+    const initialUser = useAuthStore.getState().user
+    if (initialUser && !initialUser.username) {
+      setUpdateBlocking(false)
+      setUpdateSettled(false)
     }
 
     promptReadyRef.current = false
     const readyTimer = window.setTimeout(() => {
       promptReadyRef.current = true
+      const u = useAuthStore.getState().user
+      if (u && !u.username) return
       if (pendingPromptRef.current && !updatingRef.current) {
         const pending = pendingPromptRef.current
         pendingPromptRef.current = null
         showPromptNow(pending.version, pending.worker)
       }
-    }, 2500)
+    }, 900)
 
     let cancelled = false
     let pollId
 
     const checkVersion = async () => {
       if (!isAuthenticated || updatingRef.current) return
+      const currentUser = useAuthStore.getState().user
+      if (currentUser && !currentUser.username) {
+        setUpdateSettled(false)
+        return
+      }
       try {
         const remote = await fetchRemoteVersion()
-        if (cancelled || !remote?.version) return
+        if (cancelled || !remote?.version) {
+          if (!cancelled) {
+            setUpdateBlocking(false)
+            setUpdateSettled(true)
+          }
+          return
+        }
         const local = localStorage.getItem(VERSION_KEY)
         if (!local) {
           localStorage.setItem(VERSION_KEY, remote.version)
+          setUpdateBlocking(false)
+          setUpdateSettled(true)
           return
         }
-        if (local !== remote.version) openPrompt(remote)
+        if (local !== remote.version) {
+          openPrompt(remote)
+        } else {
+          setUpdateBlocking(false)
+          setUpdateSettled(true)
+        }
       } catch {
-        /* offline */
+        if (!cancelled) {
+          setUpdateBlocking(false)
+          setUpdateSettled(true)
+        }
       }
     }
 
@@ -174,8 +209,12 @@ export default function UpdateCenter() {
       }
     }
 
-    checkVersion()
-    setupSW()
+    const uNow = useAuthStore.getState().user
+    if (!uNow || uNow.username) {
+      checkVersion()
+      setupSW()
+    }
+
     const onFocus = () => checkVersion()
     window.addEventListener('focus', onFocus)
     const onVis = () => {
@@ -183,12 +222,29 @@ export default function UpdateCenter() {
     }
     document.addEventListener('visibilitychange', onVis)
 
+    // Re-run when username gets claimed
+    let prevUsername = useAuthStore.getState().user?.username
+    const unsub = useAuthStore.subscribe((state) => {
+      const nextUsername = state.user?.username
+      if (nextUsername && !prevUsername) {
+        checkVersion()
+        setupSW()
+        if (promptReadyRef.current && pendingPromptRef.current && !updatingRef.current) {
+          const pending = pendingPromptRef.current
+          pendingPromptRef.current = null
+          showPromptNow(pending.version, pending.worker)
+        }
+      }
+      prevUsername = nextUsername
+    })
+
     return () => {
       cancelled = true
       clearTimeout(readyTimer)
       clearInterval(pollId)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVis)
+      unsub()
     }
   }, [isAuthenticated, openPrompt, showPromptNow])
 
@@ -347,7 +403,7 @@ export default function UpdateCenter() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center"
+        className="fixed inset-0 z-[250] flex items-end justify-center sm:items-center"
         style={{ background: 'color-mix(in srgb, var(--bg-app) 88%, #000)' }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -6,12 +6,12 @@ import api from '../utils/api'
 import { useAuthStore } from '../store/authStore'
 import { normalizeUsername, validateUsernameFormat } from '../utils/username'
 import QyntraLogo from './QyntraLogo'
-import { openAppTutorial } from './AppTutorial'
-import { TUTORIAL_IDS } from '../tutorials/registry'
 import { applyAppearanceSettings, cacheAppearance } from '../utils/theme'
+import { setUsernameBlocking } from '../utils/appGate'
 
 /**
  * Blocking gate: existing users without username must claim one.
+ * Tutorials wait until username is set AND any pending app update finishes.
  */
 export default function UsernameSetupModal({ open }) {
   const updateUser = useAuthStore((s) => s.updateUser)
@@ -20,6 +20,11 @@ export default function UsernameSetupModal({ open }) {
   const [saving, setSaving] = useState(false)
 
   const format = useMemo(() => validateUsernameFormat(value), [value])
+
+  useEffect(() => {
+    setUsernameBlocking(Boolean(open))
+    return () => setUsernameBlocking(false)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -72,9 +77,9 @@ export default function UsernameSetupModal({ open }) {
         /* continue — local theme already light */
       }
       updateUser({ ...(data.user || {}), settings: lightSettings })
+      setUsernameBlocking(false)
       toast.success('Username registrado')
-      // New users must see the quick-start tutorial right after username
-      window.setTimeout(() => openAppTutorial(TUTORIAL_IDS.QUICK_START), 450)
+      // Tutorial starts only after UpdateCenter settles (see AppTutorial + appGate)
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo registrar el username')
     } finally {

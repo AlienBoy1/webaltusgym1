@@ -251,12 +251,8 @@ export default function MainLayout() {
     <StoryViewerProvider>
     <PresenceManager />
     <div className="min-h-screen bg-dark-500">
-      {/* Header */}
-      <header
-        className={`glass fixed top-0 left-0 right-0 px-4 py-3 ${
-          avatarMenuOpen ? 'z-[150]' : 'z-50'
-        }`}
-      >
+      {/* Header — keep under tutorial overlay (z-200) so tip text never hides behind the avatar menu */}
+      <header className="glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {canGoBack && (
@@ -411,7 +407,8 @@ export default function MainLayout() {
                     initial={{ opacity: 0, y: -8, scale: 0.96 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                    className="absolute right-0 top-full mt-2 w-64 z-[160] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+                    data-tour="tour-avatar-menu-panel"
+                    className="absolute right-0 top-full mt-2 w-64 z-[60] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
                   >
                     <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
                       <p className="font-semibold text-sm truncate">{user?.name}</p>

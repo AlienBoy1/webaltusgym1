@@ -13,6 +13,7 @@ import {
 } from '../tutorials/registry'
 import { userIdOf, writeLocalCompletion } from '../tutorials/completion'
 import TutorialDemoSurface from './TutorialDemoSurface'
+import { canStartTutorials, subscribeAppGate } from '../utils/appGate'
 
 export const TUTORIAL_STORAGE_KEY = 'qyntra_tutorial_done'
 export const TUTORIAL_START_EVENT = 'qyntra:start-tutorial'
@@ -156,13 +157,37 @@ function safeBands() {
 
 /**
  * Place tip card NEXT to the spotlight (below → above → side). Never clips message.
+ * For avatar-menu steps, always place BELOW the full dropdown so the tip is never tucked under it.
  */
-function placeCardNear(rect, cardH = 200, cardW = 340) {
+function placeCardNear(rect, cardH = 200, cardW = 340, opts = {}) {
   const { vw, vh, top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = safeBands()
   const maxW = Math.min(cardW, vw - safeLeft - safeRight)
   const usableBottom = vh - safeBottom
   const maxCardH = Math.max(160, usableBottom - safeTop - 8)
   const h = Math.min(Math.max(cardH, 160), maxCardH)
+  const clampLeft = (x) => Math.min(Math.max(safeLeft, x), vw - maxW - safeRight)
+
+  if (opts.belowAvatarMenu) {
+    const menuEl = findTourElement('tour-avatar-menu-panel')
+    const mr = menuEl?.getBoundingClientRect()
+    if (mr && mr.height > 8) {
+      let top = mr.bottom + CARD_GAP
+      if (top + h > usableBottom) {
+        // Not enough room under menu: dock near bottom of safe area (still above bottom nav)
+        top = Math.max(safeTop, usableBottom - h)
+      }
+      // If tip would still cover the menu, push it just under
+      if (top < mr.bottom + 8) top = Math.min(mr.bottom + CARD_GAP, usableBottom - h)
+      return {
+        top,
+        left: clampLeft(opts.preferMidX != null ? opts.preferMidX - maxW / 2 : mr.left),
+        width: maxW,
+        maxWidth: maxW,
+        maxHeight: maxCardH,
+        arrow: { side: 'top', x: Math.min(maxW - 24, Math.max(24, (rect?.midX || mr.left + mr.width / 2) - clampLeft(opts.preferMidX != null ? opts.preferMidX - maxW / 2 : mr.left))) }
+      }
+    }
+  }
 
   if (!rect) {
     return {
@@ -174,8 +199,6 @@ function placeCardNear(rect, cardH = 200, cardW = 340) {
       arrow: null
     }
   }
-
-  const clampLeft = (x) => Math.min(Math.max(safeLeft, x), vw - maxW - safeRight)
 
   const fits = (top, left) =>
     top >= safeTop - 1 &&
@@ -300,12 +323,22 @@ export default function AppTutorial() {
   const isFirst = stepIndex === 0
 
   const measure = useCallback(() => {
-    const next = step?.target ? getTargetRect(step.target) : null
+    let next = step?.target ? getTargetRect(step.target) : null
+    // Avatar-menu steps: emphasize the whole dropdown so it stays readable under the mask
+    if (step?.openAvatarMenu) {
+      const panel = getTargetRect('tour-avatar-menu-panel')
+      if (panel) next = panel
+    }
     setRect(next)
     const h = cardRef.current?.offsetHeight || 200
-    setCardStyle(placeCardNear(next, h))
+    setCardStyle(
+      placeCardNear(next, h, 340, {
+        belowAvatarMenu: Boolean(step?.openAvatarMenu),
+        preferMidX: next?.midX
+      })
+    )
     return next
-  }, [step?.target])
+  }, [step?.target, step?.openAvatarMenu])
 
   const alignStep = useCallback(async () => {
     const gen = ++alignGen.current
@@ -389,7 +422,9 @@ export default function AppTutorial() {
   }, [step, navigate, measure])
 
   const start = useCallback(
-    (id = TUTORIAL_IDS.QUICK_START) => {
+    (id = TUTORIAL_IDS.QUICK_START, { force = false } = {}) => {
+      // Never fight a blocking update prompt
+      if (!force && !canStartTutorials()) return
       completingRef.current = false
       const nextId = id || TUTORIAL_IDS.QUICK_START
       const nextSteps = getTutorialSteps(nextId)
@@ -406,27 +441,65 @@ export default function AppTutorial() {
   )
 
   useEffect(() => {
-    const onStart = (e) => start(e?.detail?.tutorialId || TUTORIAL_IDS.QUICK_START)
+    const onStart = (e) => {
+      const id = e?.detail?.tutorialId || TUTORIAL_IDS.QUICK_START
+      // Hub / manual start: only if gates allow (update must be done)
+      if (!canStartTutorials()) return
+      start(id, { force: true })
+    }
     window.addEventListener(TUTORIAL_START_EVENT, onStart)
     return () => window.removeEventListener(TUTORIAL_START_EVENT, onStart)
   }, [start])
 
-  // Quick-start only for THIS user if not completed (skippable via UI)
+  // If update appears while a tutorial is open, pause it
+  useEffect(() => {
+    return subscribeAppGate((gate) => {
+      if (gate.updateBlocking && open) {
+        setOpen(false)
+        setReady(false)
+        setAvatarMenuOpen(false)
+        delete document.body.dataset.qyntraTutorial
+      }
+    })
+  }, [open])
+
+  // Quick-start only after username + update gates clear
   useEffect(() => {
     if (!user || open) return
     if (!user.username) return
+    if (!canStartTutorials()) return
     if (hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return
-    const t = window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START), 650)
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START, { force: true }), 500)
     return () => window.clearTimeout(t)
-  }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, open, start, user])
+  }, [
+    user?.id,
+    user?._id,
+    user?.username,
+    user?.settings?.tutorialCompleted,
+    open,
+    start,
+    user
+  ])
+
+  // Retry when gates flip to ready
+  useEffect(() => {
+    return subscribeAppGate((gate) => {
+      if (!gate.canStartTutorials) return
+      const u = useAuthStore.getState().user
+      if (!u?.username || open) return
+      if (hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) return
+      window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START, { force: true }), 400)
+    })
+  }, [open, start])
 
   useEffect(() => {
     if (!user || open) return
     if (!user.username) return
+    if (!canStartTutorials()) return
     if (location.pathname !== '/profile') return
     if (hasCompletedTutorial(user, TUTORIAL_IDS.PROFILE_EDIT)) return
     if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return
-    const t = window.setTimeout(() => start(TUTORIAL_IDS.PROFILE_EDIT), 750)
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.PROFILE_EDIT, { force: true }), 750)
     return () => window.clearTimeout(t)
   }, [user, open, start, location.pathname])
 
@@ -528,7 +601,7 @@ export default function AppTutorial() {
     <AnimatePresence>
       <motion.div
         key={`app-tutorial-${tutorialId}`}
-        className="fixed inset-0 z-[140] pointer-events-auto"
+        className="fixed inset-0 z-[200] pointer-events-auto"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
