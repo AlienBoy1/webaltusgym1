@@ -673,8 +673,147 @@ function drawHomeIndicator(ctx, sx, sy, sw, sh) {
   ctx.fill()
 }
 
+function getLikesCount(post) {
+  if (Array.isArray(post?.likes)) return post.likes.length
+  return Number(post?.likesCount) || 0
+}
+
+function getCommentsCount(post) {
+  if (Array.isArray(post?.comments)) return post.comments.length
+  return Number(post?.commentsCount) || 0
+}
+
+function getStackedReactions(post) {
+  const summary = Array.isArray(post?.reactionSummary) ? post.reactionSummary : []
+  const stacked = summary
+    .filter((r) => r?.emoji && r.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+  if (stacked.length) return stacked
+  const likes = getLikesCount(post)
+  if (likes > 0) return [{ emoji: '❤️', count: likes }]
+  return []
+}
+
+function drawQyntraAppIcon(ctx, x, y, size) {
+  const r = size * 0.28
+  const grad = ctx.createLinearGradient(x, y, x + size, y + size)
+  grad.addColorStop(0, P.primary)
+  grad.addColorStop(1, `rgba(${P.primaryRgb},0.72)`)
+  ctx.fillStyle = grad
+  roundRect(ctx, x, y, size, size, size * 0.22)
+  ctx.fill()
+
+  const cx = x + size * 0.46
+  const cy = y + size * 0.46
+  const radius = size * 0.22
+  ctx.strokeStyle = '#FFFFFF'
+  ctx.lineWidth = Math.max(4, size * 0.1)
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(x + size * 0.54, y + size * 0.58)
+  ctx.lineTo(x + size * 0.78, y + size * 0.82)
+  ctx.stroke()
+  ctx.globalAlpha = 0.55
+  ctx.lineWidth = Math.max(2, size * 0.04)
+  ctx.beginPath()
+  ctx.moveTo(x + size * 0.34, y + size * 0.3)
+  ctx.lineTo(x + size * 0.42, y + size * 0.22)
+  ctx.stroke()
+  ctx.globalAlpha = 1
+}
+
+function drawPostActions(ctx, post, x, y, w) {
+  // Top rule
+  ctx.strokeStyle = P.border
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(x, y)
+  ctx.lineTo(x + w, y)
+  ctx.stroke()
+
+  const rowY = y + 38
+  const likes = getLikesCount(post)
+  const comments = getCommentsCount(post)
+  const stacked = getStackedReactions(post)
+
+  // Heart + count
+  ctx.font = '28px system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(likes > 0 ? '❤️' : '🤍', x, rowY)
+  ctx.fillStyle = P.textSecondary
+  ctx.font = '600 24px Outfit, system-ui, sans-serif'
+  ctx.fillText(String(likes), x + 40, rowY)
+
+  // Stacked reaction chips
+  let chipX = x + 40 + ctx.measureText(String(likes)).width + 18
+  stacked.forEach((r) => {
+    ctx.beginPath()
+    ctx.arc(chipX + 16, rowY, 18, 0, Math.PI * 2)
+    ctx.fillStyle = P.card
+    ctx.fill()
+    ctx.strokeStyle = P.border
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.font = '20px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(r.emoji, chipX + 16, rowY + 1)
+    chipX += 26
+  })
+
+  // Comments
+  const commentX = Math.max(chipX + 24, x + 220)
+  ctx.textAlign = 'left'
+  ctx.font = '26px system-ui, sans-serif'
+  ctx.fillText('💬', commentX, rowY)
+  ctx.fillStyle = P.textSecondary
+  ctx.font = '600 24px Outfit, system-ui, sans-serif'
+  ctx.fillText(String(comments), commentX + 38, rowY)
+
+  // Share (right)
+  ctx.textAlign = 'right'
+  ctx.font = '26px system-ui, sans-serif'
+  ctx.fillText('↗️', x + w, rowY)
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+}
+
+function drawInviteBanner(ctx, x, y, w, h) {
+  ctx.fillStyle = P.cardFill
+  roundRect(ctx, x, y, w, h, 24)
+  ctx.fill()
+  ctx.strokeStyle = `rgba(${P.primaryRgb},0.28)`
+  ctx.lineWidth = 2
+  roundRect(ctx, x, y, w, h, 24)
+  ctx.stroke()
+
+  const icon = 64
+  const iconX = x + 22
+  const iconY = y + (h - icon) / 2
+  drawQyntraAppIcon(ctx, iconX, iconY, icon)
+
+  const tx = iconX + icon + 18
+  ctx.fillStyle = P.primary
+  ctx.font = '700 18px Outfit, system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('QYNTRA GYM', tx, y + h * 0.38)
+
+  ctx.fillStyle = P.text
+  ctx.font = '600 24px Outfit, system-ui, sans-serif'
+  ctx.fillText('Únete a la comunidad', tx, y + h * 0.62)
+
+  ctx.fillStyle = P.textFaint
+  ctx.font = '18px Outfit, system-ui, sans-serif'
+  ctx.fillText('Entrena · Progresa · Comparte', tx, y + h * 0.82)
+}
+
 async function drawFeedPost(ctx, post, x, y, maxW, maxBottom) {
   const pad = 28
+  const actionsH = 72
   const cardX = x
   const cardY = y
   const cardW = maxW
@@ -683,8 +822,9 @@ async function drawFeedPost(ctx, post, x, y, maxW, maxBottom) {
   const bodyEstimate =
     estimatePayloadHeight(post) +
     (shared ? 90 + estimatePayloadHeight(shared) : 0) +
-    100
-  const cardH = Math.min(Math.max(bodyEstimate + pad * 2, 280), maxBottom - cardY)
+    100 +
+    actionsH
+  const cardH = Math.min(Math.max(bodyEstimate + pad * 2, 320), maxBottom - cardY)
 
   // Feed card surface
   ctx.fillStyle = P.cardFill
@@ -697,7 +837,7 @@ async function drawFeedPost(ctx, post, x, y, maxW, maxBottom) {
 
   const contentX = cardX + pad
   const contentW = cardW - pad * 2
-  const contentBottom = cardY + cardH - pad
+  const contentBottom = cardY + cardH - pad - actionsH
   let cy = cardY + pad
 
   const headerUser = typeof post.user === 'object' ? post.user : { name: 'Usuario' }
@@ -733,6 +873,8 @@ async function drawFeedPost(ctx, post, x, y, maxW, maxBottom) {
   } else {
     await drawPayloadBody(ctx, post, contentX, cy, contentW, contentBottom)
   }
+
+  drawPostActions(ctx, post, contentX, cardY + cardH - pad - actionsH + 8, contentW)
 
   return cardY + cardH
 }
@@ -809,22 +951,26 @@ export async function buildNativePostShareImage(post, options = {}) {
     chipX += cw + 10
   })
 
-  // Feed area — center the single post vertically in remaining space
+  // Feed area: post + invite CTA at bottom
   const feedTop = chipY + 52
   const feedBottom = sy + sh - 56
   const feedPadX = 28
   const feedW = sw - feedPadX * 2
+  const inviteH = 118
+  const inviteGap = 20
+  const postAreaBottom = feedBottom - inviteH - inviteGap
 
   const shared = post.sharedFrom || post.shared_from || null
   const estimated =
     estimatePayloadHeight(post) +
     (shared ? 90 + estimatePayloadHeight(shared) : 0) +
-    140
-  const avail = feedBottom - feedTop
-  const postH = Math.min(Math.max(estimated, 300), avail)
+    220
+  const avail = postAreaBottom - feedTop
+  const postH = Math.min(Math.max(estimated, 340), avail)
   const postY = feedTop + Math.max(0, (avail - postH) / 2)
 
   await drawFeedPost(ctx, post, sx + feedPadX, postY, feedW, postY + postH)
+  drawInviteBanner(ctx, sx + feedPadX, feedBottom - inviteH, feedW, inviteH)
 
   drawHomeIndicator(ctx, sx, sy, sw, sh)
   ctx.restore()
