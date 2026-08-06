@@ -107,59 +107,59 @@ const QUICK_START_STEPS = [
   },
   {
     id: 'social',
-    path: '/social',
+    path: '/dashboard',
     target: 'nav-social',
     title: 'Comunidad que empuja',
-    body: 'Comparte hitos, reacciona, comenta y mantén la motivación con tu círculo en Qyntra.'
+    body: 'Desde este acceso entras a comunidad: comparte hitos, reacciona y comenta con tu círculo.'
   },
   {
     id: 'workouts',
-    path: '/workouts',
+    path: '/dashboard',
     target: 'nav-workouts',
     title: 'Entrenos a tu medida',
-    body: 'Rutinas, sesiones y seguimiento: construye consistencia con un flujo claro.'
+    body: 'Aquí gestionas rutinas y sesiones. Toca Entrenos cuando quieras entrenar.'
   },
   {
     id: 'progress',
-    path: '/progress',
+    path: '/dashboard',
     target: 'nav-progress',
     title: 'Progreso con claridad',
     body: 'Visualiza avances, tendencias y logros. Mide lo que importa y celebra cada mejora.'
   },
   {
     id: 'profile',
-    path: '/profile',
+    path: '/dashboard',
     target: 'nav-profile',
     title: 'Tu identidad en Qyntra',
     body: 'Perfil, insignias y presencia: personaliza cómo te ven y muestra tu trayectoria.'
   },
   {
     id: 'classes',
-    path: '/classes',
+    path: '/dashboard',
     target: 'nav-classes',
     title: 'Clases del gimnasio',
-    body: 'Consulta horarios, reserva cupo y organízate con las clases desde este acceso.'
+    body: 'Desde el encabezado consultas horarios y reservas cupo en las clases disponibles.'
   },
   {
     id: 'challenges',
-    path: '/challenges',
+    path: '/dashboard',
     target: 'nav-challenges',
     title: 'Retos que marcan ritmo',
-    body: 'Compite, supera metas y suma energía. Los retos convierten el hábito en un juego serio.'
+    body: 'Entra a retos desde aquí: compite, supera metas y suma energía.'
   },
   {
     id: 'chat',
-    path: '/chat',
+    path: '/dashboard',
     target: 'nav-chat',
     title: 'Chat en un toque',
-    body: 'Desde el encabezado abres mensajes con tu comunidad. Conversación rápida, sin salir del flujo.'
+    body: 'El icono de mensajes abre conversaciones con tu comunidad sin fricción.'
   },
   {
     id: 'notifications',
-    path: '/notifications',
+    path: '/dashboard',
     target: 'nav-notifications',
     title: 'Nunca te pierdas nada',
-    body: 'Avisos de la comunidad, actividad y recordatorios. Mantente al día con un vistazo.'
+    body: 'La campana muestra avisos de comunidad, actividad y recordatorios.'
   },
   {
     id: 'avatar',

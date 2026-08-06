@@ -597,9 +597,18 @@ export default function MainLayout() {
       {/* Main Content */}
       <main className="pt-16 pb-24 md:pb-6 overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          <motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
+          {document.body.dataset.qyntraTutorial === '1' ? (
             <Outlet />
-          </motion.div>
+          ) : (
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Outlet />
+            </motion.div>
+          )}
         </div>
       </main>
       
@@ -617,7 +626,12 @@ export default function MainLayout() {
               >
                 <item.icon size={20} />
                 <span className="text-xs mt-1">{item.label}</span>
-                {isActive && <motion.div layoutId="nav-indicator" className="absolute bottom-0 w-1 h-1 bg-primary-500 rounded-full" />}
+                {isActive && document.body.dataset.qyntraTutorial !== '1' && (
+                  <motion.div layoutId="nav-indicator" className="absolute bottom-0 w-1 h-1 bg-primary-500 rounded-full" />
+                )}
+                {isActive && document.body.dataset.qyntraTutorial === '1' && (
+                  <div className="absolute bottom-0 w-1 h-1 rounded-full bg-primary-500" />
+                )}
               </NavLink>
             )
           })}

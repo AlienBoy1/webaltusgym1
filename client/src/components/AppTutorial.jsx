@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { FiArrowLeft, FiArrowRight, FiCheck, FiX } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
@@ -51,7 +50,8 @@ function isUsableTourEl(el) {
   if (!el || typeof window === 'undefined') return false
   const style = window.getComputedStyle(el)
   if (style.display === 'none' || style.visibility === 'hidden') return false
-  if (Number(style.opacity) === 0) return false
+  // Allow framer-motion mid-animation (opacity < 1) so menu items still highlight
+  if (Number(style.opacity) < 0.05) return false
   const r = el.getBoundingClientRect()
   return r.width >= 2 && r.height >= 2
 }
@@ -324,36 +324,38 @@ export default function AppTutorial() {
 
   const measure = useCallback(() => {
     let next = step?.target ? getTargetRect(step.target) : null
-    // Avatar-menu steps: emphasize the whole dropdown so it stays readable under the mask
-    if (step?.openAvatarMenu) {
-      const panel = getTargetRect('tour-avatar-menu-panel')
-      if (panel) next = panel
+    // Menu steps: prefer the specific item; fall back to panel if item not ready
+    if (step?.openAvatarMenu && !next) {
+      next = getTargetRect('tour-avatar-menu-panel')
     }
-    setRect(next)
-    const h = cardRef.current?.offsetHeight || 200
-    setCardStyle(
-      placeCardNear(next, h, 340, {
-        belowAvatarMenu: Boolean(step?.openAvatarMenu),
-        preferMidX: next?.midX
-      })
-    )
+    // Keep previous spotlight if briefly missing — avoids full-screen flash
+    if (next) {
+      setRect(next)
+      const h = cardRef.current?.offsetHeight || 200
+      setCardStyle(
+        placeCardNear(next, h, 340, {
+          belowAvatarMenu: Boolean(step?.openAvatarMenu),
+          preferMidX: next.midX
+        })
+      )
+    } else if (!step?.target) {
+      setRect(null)
+      setCardStyle(placeCardNear(null, cardRef.current?.offsetHeight || 200))
+    }
     return next
   }, [step?.target, step?.openAvatarMenu])
 
   const alignStep = useCallback(async () => {
     const gen = ++alignGen.current
-    setReady(false)
-    setUseDemo(false)
-    setRect(null)
-
+    // Do NOT clear rect / ready — prevents destello between steps
     if (!step) return
+
+    const needsMenu = Boolean(step.openAvatarMenu)
+    setAvatarMenuOpen(needsMenu)
 
     if (step.path && !pathMatches(window.location.pathname, step.path)) {
       navigate(step.path)
     }
-
-    const needsMenu = Boolean(step.openAvatarMenu)
-    setAvatarMenuOpen(needsMenu)
 
     let tries = 0
     while (tries < MAX_WAIT && gen === alignGen.current) {
@@ -363,44 +365,46 @@ export default function AppTutorial() {
 
         if (!step.target) {
           if (gen !== alignGen.current) return
+          setUseDemo(false)
           setRect(null)
           setCardStyle(placeCardNear(null, cardRef.current?.offsetHeight || 200))
           setReady(true)
           return
         }
 
-        // Try real UI first
         scrollTargetIntoView(step.target)
-        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 32)))
+        // Wait longer when opening avatar menu so items finish animating in
+        const settleMs = needsMenu ? 100 : 48
+        await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, settleMs)))
         if (gen !== alignGen.current) return
 
         let found = getTargetRect(step.target)
+        if (needsMenu && !found) {
+          // Keep trying menu item before falling back to panel
+          setAvatarMenuOpen(true)
+          await new Promise((r) => window.setTimeout(r, 70))
+          if (gen !== alignGen.current) return
+          found = getTargetRect(step.target)
+        }
+
         if (found) {
-          scrollTargetIntoView(step.target)
-          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 24)))
-          if (gen !== alignGen.current) return
-          measure()
-          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 20)))
-          if (gen !== alignGen.current) return
-          measure()
           setUseDemo(false)
+          measure()
           setReady(true)
+          // One quiet remeasure after layout
+          await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, 40)))
+          if (gen !== alignGen.current) return
+          measure()
           return
         }
 
-        // Fallback demo surface
         if (step.demo) {
           setUseDemo(true)
-          // Wait for React to commit the demo into the DOM
           await new Promise((r) => {
             window.requestAnimationFrame(() => {
-              window.requestAnimationFrame(() => window.setTimeout(r, 60))
+              window.requestAnimationFrame(() => window.setTimeout(r, 50))
             })
           })
-          if (gen !== alignGen.current) return
-          scrollTargetIntoView(step.target)
-          measure()
-          await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, 30)))
           if (gen !== alignGen.current) return
           measure()
           setReady(true)
@@ -409,13 +413,12 @@ export default function AppTutorial() {
       }
 
       tries += 1
-      await new Promise((r) => setTimeout(r, 70))
+      await new Promise((r) => window.setTimeout(r, 60))
     }
 
-    // Soft fallback
     if (gen === alignGen.current) {
       if (step.demo) setUseDemo(true)
-      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 40)))
+      await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, 40)))
       measure()
       setReady(true)
     }
@@ -574,19 +577,11 @@ export default function AppTutorial() {
 
   const next = () => {
     if (isLast) finish()
-    else {
-      setReady(false)
-      setUseDemo(false)
-      setStepIndex((i) => Math.min(i + 1, steps.length - 1))
-    }
+    else setStepIndex((i) => Math.min(i + 1, steps.length - 1))
   }
 
   const prev = () => {
-    if (!isFirst) {
-      setReady(false)
-      setUseDemo(false)
-      setStepIndex((i) => Math.max(i - 1, 0))
-    }
+    if (!isFirst) setStepIndex((i) => Math.max(i - 1, 0))
   }
 
   useEffect(() => {
@@ -596,183 +591,168 @@ export default function AppTutorial() {
   if (!open || !step) return null
 
   const arrow = cardStyle.arrow
+  const spot = rect
 
   const overlay = (
-    <AnimatePresence>
-      <motion.div
-        key={`app-tutorial-${tutorialId}`}
-        className="fixed inset-0 z-[200] pointer-events-auto"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.16 }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="app-tutorial-title"
-      >
-        <div className="absolute inset-0 z-[1] pointer-events-none" aria-hidden>
-          {rect ? (
-            <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <mask id={`qyntra-tour-mask-${step.id}`}>
-                  <rect width="100%" height="100%" fill="white" />
-                  <rect
-                    x={rect.left}
-                    y={rect.top}
-                    width={rect.width}
-                    height={rect.height}
-                    rx="14"
-                    ry="14"
-                    fill="black"
-                  />
-                </mask>
-              </defs>
-              <rect
-                width="100%"
-                height="100%"
-                fill="rgba(0,0,0,0.74)"
-                mask={`url(#qyntra-tour-mask-${step.id})`}
-              />
-            </svg>
-          ) : (
-            <div className="absolute inset-0 bg-black/74" />
-          )}
-        </div>
+    <div
+      className="fixed inset-0 z-[200] pointer-events-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="app-tutorial-title"
+    >
+      <div className="absolute inset-0 z-[1] pointer-events-none" aria-hidden>
+        <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <mask id="qyntra-tour-mask">
+              <rect width="100%" height="100%" fill="white" />
+              {spot && (
+                <rect
+                  x={spot.left}
+                  y={spot.top}
+                  width={spot.width}
+                  height={spot.height}
+                  rx="14"
+                  ry="14"
+                  fill="black"
+                />
+              )}
+            </mask>
+          </defs>
+          <rect
+            width="100%"
+            height="100%"
+            fill="rgba(0,0,0,0.72)"
+            mask="url(#qyntra-tour-mask)"
+          />
+        </svg>
+      </div>
 
-        {rect && (
-          <motion.div
-            aria-hidden
-            className="absolute z-[2] rounded-2xl pointer-events-none"
-            style={{
-              top: rect.top,
-              left: rect.left,
-              width: rect.width,
-              height: rect.height,
-              outline: '2.5px solid color-mix(in srgb, var(--color-primary, #FF6B35) 90%, white)',
-              outlineOffset: 2,
-              boxShadow:
-                '0 0 0 6px color-mix(in srgb, var(--color-primary, #FF6B35) 28%, transparent), 0 12px 40px rgba(0,0,0,0.35)'
-            }}
-            animate={{ opacity: [0.55, 1, 0.55] }}
-            transition={{ duration: 2.1, repeat: Infinity, ease: 'easeInOut' }}
+      {spot && (
+        <div
+          aria-hidden
+          className="absolute z-[2] rounded-2xl pointer-events-none"
+          style={{
+            top: spot.top,
+            left: spot.left,
+            width: spot.width,
+            height: spot.height,
+            outline: '2.5px solid color-mix(in srgb, var(--color-primary, #FF6B35) 90%, white)',
+            outlineOffset: 2,
+            boxShadow:
+              '0 0 0 5px color-mix(in srgb, var(--color-primary, #FF6B35) 26%, transparent)',
+            transition: 'top 160ms ease, left 160ms ease, width 160ms ease, height 160ms ease'
+          }}
+        />
+      )}
+
+      {useDemo && step.demo && (
+        <div className="pointer-events-none absolute inset-x-0 top-[max(5.5rem,12vh)] z-[2] flex justify-center px-4">
+          <TutorialDemoSurface demoId={step.demo} />
+        </div>
+      )}
+
+      <div
+        ref={cardRef}
+        className="absolute z-[3] flex flex-col overflow-visible rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+        style={{
+          top: cardStyle.top,
+          left: cardStyle.left,
+          width: cardStyle.width,
+          maxWidth: cardStyle.maxWidth,
+          maxHeight: cardStyle.maxHeight,
+          transition: 'top 160ms ease, left 160ms ease, width 160ms ease'
+        }}
+      >
+        {arrow?.side === 'top' && (
+          <span
+            className="absolute -top-2 h-4 w-4 rotate-45 border-l border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
+            style={{ left: arrow.x - 8 }}
+          />
+        )}
+        {arrow?.side === 'bottom' && (
+          <span
+            className="absolute -bottom-2 h-4 w-4 rotate-45 border-b border-r border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
+            style={{ left: arrow.x - 8 }}
+          />
+        )}
+        {arrow?.side === 'left' && (
+          <span
+            className="absolute -left-2 h-4 w-4 rotate-45 border-b border-l border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
+            style={{ top: arrow.y - 8 }}
+          />
+        )}
+        {arrow?.side === 'right' && (
+          <span
+            className="absolute -right-2 h-4 w-4 rotate-45 border-r border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
+            style={{ top: arrow.y - 8 }}
           />
         )}
 
-        {/* Premium demo panels when real targets are missing */}
-        {useDemo && step.demo && (
-          <div className="pointer-events-none absolute inset-x-0 top-[max(5.5rem,12vh)] z-[2] flex justify-center px-4">
-            <div className="pointer-events-none">
-              <TutorialDemoSurface demoId={step.demo} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl p-4 sm:p-5">
+          <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-primary)]">
+                {meta.title} · {stepIndex + 1}/{steps.length}
+              </p>
+              <h2
+                id="app-tutorial-title"
+                className="mt-1 font-display text-lg tracking-wide text-[color:var(--text-primary)] sm:text-xl"
+              >
+                {step.title}
+              </h2>
             </div>
+            <button
+              type="button"
+              onClick={finish}
+              className="shrink-0 rounded-lg p-1.5 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
+              aria-label="Omitir tutorial"
+              title="Omitir"
+            >
+              <FiX size={18} />
+            </button>
           </div>
-        )}
-
-        <motion.div
-          ref={cardRef}
-          key={`${tutorialId}-${step.id}-card`}
-          initial={{ opacity: 0, y: 8, scale: 0.98 }}
-          animate={{ opacity: ready ? 1 : 0.9, y: 0, scale: 1 }}
-          transition={{ duration: 0.18 }}
-          className="absolute z-[3] flex flex-col overflow-visible rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
-          style={{
-            top: cardStyle.top,
-            left: cardStyle.left,
-            width: cardStyle.width,
-            maxWidth: cardStyle.maxWidth,
-            maxHeight: cardStyle.maxHeight
-          }}
-        >
-          {arrow?.side === 'top' && (
-            <span
-              className="absolute -top-2 h-4 w-4 rotate-45 border-l border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
-              style={{ left: arrow.x - 8 }}
-            />
-          )}
-          {arrow?.side === 'bottom' && (
-            <span
-              className="absolute -bottom-2 h-4 w-4 rotate-45 border-b border-r border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
-              style={{ left: arrow.x - 8 }}
-            />
-          )}
-          {arrow?.side === 'left' && (
-            <span
-              className="absolute -left-2 h-4 w-4 rotate-45 border-b border-l border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
-              style={{ top: arrow.y - 8 }}
-            />
-          )}
-          {arrow?.side === 'right' && (
-            <span
-              className="absolute -right-2 h-4 w-4 rotate-45 border-r border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]"
-              style={{ top: arrow.y - 8 }}
-            />
-          )}
-
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl p-4 sm:p-5">
-            <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-primary)]">
-                  {meta.title} · {stepIndex + 1}/{steps.length}
-                </p>
-                <h2
-                  id="app-tutorial-title"
-                  className="mt-1 font-display text-lg tracking-wide text-[color:var(--text-primary)] sm:text-xl"
-                >
-                  {step.title}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={finish}
-                className="shrink-0 rounded-lg p-1.5 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
-                aria-label="Omitir tutorial"
-                title="Omitir"
-              >
-                <FiX size={18} />
-              </button>
-            </div>
-            <p className="min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed text-[color:var(--text-secondary)] whitespace-pre-wrap break-words">
-              {step.body}
-            </p>
-            <div className="mt-4 flex shrink-0 items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={prev}
-                disabled={isFirst}
-                className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)] disabled:opacity-30"
-              >
-                <FiArrowLeft size={16} /> Atrás
-              </button>
-              <div className="flex items-center gap-2">
-                {!isLast && (
-                  <button
-                    type="button"
-                    onClick={finish}
-                    className="rounded-xl px-3 py-2 text-xs font-medium text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
-                  >
-                    Omitir
-                  </button>
-                )}
+          <p className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--text-secondary)]">
+            {step.body}
+          </p>
+          <div className="mt-4 flex shrink-0 items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={prev}
+              disabled={isFirst}
+              className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)] disabled:opacity-30"
+            >
+              <FiArrowLeft size={16} /> Atrás
+            </button>
+            <div className="flex items-center gap-2">
+              {!isLast && (
                 <button
                   type="button"
-                  onClick={next}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[color:var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[rgba(var(--color-primary-rgb),0.28)]"
+                  onClick={finish}
+                  className="rounded-xl px-3 py-2 text-xs font-medium text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
                 >
-                  {isLast ? (
-                    <>
-                      <FiCheck size={16} /> Listo
-                    </>
-                  ) : (
-                    <>
-                      Siguiente <FiArrowRight size={16} />
-                    </>
-                  )}
+                  Omitir
                 </button>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={next}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[color:var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[rgba(var(--color-primary-rgb),0.28)]"
+              >
+                {isLast ? (
+                  <>
+                    <FiCheck size={16} /> Listo
+                  </>
+                ) : (
+                  <>
+                    Siguiente <FiArrowRight size={16} />
+                  </>
+                )}
+              </button>
             </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+        </div>
+      </div>
+    </div>
   )
 
   return createPortal(overlay, document.body)
