@@ -749,6 +749,75 @@ function drawQyntraAppIcon(ctx, x, y, size) {
   ctx.globalAlpha = 1
 }
 
+function drawIconHeart(ctx, x, y, size, filled) {
+  const s = size
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.strokeStyle = filled ? '#EF4444' : P.textSecondary
+  ctx.fillStyle = filled ? '#EF4444' : 'transparent'
+  ctx.lineWidth = Math.max(2.2, s * 0.09)
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  // Feather-like heart outline
+  const w = s
+  const h = s
+  ctx.moveTo(w * 0.5, h * 0.88)
+  ctx.bezierCurveTo(w * 0.12, h * 0.62, w * 0.02, h * 0.36, w * 0.28, h * 0.2)
+  ctx.bezierCurveTo(w * 0.4, h * 0.12, w * 0.5, h * 0.22, w * 0.5, h * 0.32)
+  ctx.bezierCurveTo(w * 0.5, h * 0.22, w * 0.6, h * 0.12, w * 0.72, h * 0.2)
+  ctx.bezierCurveTo(w * 0.98, h * 0.36, w * 0.88, h * 0.62, w * 0.5, h * 0.88)
+  ctx.closePath()
+  if (filled) ctx.fill()
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawIconComment(ctx, x, y, size) {
+  const s = size
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.strokeStyle = P.textSecondary
+  ctx.lineWidth = Math.max(2.2, s * 0.09)
+  ctx.lineJoin = 'round'
+  roundRect(ctx, s * 0.1, s * 0.12, s * 0.8, s * 0.58, s * 0.18)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(s * 0.32, s * 0.7)
+  ctx.lineTo(s * 0.28, s * 0.9)
+  ctx.lineTo(s * 0.5, s * 0.72)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawIconShare(ctx, x, y, size) {
+  const s = size
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.strokeStyle = P.textSecondary
+  ctx.lineWidth = Math.max(2.2, s * 0.09)
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  // nodes
+  const r = s * 0.11
+  ctx.beginPath()
+  ctx.arc(s * 0.72, s * 0.28, r, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(s * 0.28, s * 0.5, r, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(s * 0.72, s * 0.72, r, 0, Math.PI * 2)
+  ctx.stroke()
+  // links
+  ctx.beginPath()
+  ctx.moveTo(s * 0.36, s * 0.46)
+  ctx.lineTo(s * 0.64, s * 0.32)
+  ctx.moveTo(s * 0.36, s * 0.54)
+  ctx.lineTo(s * 0.64, s * 0.68)
+  ctx.stroke()
+  ctx.restore()
+}
+
 function drawPostActions(ctx, post, x, y, w) {
   // Top rule
   ctx.strokeStyle = P.border
@@ -758,50 +827,46 @@ function drawPostActions(ctx, post, x, y, w) {
   ctx.lineTo(x + w, y)
   ctx.stroke()
 
-  const rowY = y + 38
+  const rowY = y + 22
+  const icon = 30
   const likes = getLikesCount(post)
   const comments = getCommentsCount(post)
   const stacked = getStackedReactions(post)
+  const liked = likes > 0 || Boolean(post?.myReaction)
 
-  // Heart + count
-  ctx.font = '28px system-ui, sans-serif'
+  drawIconHeart(ctx, x, rowY, icon, liked)
+  ctx.fillStyle = liked ? P.primary : P.textSecondary
+  ctx.font = '600 24px Outfit, system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(likes > 0 ? '❤️' : '🤍', x, rowY)
-  ctx.fillStyle = P.textSecondary
-  ctx.font = '600 24px Outfit, system-ui, sans-serif'
-  ctx.fillText(String(likes), x + 40, rowY)
+  ctx.fillText(String(likes), x + icon + 10, rowY + icon / 2)
 
-  // Stacked reaction chips
-  let chipX = x + 40 + ctx.measureText(String(likes)).width + 18
+  // Stacked reaction chips (real app reaction emojis)
+  let chipX = x + icon + 10 + ctx.measureText(String(likes)).width + 16
   stacked.forEach((r) => {
     ctx.beginPath()
-    ctx.arc(chipX + 16, rowY, 18, 0, Math.PI * 2)
+    ctx.arc(chipX + 15, rowY + icon / 2, 16, 0, Math.PI * 2)
     ctx.fillStyle = P.card
     ctx.fill()
     ctx.strokeStyle = P.border
     ctx.lineWidth = 1.5
     ctx.stroke()
-    ctx.font = '20px system-ui, sans-serif'
+    ctx.font = '18px system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(r.emoji, chipX + 16, rowY + 1)
-    chipX += 26
+    ctx.textBaseline = 'middle'
+    ctx.fillText(r.emoji, chipX + 15, rowY + icon / 2 + 1)
+    chipX += 24
   })
 
-  // Comments
-  const commentX = Math.max(chipX + 24, x + 220)
-  ctx.textAlign = 'left'
-  ctx.font = '26px system-ui, sans-serif'
-  ctx.fillText('💬', commentX, rowY)
+  const commentX = Math.max(chipX + 18, x + 210)
+  drawIconComment(ctx, commentX, rowY, icon)
   ctx.fillStyle = P.textSecondary
   ctx.font = '600 24px Outfit, system-ui, sans-serif'
-  ctx.fillText(String(comments), commentX + 38, rowY)
-
-  // Share (right)
-  ctx.textAlign = 'right'
-  ctx.font = '26px system-ui, sans-serif'
-  ctx.fillText('↗️', x + w, rowY)
   ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(String(comments), commentX + icon + 10, rowY + icon / 2)
+
+  drawIconShare(ctx, x + w - icon, rowY, icon)
   ctx.textBaseline = 'alphabetic'
 }
 

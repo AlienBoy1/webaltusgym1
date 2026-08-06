@@ -1,150 +1,34 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { FiArrowLeft, FiArrowRight, FiCheck, FiX } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import api from '../utils/api'
+import {
+  TUTORIAL_IDS,
+  getTutorialMeta,
+  getTutorialSteps,
+  hasCompletedTutorial
+} from '../tutorials/registry'
 
 export const TUTORIAL_STORAGE_KEY = 'qyntra_tutorial_done'
 export const TUTORIAL_START_EVENT = 'qyntra:start-tutorial'
+export const TUTORIAL_HUB_EVENT = 'qyntra:open-tutorial-hub'
 
-export function openAppTutorial() {
-  window.dispatchEvent(new CustomEvent(TUTORIAL_START_EVENT))
+export function openAppTutorial(tutorialId = TUTORIAL_IDS.QUICK_START) {
+  window.dispatchEvent(
+    new CustomEvent(TUTORIAL_START_EVENT, { detail: { tutorialId } })
+  )
+}
+
+export function openTutorialHub() {
+  window.dispatchEvent(new CustomEvent(TUTORIAL_HUB_EVENT))
 }
 
 function setAvatarMenuOpen(open) {
   window.dispatchEvent(new CustomEvent('qyntra:avatar-menu', { detail: { open: Boolean(open) } }))
 }
-
-function hasSeenTutorial(user) {
-  try {
-    if (localStorage.getItem(TUTORIAL_STORAGE_KEY) === '1') return true
-  } catch {
-    /* ignore */
-  }
-  if (user?.settings?.tutorialCompleted === true) return true
-  if (user?.tutorialCompleted === true) return true
-  return false
-}
-
-/**
- * Full tour: bottom nav, header (classes/chat/challenges/notifications),
- * then avatar menu shortcuts (except "Tutorial de la app").
- */
-const STEPS = [
-  {
-    id: 'dashboard',
-    path: '/dashboard',
-    target: 'nav-dashboard',
-    title: 'Tu centro de mando',
-    body: 'Aquí empieza cada sesión: resumen de actividad, accesos rápidos y lo esencial para entrenar sin fricción.'
-  },
-  {
-    id: 'social',
-    path: '/social',
-    target: 'nav-social',
-    title: 'Comunidad que empuja',
-    body: 'Comparte hitos, reacciona, comenta y mantén la motivación con tu círculo en Qyntra.'
-  },
-  {
-    id: 'workouts',
-    path: '/workouts',
-    target: 'nav-workouts',
-    title: 'Entrenos a tu medida',
-    body: 'Rutinas, sesiones y seguimiento de series: construye consistencia con un flujo claro.'
-  },
-  {
-    id: 'progress',
-    path: '/progress',
-    target: 'nav-progress',
-    title: 'Progreso con claridad',
-    body: 'Visualiza avances, tendencias y logros. Mide lo que importa y celebra cada mejora.'
-  },
-  {
-    id: 'profile',
-    path: '/profile',
-    target: 'nav-profile',
-    title: 'Tu identidad en Qyntra',
-    body: 'Perfil, insignias y presencia: personaliza cómo te ven y muestra tu trayectoria.'
-  },
-  {
-    id: 'classes',
-    path: '/classes',
-    target: 'nav-classes',
-    title: 'Clases del gimnasio',
-    body: 'Consulta horarios, reserva cupo y organízate con las clases disponibles desde este acceso rápido.'
-  },
-  {
-    id: 'challenges',
-    path: '/challenges',
-    target: 'nav-challenges',
-    title: 'Retos que marcan ritmo',
-    body: 'Compite, supera metas y suma energía. Los retos convierten el hábito en un juego serio.'
-  },
-  {
-    id: 'chat',
-    path: '/chat',
-    target: 'nav-chat',
-    title: 'Chat en un toque',
-    body: 'Desde el encabezado abres mensajes con tu comunidad. Conversación rápida, sin salir del flujo.'
-  },
-  {
-    id: 'notifications',
-    path: '/notifications',
-    target: 'nav-notifications',
-    title: 'Nunca te pierdas nada',
-    body: 'Avisos de la comunidad, actividad y recordatorios. Mantente al día con un vistazo.'
-  },
-  {
-    id: 'avatar',
-    path: '/dashboard',
-    target: 'nav-avatar',
-    title: 'Menú de tu cuenta',
-    body: 'Al tocar tu foto abrés accesos rápidos: perfil, ajustes, invitaciones, tema y cierre de sesión.',
-    openAvatarMenu: false
-  },
-  {
-    id: 'menu-profile',
-    path: '/dashboard',
-    target: 'menu-profile',
-    title: 'Ver perfil',
-    body: 'Entra a tu perfil completo para editar datos, foto, cover y revisar tu progreso social.',
-    openAvatarMenu: true
-  },
-  {
-    id: 'menu-settings',
-    path: '/dashboard',
-    target: 'menu-settings',
-    title: 'Configuración',
-    body: 'Privacidad, apariencia, notificaciones y preferencias de la app. Todo centralizado aquí.',
-    openAvatarMenu: true
-  },
-  {
-    id: 'menu-invite',
-    path: '/dashboard',
-    target: 'menu-invite',
-    title: 'Invitar a amigos',
-    body: 'Comparte Qyntra con tu equipo. Las invitaciones ayudan a crecer tu comunidad de entrenamiento.',
-    openAvatarMenu: true
-  },
-  {
-    id: 'menu-theme',
-    path: '/dashboard',
-    target: 'menu-theme',
-    title: 'Tema claro u oscuro',
-    body: 'Cambia la apariencia al instante para entrenar cómodo de día o de noche.',
-    openAvatarMenu: true
-  },
-  {
-    id: 'menu-logout',
-    path: '/dashboard',
-    target: 'menu-logout',
-    title: 'Cerrar sesión',
-    body: 'Sal de tu cuenta con seguridad cuando termines. Podrás volver a entrar cuando quieras.',
-    openAvatarMenu: true
-  }
-]
 
 const SPOTLIGHT_PAD = 10
 const CARD_GAP = 16
@@ -184,18 +68,22 @@ function placeCard(rect, cardH = 220) {
   return { top, left, maxWidth: maxW, transform: 'none' }
 }
 
-export default function AppTutorial({ forceOpen = false, onForceHandled }) {
+export default function AppTutorial() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, updateUser } = useAuthStore()
   const [open, setOpen] = useState(false)
+  const [tutorialId, setTutorialId] = useState(TUTORIAL_IDS.QUICK_START)
   const [stepIndex, setStepIndex] = useState(0)
   const [rect, setRect] = useState(null)
   const [cardStyle, setCardStyle] = useState(() => placeCard(null))
   const completingRef = useRef(false)
   const cardRef = useRef(null)
 
-  const step = STEPS[stepIndex]
-  const isLast = stepIndex === STEPS.length - 1
+  const steps = getTutorialSteps(tutorialId)
+  const meta = getTutorialMeta(tutorialId)
+  const step = steps[stepIndex]
+  const isLast = stepIndex >= steps.length - 1
   const isFirst = stepIndex === 0
 
   const measure = useCallback(() => {
@@ -205,35 +93,47 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
     setCardStyle(placeCard(next, h))
   }, [step?.target])
 
-  const start = useCallback(() => {
-    completingRef.current = false
-    setStepIndex(0)
-    setOpen(true)
-    document.body.dataset.qyntraTutorial = '1'
-    setAvatarMenuOpen(false)
-    navigate('/dashboard')
-  }, [navigate])
+  const start = useCallback(
+    (id = TUTORIAL_IDS.QUICK_START) => {
+      completingRef.current = false
+      const nextId = id || TUTORIAL_IDS.QUICK_START
+      const nextSteps = getTutorialSteps(nextId)
+      setTutorialId(nextId)
+      setStepIndex(0)
+      setOpen(true)
+      document.body.dataset.qyntraTutorial = '1'
+      setAvatarMenuOpen(false)
+      const firstPath = nextSteps[0]?.path || '/dashboard'
+      navigate(firstPath)
+    },
+    [navigate]
+  )
 
   useEffect(() => {
-    if (!forceOpen) return
-    start()
-    onForceHandled?.()
-  }, [forceOpen, start, onForceHandled])
-
-  useEffect(() => {
-    const onStart = () => start()
+    const onStart = (e) => start(e?.detail?.tutorialId || TUTORIAL_IDS.QUICK_START)
     window.addEventListener(TUTORIAL_START_EVENT, onStart)
     return () => window.removeEventListener(TUTORIAL_START_EVENT, onStart)
   }, [start])
 
-  // Auto-show for anyone who has not completed the tutorial yet (new or existing accounts)
+  // Auto-show quick-start after username when never completed
   useEffect(() => {
     if (!user || open) return
     if (!user.username) return
-    if (hasSeenTutorial(user)) return
-    const t = window.setTimeout(() => start(), 500)
+    if (hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START), 600)
     return () => window.clearTimeout(t)
   }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, open, start])
+
+  // Auto-show profile tutorial on first profile visit
+  useEffect(() => {
+    if (!user || open) return
+    if (!user.username) return
+    if (location.pathname !== '/profile') return
+    if (hasCompletedTutorial(user, TUTORIAL_IDS.PROFILE_EDIT)) return
+    if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.PROFILE_EDIT), 700)
+    return () => window.clearTimeout(t)
+  }, [user, open, start, location.pathname])
 
   useEffect(() => {
     if (!open || !step?.path) return
@@ -242,7 +142,6 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
     }
   }, [open, step?.path, stepIndex, navigate])
 
-  // Open / close avatar dropdown according to step
   useEffect(() => {
     if (!open) return
     setAvatarMenuOpen(Boolean(step?.openAvatarMenu) || step?.id === 'avatar')
@@ -259,12 +158,12 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
       }
       measure()
       tries += 1
-      if (!getTargetRect(step?.target) && tries < 16) {
-        window.setTimeout(tick, 60)
+      if (step?.target && !getTargetRect(step.target) && tries < 18) {
+        window.setTimeout(tick, 70)
       }
     }
     const id = window.requestAnimationFrame(() => {
-      window.setTimeout(tick, step?.openAvatarMenu ? 80 : 0)
+      window.setTimeout(tick, step?.openAvatarMenu ? 90 : 40)
     })
     return () => {
       cancelled = true
@@ -289,31 +188,42 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
     setOpen(false)
     setAvatarMenuOpen(false)
     delete document.body.dataset.qyntraTutorial
+    const currentMeta = getTutorialMeta(tutorialId)
     try {
-      localStorage.setItem(TUTORIAL_STORAGE_KEY, '1')
+      localStorage.setItem(currentMeta.completionKey, '1')
     } catch {
       /* ignore */
     }
-    try {
-      await api.post('/users/complete-onboarding')
-    } catch (err) {
-      console.warn('complete-onboarding:', err?.message || err)
+    if (tutorialId === TUTORIAL_IDS.QUICK_START) {
+      try {
+        await api.post('/users/complete-onboarding')
+      } catch (err) {
+        console.warn('complete-onboarding:', err?.message || err)
+      }
     }
     try {
       const nextSettings = {
         ...(user?.settings || {}),
-        tutorialCompleted: true
+        [currentMeta.settingsKey]: true,
+        ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
       }
       await api.put('/users/profile', { settings: nextSettings })
-      updateUser({ onboardingCompleted: true, settings: nextSettings, tutorialCompleted: true })
+      updateUser({
+        onboardingCompleted: true,
+        settings: nextSettings,
+        ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
+      })
     } catch {
-      updateUser({ onboardingCompleted: true, tutorialCompleted: true })
+      updateUser({
+        onboardingCompleted: true,
+        ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
+      })
     }
-  }, [updateUser, user?.settings])
+  }, [tutorialId, updateUser, user?.settings])
 
   const next = () => {
     if (isLast) finish()
-    else setStepIndex((i) => Math.min(i + 1, STEPS.length - 1))
+    else setStepIndex((i) => Math.min(i + 1, steps.length - 1))
   }
 
   const prev = () => {
@@ -321,9 +231,7 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
   }
 
   useEffect(() => {
-    if (!open) {
-      delete document.body.dataset.qyntraTutorial
-    }
+    if (!open) delete document.body.dataset.qyntraTutorial
   }, [open])
 
   if (!open || !step) return null
@@ -331,7 +239,7 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
   const overlay = (
     <AnimatePresence>
       <motion.div
-        key="app-tutorial"
+        key={`app-tutorial-${tutorialId}`}
         className="fixed inset-0 z-[95] pointer-events-auto"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -396,83 +304,52 @@ export default function AppTutorial({ forceOpen = false, onForceHandled }) {
           key={step.id}
           initial={{ opacity: 0, y: 12, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 28 }}
           className="absolute z-[3] w-[calc(100%-2rem)] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl p-4 sm:p-5"
           style={cardStyle}
         >
-          <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="mb-2 flex items-start justify-between gap-2">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-muted)] mb-1">
-                Paso {stepIndex + 1} de {STEPS.length}
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-primary)]">
+                {meta.title} · {stepIndex + 1}/{steps.length}
               </p>
-              <h2
-                id="app-tutorial-title"
-                className="font-display text-lg sm:text-xl tracking-wide text-[color:var(--text-primary)]"
-              >
+              <h2 id="app-tutorial-title" className="mt-1 font-display text-xl tracking-wide text-[color:var(--text-primary)]">
                 {step.title}
               </h2>
             </div>
             <button
               type="button"
               onClick={finish}
-              className="p-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
-              aria-label="Cerrar tutorial"
+              className="rounded-lg p-1.5 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
+              aria-label="Saltar tutorial"
             >
               <FiX size={18} />
             </button>
           </div>
-
-          <p className="text-sm leading-relaxed text-[color:var(--text-secondary)] mb-4">{step.body}</p>
-
-          <div className="flex items-center gap-1.5 mb-4" aria-hidden>
-            {STEPS.map((s, i) => (
-              <span
-                key={s.id}
-                className={`h-1 rounded-full transition-all ${
-                  i === stepIndex
-                    ? 'w-5 bg-primary-500'
-                    : i < stepIndex
-                      ? 'w-2.5 bg-primary-500/50'
-                      : 'w-1.5 bg-[color:var(--border-subtle)]'
-                }`}
-              />
-            ))}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm leading-relaxed text-[color:var(--text-secondary)]">{step.body}</p>
+          <div className="mt-4 flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={finish}
-              className="text-xs sm:text-sm text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition px-1 py-2"
+              onClick={prev}
+              disabled={isFirst}
+              className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] disabled:opacity-30 hover:bg-[color:var(--bg-muted)]"
             >
-              Omitir tutorial
+              <FiArrowLeft size={16} /> Atrás
             </button>
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                type="button"
-                onClick={prev}
-                disabled={isFirst}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm border border-[color:var(--border-subtle)] disabled:opacity-35 disabled:pointer-events-none hover:bg-[color:var(--bg-muted)] transition"
-              >
-                <FiArrowLeft size={16} />
-                Anterior
-              </button>
-              <button
-                type="button"
-                onClick={next}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium bg-primary-500 text-white hover:bg-primary-600 transition shadow-lg shadow-primary-500/20"
-              >
-                {isLast ? (
-                  <>
-                    Listo <FiCheck size={16} />
-                  </>
-                ) : (
-                  <>
-                    Siguiente <FiArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={next}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[color:var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[rgba(var(--color-primary-rgb),0.28)]"
+            >
+              {isLast ? (
+                <>
+                  <FiCheck size={16} /> Listo
+                </>
+              ) : (
+                <>
+                  Siguiente <FiArrowRight size={16} />
+                </>
+              )}
+            </button>
           </div>
         </motion.div>
       </motion.div>

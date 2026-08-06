@@ -14,6 +14,7 @@ import ShareProfileSheet from '../../components/ShareProfileSheet'
 import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import ProtectedMedia from '../../components/ProtectedMedia'
+import { openTutorialHub } from '../../components/AppTutorial'
 
 const menuItems = [
   { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
@@ -634,7 +635,7 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         className="card overflow-hidden p-0"
       >
-        <div data-protected-media="1" className="relative h-[168px] sm:h-[236px] overflow-hidden">
+        <div data-tour="tour-profile-cover" data-protected-media="1" className="relative h-[168px] sm:h-[236px] overflow-hidden">
           {user?.profile?.coverUrl ? (
             <ProtectedMedia
               src={user.profile.coverUrl}
@@ -713,7 +714,7 @@ export default function Profile() {
           />
         </div>
         <div className="pointer-events-none relative z-10 -mt-16 px-4 pb-5 text-center sm:-mt-[4.5rem] sm:px-6">
-          <div className="pointer-events-auto relative mx-auto mb-4 inline-block">
+          <div data-tour="tour-profile-avatar" className="pointer-events-auto relative mx-auto mb-4 inline-block">
             <div className="absolute -inset-1 rounded-full bg-[color:var(--bg-card)]/80 blur-[1px]" aria-hidden />
             <div className="relative">
             <ProfileAvatar
@@ -786,6 +787,7 @@ export default function Profile() {
             <div className="pointer-events-auto mx-auto flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
+                data-tour="tour-profile-edit"
                 onClick={() => setEditing(true)}
                 className="btn-secondary flex items-center gap-2"
               >
@@ -793,10 +795,21 @@ export default function Profile() {
               </button>
               <button
                 type="button"
+                data-tour="tour-profile-share"
                 onClick={() => setShareProfileOpen(true)}
                 className="btn-primary flex items-center gap-2"
               >
                 <FiShare2 size={16} /> Compartir perfil
+              </button>
+              <button
+                type="button"
+                data-tour="tour-profile-tutorials"
+                onClick={() => openTutorialHub()}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] text-[color:var(--color-primary)] hover:bg-[rgba(var(--color-primary-rgb),0.12)]"
+                aria-label="Tutoriales"
+                title="Tutoriales"
+              >
+                <FiHelpCircle size={18} />
               </button>
             </div>
           )}
@@ -856,6 +869,7 @@ export default function Profile() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
+        data-tour="tour-profile-badges"
         className="card"
       >
         <div className="flex items-center justify-between mb-4">

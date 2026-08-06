@@ -15,10 +15,10 @@ function prefersDark() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-export function resolveMode(themePreference = 'dark') {
-  if (themePreference === 'light') return 'light'
+export function resolveMode(themePreference = 'light') {
+  if (themePreference === 'dark') return 'dark'
   if (themePreference === 'system') return prefersDark() ? 'dark' : 'light'
-  return 'dark'
+  return 'light'
 }
 
 export function applyColorTheme(colorThemeId = 'orange') {
@@ -31,7 +31,7 @@ export function applyColorTheme(colorThemeId = 'orange') {
   return theme
 }
 
-export function applyThemeMode(themePreference = 'dark') {
+export function applyThemeMode(themePreference = 'light') {
   const mode = resolveMode(themePreference)
   const root = document.documentElement
   root.classList.remove('light', 'dark')
@@ -44,7 +44,7 @@ export function applyThemeMode(themePreference = 'dark') {
 
 export function applyAppearanceSettings(settings = {}) {
   applyColorTheme(settings.colorTheme || 'orange')
-  applyThemeMode(settings.theme || 'dark')
+  applyThemeMode(settings.theme || 'light')
 
   if (settings.accessibility?.fontSize) {
     const fontSizeMap = { small: '14px', medium: '16px', large: '18px' }
@@ -81,7 +81,7 @@ export function cacheAppearance(settings) {
     localStorage.setItem(
       'qyntra:appearance',
       JSON.stringify({
-        theme: settings.theme || 'dark',
+        theme: settings.theme || 'light',
         colorTheme: settings.colorTheme || 'orange',
         accessibility: settings.accessibility || {}
       })
@@ -115,7 +115,7 @@ export function bindSystemThemeListener(getPreference) {
 try {
   const cached = loadCachedSettings(null)
   if (cached) applyAppearanceSettings(cached)
-  else applyAppearanceSettings({ theme: 'dark', colorTheme: 'orange' })
+  else applyAppearanceSettings({ theme: 'light', colorTheme: 'orange' })
 } catch {
-  applyAppearanceSettings({ theme: 'dark', colorTheme: 'orange' })
+  applyAppearanceSettings({ theme: 'light', colorTheme: 'orange' })
 }

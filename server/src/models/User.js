@@ -61,7 +61,7 @@ const userSchema = new mongoose.Schema({
     earnedAt: { type: Date, default: Date.now }
   }],
   settings: {
-    theme: { type: String, enum: ['dark', 'light', 'system'], default: 'dark' },
+    theme: { type: String, enum: ['dark', 'light', 'system'], default: 'light' },
     language: { type: String, default: 'es' },
     notifications: {
       push: { type: Boolean, default: true },

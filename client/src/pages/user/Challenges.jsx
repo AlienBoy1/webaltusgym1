@@ -445,6 +445,7 @@ export default function Challenges() {
             <span className="font-semibold">{user?.stats?.xp || 0} XP</span>
           </div>
           <button
+            data-tour="tour-challenges-create"
             onClick={() => setShowCreateModal(true)}
             className="btn-primary flex items-center gap-2"
           >
@@ -453,6 +454,8 @@ export default function Challenges() {
           </button>
         </div>
       </div>
+
+      <div data-tour="tour-challenges-list" className="contents">
 
       {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -649,6 +652,7 @@ export default function Challenges() {
           )}
         </div>
       )}
+      </div>
 
       {/* Challenge Details Modal */}
       <AnimatePresence>

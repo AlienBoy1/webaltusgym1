@@ -127,6 +127,7 @@ export default function Classes() {
       <h1 className="font-display text-3xl">Clases Grupales</h1>
 
       {/* Day Selector */}
+      <div data-tour="tour-classes-list" className="space-y-6">
       <div className="flex gap-2 overflow-x-auto pb-2">
         {DAYS.map((day) => (
           <button
@@ -241,6 +242,7 @@ export default function Classes() {
           })}
         </div>
       )}
+      </div>
 
       {/* Class Details Modal */}
       <AnimatePresence>

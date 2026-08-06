@@ -88,7 +88,7 @@ export default function Progress() {
       <h1 className="font-display text-3xl">Mi Progreso</h1>
       
       {/* Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div data-tour="tour-progress-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Entrenamientos', value: user?.stats?.totalWorkouts || 0, change: 'total', positive: true },
           { label: 'Mejor racha', value: `${user?.stats?.longestStreak || 0} días`, change: 'récord', positive: true },
@@ -117,6 +117,7 @@ export default function Progress() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
+        data-tour="tour-progress-charts"
         className="card"
       >
         <div className="flex gap-4 mb-6">
@@ -175,6 +176,7 @@ export default function Progress() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
+        data-tour="tour-progress-goals"
         className="card"
       >
         <div className="flex items-center gap-2 mb-4">

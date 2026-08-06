@@ -69,6 +69,11 @@ async function upsertProfileRow({
     membership: membership || { plan: 'basic', status: 'active', startDate: new Date().toISOString() },
     stats: stats || { totalWorkouts: 0, currentStreak: 0, longestStreak: 0, level: 1, xp: 0 },
     profile: profile || {},
+    settings: {
+      theme: 'light',
+      colorTheme: 'orange',
+      language: 'es'
+    },
     onboarding_completed: false,
     updated_at: new Date().toISOString()
   }

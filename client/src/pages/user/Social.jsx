@@ -500,6 +500,7 @@ export default function Social() {
           </p>
         </div>
         <button
+          data-tour="tour-social-compose"
           onClick={() => setShowCompose(!showCompose)}
           className="btn-primary py-2 sm:py-2.5 px-4 text-sm flex-shrink-0 shadow-lg shadow-primary-500/20"
         >
@@ -507,7 +508,9 @@ export default function Social() {
         </button>
       </div>
 
-      <StoriesRail />
+      <div data-tour="tour-stories-rail">
+        <StoriesRail />
+      </div>
 
       {/* Compose Post */}
       <AnimatePresence>
@@ -717,7 +720,7 @@ export default function Social() {
           <PeopleYouMayKnow />
         </div>
       ) : (
-        <div className="space-y-3 sm:space-y-4">
+        <div data-tour="tour-social-feed" className="space-y-3 sm:space-y-4">
           {posts.map((post, i) => {
             const isOwner = post.user?._id === user?._id
             const myReaction = post.myReaction || null

@@ -1161,6 +1161,7 @@ export default function Workouts() {
           </button>
           <button
             type="button"
+            data-tour="tour-workouts-create"
             onClick={() => {
               setEditingId(null)
               setNewRoutine(resetNewRoutine())
@@ -1173,7 +1174,7 @@ export default function Workouts() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div data-tour="tour-workouts-list" className="space-y-3">
         <div className="relative">
           <FiSearch
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-app-secondary"

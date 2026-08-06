@@ -7,7 +7,8 @@ import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
 import InviteFriendsModal from '../components/InviteFriendsModal'
 import UsernameSetupModal from '../components/UsernameSetupModal'
-import AppTutorial, { openAppTutorial } from '../components/AppTutorial'
+import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
+import TutorialHub from '../components/TutorialHub'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -56,7 +57,11 @@ export default function MainLayout() {
   const [themeMode, setThemeMode] = useState(() => {
     const id = user?.id || user?._id
     const cached = id ? loadCachedSettings(id) : loadCachedSettings(null)
-    return cached?.theme === 'light' ? 'light' : 'dark'
+    if (cached?.theme === 'dark') return 'dark'
+    if (cached?.theme === 'system') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    return 'light'
   })
   const avatarMenuRef = useRef(null)
   
@@ -430,12 +435,12 @@ export default function MainLayout() {
                         type="button"
                         onClick={() => {
                           setAvatarMenuOpen(false)
-                          openAppTutorial()
+                          openTutorialHub()
                         }}
                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
                       >
                         <FiBookOpen size={16} className="text-accent-cyan" />
-                        Tutorial de la app
+                        Tutoriales de la app
                       </button>
 
                       <div
@@ -602,6 +607,7 @@ export default function MainLayout() {
       <InviteFriendsModal open={inviteOpen} onClose={() => setInviteOpen(false)} user={user} />
       <UsernameSetupModal open={Boolean(user && !user.username)} />
       <AppTutorial />
+      <TutorialHub />
     </div>
     </StoryViewerProvider>
   )

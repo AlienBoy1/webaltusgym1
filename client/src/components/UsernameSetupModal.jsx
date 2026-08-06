@@ -6,6 +6,9 @@ import api from '../utils/api'
 import { useAuthStore } from '../store/authStore'
 import { normalizeUsername, validateUsernameFormat } from '../utils/username'
 import QyntraLogo from './QyntraLogo'
+import { openAppTutorial } from './AppTutorial'
+import { TUTORIAL_IDS } from '../tutorials/registry'
+import { applyAppearanceSettings, cacheAppearance } from '../utils/theme'
 
 /**
  * Blocking gate: existing users without username must claim one.
@@ -56,8 +59,22 @@ export default function UsernameSetupModal({ open }) {
     setSaving(true)
     try {
       const { data } = await api.post('/users/username', { username: format.username })
-      updateUser(data.user)
+      const lightSettings = {
+        ...(data.user?.settings || useAuthStore.getState().user?.settings || {}),
+        theme: 'light',
+        colorTheme: data.user?.settings?.colorTheme || 'orange'
+      }
+      applyAppearanceSettings({ theme: 'light', colorTheme: lightSettings.colorTheme })
+      cacheAppearance(lightSettings)
+      try {
+        await api.put('/users/profile', { settings: lightSettings })
+      } catch {
+        /* continue — local theme already light */
+      }
+      updateUser({ ...(data.user || {}), settings: lightSettings })
       toast.success('Username registrado')
+      // New users must see the quick-start tutorial right after username
+      window.setTimeout(() => openAppTutorial(TUTORIAL_IDS.QUICK_START), 450)
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo registrar el username')
     } finally {
