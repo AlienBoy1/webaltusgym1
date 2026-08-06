@@ -10,6 +10,7 @@ import AvatarPicker from '../../components/AvatarPicker'
 import BadgesModal from '../../components/BadgesModal'
 import StoryHighlights from '../../components/StoryHighlights'
 import ProfileAvatar from '../../components/ProfileAvatar'
+import ShareProfileSheet from '../../components/ShareProfileSheet'
 import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 
@@ -485,6 +486,7 @@ export default function Profile() {
   const { unreadCount } = useNotificationStore()
   const { openUserStory } = useStoryViewer()
   const [editing, setEditing] = useState(false)
+  const [shareProfileOpen, setShareProfileOpen] = useState(false)
   const [name, setName] = useState(user?.name || '')
   const [saving, setSaving] = useState(false)
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
@@ -780,12 +782,22 @@ export default function Profile() {
           </div>
 
           {!editing && (
-            <button
-              onClick={() => setEditing(true)}
-              className="pointer-events-auto btn-secondary mx-auto flex items-center gap-2"
-            >
-              <FiEdit2 size={16} /> Editar Perfil
-            </button>
+            <div className="pointer-events-auto mx-auto flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <FiEdit2 size={16} /> Editar Perfil
+              </button>
+              <button
+                type="button"
+                onClick={() => setShareProfileOpen(true)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <FiShare2 size={16} /> Compartir perfil
+              </button>
+            </div>
           )}
         </div>
 
@@ -1059,6 +1071,11 @@ export default function Profile() {
         isOpen={showBadges}
         onClose={() => setShowBadges(false)}
         userId={user?._id}
+      />
+      <ShareProfileSheet
+        open={shareProfileOpen}
+        onClose={() => setShareProfileOpen(false)}
+        user={user}
       />
     </div>
   )
