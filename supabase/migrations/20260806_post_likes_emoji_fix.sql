@@ -9,3 +9,4 @@ SET emoji = '❤️'
 WHERE emoji IS NULL;
 
 COMMENT ON COLUMN post_likes.emoji IS 'Reaction emoji (❤️ 💪 🧴 🔥 ⚡ 🏆)';
+-- o si o se hizo correctamente, se puede eliminar el comentario
