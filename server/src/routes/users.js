@@ -48,7 +48,14 @@ router.put('/profile', authenticate, async (req, res) => {
     if (phone !== undefined) updateData.phone = phone
     if (settings !== undefined) updateData.settings = settings
     if (goal !== undefined) updateData.goal = goal
-    if (profile !== undefined) updateData.profile = profile
+    if (profile !== undefined) {
+      const { data: cur } = await supabaseAdmin
+        .from('profiles')
+        .select('profile')
+        .eq('id', req.user.id)
+        .single()
+      updateData.profile = { ...(cur?.profile || {}), ...profile }
+    }
 
     const { data, error } = await supabaseAdmin
       .from('profiles')

@@ -14,7 +14,11 @@ export function decodeChatContent(raw) {
       return {
         text,
         attachment,
-        preview: attachment?.type === 'story' ? text?.trim() || '📸 Estado de Qyntra' : text || ''
+      preview: attachment?.type === 'story'
+          ? text?.trim() || '📸 Estado de Qyntra'
+          : attachment?.type === 'post'
+            ? text?.trim() || `📝 ${attachment.authorName || 'Publicación'}`
+            : text || ''
       }
     } catch {
       /* fallthrough */

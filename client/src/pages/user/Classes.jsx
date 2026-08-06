@@ -5,21 +5,20 @@ import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 
-const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-const dayMap = {
-  'Lunes': 1,
-  'Martes': 2,
-  'Miércoles': 3,
-  'Jueves': 4,
-  'Viernes': 5,
-  'Sábado': 6,
-  'Domingo': 0
-}
+const DAYS = [
+  { id: 1, label: 'Lunes' },
+  { id: 2, label: 'Martes' },
+  { id: 3, label: 'Miércoles' },
+  { id: 4, label: 'Jueves' },
+  { id: 5, label: 'Viernes' },
+  { id: 6, label: 'Sábado' },
+  { id: 0, label: 'Domingo' }
+]
 
 export default function Classes() {
   const { user } = useAuthStore()
   const [classes, setClasses] = useState([])
-  const [selectedDay, setSelectedDay] = useState(new Date().toLocaleDateString('es', { weekday: 'long' }))
+  const [selectedDay, setSelectedDay] = useState(() => new Date().getDay())
   const [selectedClass, setSelectedClass] = useState(null)
   const [loading, setLoading] = useState(true)
   const [enrolling, setEnrolling] = useState(false)
@@ -101,10 +100,9 @@ export default function Classes() {
     return classItem.waitlist?.some(w => (w.user?._id || w.user) === user?._id)
   }
 
-  const filteredClasses = classes.filter(c => {
-    if (!c.schedule?.dayOfWeek) return false
-    const dayNumber = dayMap[selectedDay]
-    return c.schedule.dayOfWeek === dayNumber
+  const filteredClasses = classes.filter((c) => {
+    if (c.schedule?.dayOfWeek == null) return false
+    return Number(c.schedule.dayOfWeek) === Number(selectedDay)
   })
 
   const getAvatarDisplay = (instructor) => {
@@ -123,17 +121,17 @@ export default function Classes() {
 
       {/* Day Selector */}
       <div className="flex gap-2 overflow-x-auto pb-2">
-        {days.map((day) => (
+        {DAYS.map((day) => (
           <button
-            key={day}
-            onClick={() => setSelectedDay(day)}
+            key={day.id}
+            onClick={() => setSelectedDay(day.id)}
             className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-              selectedDay === day
+              selectedDay === day.id
                 ? 'bg-primary-500 text-white'
                 : 'bg-dark-200 text-gray-400 hover:text-white'
             }`}
           >
-            {day}
+            {day.label}
           </button>
         ))}
       </div>

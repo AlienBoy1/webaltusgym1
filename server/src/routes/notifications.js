@@ -138,11 +138,24 @@ router.put('/:id/read', authenticate, async (req, res) => {
 
 router.delete('/:id', authenticate, async (req, res) => {
   try {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('notifications')
+      .select('id, read')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    if (fetchError || !existing) return res.status(404).json({ message: 'Notificación no encontrada' })
+    if (!existing.read) {
+      return res.status(403).json({ message: 'Solo puedes eliminar notificaciones leídas. Márcala como leída primero.' })
+    }
+
     const { data, error } = await supabaseAdmin
       .from('notifications')
       .delete()
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
+      .eq('read', true)
       .select('id')
       .maybeSingle()
 

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity } from 'react-icons/fi'
+import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity, FiShare2 } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import AvatarPicker from '../../components/AvatarPicker'
@@ -271,6 +271,214 @@ function MembershipSection({ user }) {
   )
 }
 
+function formatChallengeTime(ms) {
+  const totalSec = Math.floor((ms || 0) / 1000)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+function MyChallengesSection() {
+  const navigate = useNavigate()
+  const [challenges, setChallenges] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState(null)
+  const [sharing, setSharing] = useState(false)
+  const { user } = useAuthStore()
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { data } = await api.get('/challenges/my')
+        const completed = (data || []).filter(c => {
+          const participant = c.participants?.find(p =>
+            (p.user?._id || p.user) === user?._id
+          )
+          return participant?.completed
+        })
+        setChallenges(completed)
+      } catch {
+        /* ignore */
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [user?._id])
+
+  const shareChallenge = async (challenge) => {
+    setSharing(true)
+    const participant = challenge.participants?.find(p =>
+      (p.user?._id || p.user) === user?._id
+    )
+    try {
+      await api.post('/social', {
+        content: `¡Completé el reto "${challenge.title}"! 🏆`,
+        postType: 'challenge',
+        workoutData: {
+          shareKind: 'challenge',
+          challengeTitle: challenge.title,
+          challengeType: challenge.type,
+          challengeGoal: challenge.goal,
+          challengeUnit: challenge.unit,
+          xpAwarded: challenge.reward?.xp || 100,
+          accumulatedMs: participant?.accumulatedMs || 0
+        }
+      })
+      toast.success('Compartido en Comunidad')
+      setSelected(null)
+      navigate('/social')
+    } catch {
+      toast.error('No se pudo compartir')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.28 }}
+      className="card"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-xl flex items-center gap-2">
+          <FiTarget className="text-primary-500" />
+          Mis Retos
+        </h2>
+        <Link
+          to="/challenges"
+          className="text-primary-500 hover:text-primary-400 text-sm"
+        >
+          Ver todos
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6">
+          <div className="w-6 h-6 border-2 border-[color:var(--border-subtle)] border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : challenges.length === 0 ? (
+        <div className="py-8 text-center" style={{ color: 'var(--text-secondary)' }}>
+          <FiTarget size={32} className="mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Aún no has completado retos</p>
+          <Link to="/challenges" className="btn-primary mt-3 inline-flex px-4 py-2 text-sm">
+            Ver Retos
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {challenges.slice(0, 5).map((challenge, i) => {
+            const participant = challenge.participants?.find(p =>
+              (p.user?._id || p.user) === user?._id
+            )
+            return (
+              <motion.button
+                key={challenge._id || challenge.id}
+                type="button"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                onClick={() => setSelected(challenge)}
+                className="flex w-full items-center gap-3 rounded-xl bg-[color:var(--bg-muted)] p-3 text-left transition-colors hover:bg-[color:var(--bg-elevated)]"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-green/15 text-accent-green">
+                  <FiCheck size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate">{challenge.title}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {challenge.goal} {challenge.unit || 'meta'} · +{challenge.reward?.xp || 100} XP
+                    {participant?.accumulatedMs > 0 && ` · ${formatChallengeTime(participant.accumulatedMs)}`}
+                  </p>
+                </div>
+                <FiChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+              </motion.button>
+            )
+          })}
+          {challenges.length > 5 && (
+            <Link
+              to="/challenges"
+              className="block text-center text-sm text-primary-500 hover:text-primary-400 pt-2"
+            >
+              Ver {challenges.length - 5} más
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* Challenge Detail Modal */}
+      <AnimatePresence>
+        {selected && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 sm:items-center sm:p-4">
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] p-5 sm:rounded-3xl sm:p-6"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-[0.25em] text-[color:var(--text-muted)]">Reto completado</p>
+                  <h2 className="font-display text-2xl text-[color:var(--text-primary)] truncate">{selected.title}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="rounded-xl bg-[color:var(--bg-muted)] p-2 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                >
+                  <FiX size={18} />
+                </button>
+              </div>
+
+              {selected.description && (
+                <p className="mb-4 text-sm" style={{ color: 'var(--text-secondary)' }}>{selected.description}</p>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {[
+                  { icon: FiTarget, label: 'Objetivo', value: `${selected.goal} ${selected.unit || ''}` },
+                  { icon: FiAward, label: 'XP Ganados', value: `+${selected.reward?.xp || 100}` },
+                  {
+                    icon: FiClock,
+                    label: 'Tiempo',
+                    value: (() => {
+                      const p = selected.participants?.find(p => (p.user?._id || p.user) === user?._id)
+                      return p?.accumulatedMs > 0 ? formatChallengeTime(p.accumulatedMs) : '—'
+                    })()
+                  }
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-2xl bg-[color:var(--bg-muted)] p-3 text-center">
+                    <stat.icon className="mx-auto text-[color:var(--color-primary)]" size={16} />
+                    <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">{stat.value}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 p-3 bg-accent-green/10 rounded-xl text-center">
+                <FiCheck className="mx-auto text-accent-green mb-1" size={20} />
+                <p className="text-sm font-semibold text-accent-green">Reto Completado</p>
+              </div>
+
+              <button
+                type="button"
+                disabled={sharing}
+                onClick={() => shareChallenge(selected)}
+                className="btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3 disabled:opacity-60"
+              >
+                <FiShare2 size={16} />
+                {sharing ? 'Compartiendo…' : 'Compartir en Comunidad'}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
 export default function Profile() {
   const { user, logout, updateUser, refreshUser } = useAuthStore()
   const { unreadCount } = useNotificationStore()
@@ -282,6 +490,7 @@ export default function Profile() {
   const [showBadges, setShowBadges] = useState(false)
   const [loading, setLoading] = useState(true)
   const [hasStories, setHasStories] = useState(false)
+  const coverInputRef = useRef(null)
 
   useEffect(() => {
     if (user) {
@@ -331,6 +540,26 @@ export default function Profile() {
     await refreshUser()
   }
 
+  const handleCoverUpload = (file) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen de portada debe ser menor a 5MB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const coverUrl = e.target.result
+        const { data } = await api.put('/users/profile', {
+          profile: { ...(user?.profile || {}), coverUrl }
+        })
+        updateUser(data.user)
+        toast.success('Portada actualizada')
+      } catch {
+        toast.error('Error al actualizar portada')
+      }
+    }
+    reader.readAsDataURL(file)
+  }
 
   const xpTotal = user?.stats?.xp || 0
   const xpIntoLevel = xpTotal % 100
@@ -371,11 +600,87 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         className="card overflow-hidden p-0"
       >
-        <div
-          className="px-4 pt-6 pb-5 text-center sm:px-6"
-          style={{ background: 'linear-gradient(180deg, rgba(var(--color-primary-rgb), 0.1) 0%, transparent 72%)' }}
-        >
-          <div className="relative mx-auto mb-4 inline-block">
+        <div className="relative h-[168px] sm:h-[236px] overflow-hidden">
+          {user?.profile?.coverUrl ? (
+            <img
+              src={user.profile.coverUrl}
+              alt=""
+              className="h-full w-full scale-[1.02] object-cover object-center"
+            />
+          ) : (
+            <div
+              className="h-full w-full"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgba(var(--color-primary-rgb),0.42), rgba(var(--color-accent-rgb),0.16) 55%, rgba(var(--color-primary-rgb),0.22))'
+              }}
+            />
+          )}
+          {/* Soft top vignette */}
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-16"
+            style={{
+              background:
+                'linear-gradient(to bottom, rgba(0,0,0,0.28), rgba(0,0,0,0.08) 45%, transparent)'
+            }}
+          />
+          {/* Side vignette for depth */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 85% at 50% 20%, transparent 40%, rgba(0,0,0,0.18) 100%)'
+            }}
+          />
+          {/* Premium bottom blend into card */}
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[72%] sm:h-[68%]"
+            style={{
+              background: `
+                linear-gradient(
+                  to top,
+                  var(--bg-card) 0%,
+                  color-mix(in srgb, var(--bg-card) 92%, transparent) 18%,
+                  color-mix(in srgb, var(--bg-card) 55%, transparent) 42%,
+                  color-mix(in srgb, var(--bg-card) 18%, transparent) 68%,
+                  transparent 100%
+                )
+              `
+            }}
+          />
+          {/* Warm brand accent wash near the seam */}
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
+            style={{
+              background:
+                'linear-gradient(to top, rgba(var(--color-primary-rgb),0.12), rgba(var(--color-primary-rgb),0.04) 45%, transparent)'
+            }}
+          />
+          <label
+            htmlFor="profile-cover-input"
+            className="absolute bottom-4 right-3 z-30 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-[0_8px_20px_rgba(0,0,0,0.28)] backdrop-blur-md hover:bg-black/65 transition-colors"
+            aria-label="Editar portada"
+            title="Editar portada"
+          >
+            <FiEdit2 size={15} />
+          </label>
+          <input
+            id="profile-cover-input"
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleCoverUpload(file)
+              e.target.value = ''
+            }}
+          />
+        </div>
+        <div className="pointer-events-none relative z-10 -mt-16 px-4 pb-5 text-center sm:-mt-[4.5rem] sm:px-6">
+          <div className="pointer-events-auto relative mx-auto mb-4 inline-block">
+            <div className="absolute -inset-1 rounded-full bg-[color:var(--bg-card)]/80 blur-[1px]" aria-hidden />
+            <div className="relative">
             <ProfileAvatar
               avatar={user?.avatar}
               name={user?.name}
@@ -390,10 +695,11 @@ export default function Profile() {
             >
               <FiCamera size={16} />
             </button>
+            </div>
           </div>
 
           {editing ? (
-            <div className="mb-4">
+            <div className="pointer-events-auto mb-4">
               <input
                 type="text"
                 value={name}
@@ -410,7 +716,7 @@ export default function Profile() {
               </div>
             </div>
           ) : (
-            <>
+            <div className="pointer-events-auto">
               <h1 className="font-display mb-1 text-2xl sm:text-3xl">{user?.name || 'Usuario'}</h1>
               <p className="mb-3 break-all text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
                 {user?.email}
@@ -423,10 +729,10 @@ export default function Profile() {
                   Ver perfil público y solicitudes
                 </Link>
               )}
-            </>
+            </div>
           )}
 
-          <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+          <div className="pointer-events-auto mb-4 flex flex-wrap items-center justify-center gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-medium sm:text-sm ${getStatusColor(user?.membership?.status)}`}>
               {user?.membership?.status === 'active' ? 'Activo' :
                 user?.membership?.status === 'expiring' ? 'Por vencer' : 'Vencido'}
@@ -444,7 +750,7 @@ export default function Profile() {
           {!editing && (
             <button
               onClick={() => setEditing(true)}
-              className="btn-secondary mx-auto flex items-center gap-2"
+              className="pointer-events-auto btn-secondary mx-auto flex items-center gap-2"
             >
               <FiEdit2 size={16} /> Editar Perfil
             </button>
@@ -548,6 +854,9 @@ export default function Profile() {
           </div>
         )}
       </motion.div>
+
+      {/* My Challenges */}
+      <MyChallengesSection />
 
       {/* Membership */}
       <MembershipSection user={user} />

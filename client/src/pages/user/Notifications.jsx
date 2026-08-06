@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiBell, FiCheck, FiTrash2, FiCheckCircle, FiX, FiUser } from 'react-icons/fi'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -62,12 +62,19 @@ function getDeepLink(notification) {
   }
 }
 
+const FILTERS = [
+  { id: 'all', label: 'Todas' },
+  { id: 'unread', label: 'Sin leer' },
+  { id: 'read', label: 'Leídas' }
+]
+
 export default function Notifications() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const highlightId = searchParams.get('highlight')
   const highlightRef = useRef(null)
   const [pulseId, setPulseId] = useState(highlightId)
+  const [filter, setFilter] = useState('all')
   const {
     notifications,
     unreadCount,
@@ -105,6 +112,12 @@ export default function Notifications() {
     }
   }, [highlightId, loading, notifications.length])
 
+  const filtered = useMemo(() => {
+    if (filter === 'unread') return notifications.filter((n) => !n.read)
+    if (filter === 'read') return notifications.filter((n) => n.read)
+    return notifications
+  }, [notifications, filter])
+
   const handleAcceptFollow = async (notification) => {
     const requesterId = notification.relatedUser
     if (!requesterId) return
@@ -112,7 +125,6 @@ export default function Notifications() {
       await api.post(`/social/${requesterId}/accept-follow`)
       toast.success('Solicitud aceptada')
       await markAsRead(notification._id)
-      await deleteNotification(notification._id)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al aceptar')
     }
@@ -124,7 +136,7 @@ export default function Notifications() {
     try {
       await api.post(`/social/${requesterId}/reject-follow`)
       toast.success('Solicitud rechazada')
-      await deleteNotification(notification._id)
+      await markAsRead(notification._id)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al rechazar')
     }
@@ -135,6 +147,14 @@ export default function Notifications() {
     if (notification.type === 'follow_request') return
     const link = getDeepLink(notification)
     if (link) navigate(link)
+  }
+
+  const handleDelete = async (notification) => {
+    if (!notification.read) {
+      toast.error('Marca la notificación como leída antes de eliminarla')
+      return
+    }
+    await deleteNotification(notification._id)
   }
 
   return (
@@ -161,25 +181,52 @@ export default function Notifications() {
               className="btn-secondary py-2 px-3 sm:px-4 text-sm flex items-center gap-2"
             >
               <FiTrash2 size={16} />
-              <span>Limpiar</span>
+              <span>Limpiar leídas</span>
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex gap-2 p-1 rounded-xl bg-[color:var(--bg-muted)] border border-[color:var(--border-subtle)]">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFilter(f.id)}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition ${
+              filter === f.id
+                ? 'bg-[color:var(--color-primary)] text-white shadow'
+                : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]'
+            }`}
+          >
+            {f.label}
+            {f.id === 'unread' && unreadCount > 0 ? ` (${unreadCount})` : ''}
+            {f.id === 'read' && notifications.some((n) => n.read)
+              ? ` (${notifications.filter((n) => n.read).length})`
+              : ''}
+          </button>
+        ))}
       </div>
 
       {loading ? (
         <div className="text-center py-12">
           <div className="w-8 h-8 border-4 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
         </div>
-      ) : notifications.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="text-center py-12">
           <FiBell className="mx-auto text-gray-500 mb-4" size={48} />
-          <p className="text-gray-400">No tienes notificaciones</p>
+          <p className="text-gray-400">
+            {filter === 'unread'
+              ? 'No tienes notificaciones sin leer'
+              : filter === 'read'
+                ? 'No hay notificaciones leídas'
+                : 'No tienes notificaciones'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           <AnimatePresence>
-            {notifications.map((notification, i) => {
+            {filtered.map((notification, i) => {
               const isHighlighted =
                 pulseId && (notification._id === pulseId || notification.id === pulseId)
               return (
@@ -267,12 +314,14 @@ export default function Notifications() {
                           <FiCheck size={14} /> Marcar como leída
                         </button>
                       )}
-                      <button
-                        onClick={() => deleteNotification(notification._id)}
-                        className="text-sm text-gray-500 flex items-center gap-1 hover:text-red-500"
-                      >
-                        <FiTrash2 size={14} /> Eliminar
-                      </button>
+                      {notification.read && (
+                        <button
+                          onClick={() => handleDelete(notification)}
+                          className="text-sm text-gray-500 flex items-center gap-1 hover:text-red-500"
+                        >
+                          <FiTrash2 size={14} /> Eliminar
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

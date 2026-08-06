@@ -72,7 +72,7 @@ export default function AuthShell({
             className="h-full w-full object-cover object-center"
             loading="eager"
             decoding="async"
-            fetchPriority="high"
+            fetchpriority="high"
             draggable={false}
           />
         </picture>

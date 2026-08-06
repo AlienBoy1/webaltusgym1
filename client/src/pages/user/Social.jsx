@@ -14,9 +14,11 @@ import { Avatar } from '../../utils/avatarUtils'
 import StoriesRail from '../../components/StoriesRail'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import PostReactionButton from '../../components/PostReactionButton'
-import ShareComposerModal from '../../components/ShareComposerModal'
 import SharedPostAttachment from '../../components/SharedPostAttachment'
 import { useAppDialog } from '../../components/AppDialog'
+import PostReactorsModal from '../../components/PostReactorsModal'
+import PeopleYouMayKnow from '../../components/PeopleYouMayKnow'
+import SharePostSheet from '../../components/SharePostSheet'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
@@ -37,6 +39,7 @@ export default function Social() {
   const [posts, setPosts] = useState([])
   const [sharePostTarget, setSharePostTarget] = useState(null)
   const [sharingPost, setSharingPost] = useState(false)
+  const [reactorsPost, setReactorsPost] = useState(null)
   const [newPost, setNewPost] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
   const [selectedMood, setSelectedMood] = useState(null)
@@ -221,7 +224,43 @@ export default function Social() {
           const has = likes.some((id) => (id?._id || id) === uid)
           if (data.liked && !has) likes.push(uid)
           if (!data.liked) likes = likes.filter((id) => (id?._id || id) !== uid)
-          return { ...post, likes, myReaction: data.myReaction || null }
+
+          let reactionSummary = [...(post.reactionSummary || [])]
+          let reactors = [...(post.reactors || [])]
+          const prev = post.myReaction
+          if (prev) {
+            reactionSummary = reactionSummary
+              .map((r) => (r.emoji === prev ? { ...r, count: r.count - 1 } : r))
+              .filter((r) => r.count > 0)
+            reactors = reactors.filter((r) => r.userId !== uid)
+          }
+          if (data.myReaction) {
+            const existing = reactionSummary.find((r) => r.emoji === data.myReaction)
+            if (existing) {
+              reactionSummary = reactionSummary.map((r) =>
+                r.emoji === data.myReaction ? { ...r, count: r.count + 1 } : r
+              )
+            } else {
+              reactionSummary = [...reactionSummary, { emoji: data.myReaction, count: 1 }]
+            }
+            reactors = [
+              ...reactors.filter((r) => r.userId !== uid),
+              {
+                userId: uid,
+                emoji: data.myReaction,
+                name: user.name,
+                avatar: user.avatar
+              }
+            ]
+          }
+
+          return {
+            ...post,
+            likes,
+            myReaction: data.myReaction || null,
+            reactionSummary,
+            reactors
+          }
         })
       )
     } catch (error) {
@@ -525,10 +564,13 @@ export default function Social() {
           <div className="w-8 h-8 border-4 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
         </div>
       ) : posts.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <div className="text-6xl mb-4">📝</div>
-          <p>Aún no hay publicaciones</p>
-          <p className="text-sm mt-2">Publica algo o sigue a otros usuarios para ver su contenido</p>
+        <div className="space-y-4">
+          <div className="text-center py-12 text-gray-400">
+            <div className="text-6xl mb-4">📝</div>
+            <p>Aún no hay publicaciones</p>
+            <p className="text-sm mt-2">Publica algo o sigue a otros usuarios para ver su contenido</p>
+          </div>
+          <PeopleYouMayKnow />
         </div>
       ) : (
         <div className="space-y-3 sm:space-y-4">
@@ -547,8 +589,13 @@ export default function Social() {
             })
 
             return (
+              <div key={post._id}>
+              {i === 2 && (
+                <div className="mb-3 sm:mb-4">
+                  <PeopleYouMayKnow />
+                </div>
+              )}
               <motion.div
-                key={post._id}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i * 0.05, 0.25) }}
@@ -806,7 +853,9 @@ export default function Social() {
                   <PostReactionButton
                     myReaction={myReaction}
                     likesCount={post.likes?.length || 0}
+                    reactionSummary={post.reactionSummary || []}
                     onReact={(emoji) => handleReact(post._id, emoji)}
+                    onShowReactors={() => setReactorsPost(post)}
                   />
 
                   <button
@@ -892,8 +941,14 @@ export default function Social() {
                   )}
                 </AnimatePresence>
               </motion.div>
+              </div>
             )
           })}
+          {posts.length > 0 && posts.length < 3 && (
+            <div className="mt-2">
+              <PeopleYouMayKnow />
+            </div>
+          )}
         </div>
       )}
 
@@ -905,30 +960,18 @@ export default function Social() {
         onAdopt={adoptRoutine}
       />
 
-      <ShareComposerModal
+      <SharePostSheet
         open={Boolean(sharePostTarget)}
+        post={sharePostTarget}
         onClose={() => !sharingPost && setSharePostTarget(null)}
-        onSubmit={submitSharePost}
-        title="Compartir publicación"
-        subtitle="Tu comentario + la publicación original adjunta"
-        initialContent=""
-        submitLabel="Compartir"
-        loading={sharingPost}
-        attachmentPreview={
-          sharePostTarget
-            ? {
-                authorName:
-                  typeof sharePostTarget.user === 'object'
-                    ? sharePostTarget.user?.name
-                    : 'Usuario',
-                snippet:
-                  sharePostTarget.workoutData?.name ||
-                  (sharePostTarget.content
-                    ? String(sharePostTarget.content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim().slice(0, 140)
-                    : 'Publicación')
-              }
-            : null
-        }
+        onShareCommunity={submitSharePost}
+        sharingCommunity={sharingPost}
+      />
+
+      <PostReactorsModal
+        open={Boolean(reactorsPost)}
+        onClose={() => setReactorsPost(null)}
+        reactors={reactorsPost?.reactors || []}
       />
     </div>
   )

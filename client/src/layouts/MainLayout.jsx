@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX } from 'react-icons/fi'
-import { useState, useEffect } from 'react'
+import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun } from 'react-icons/fi'
+import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
@@ -10,7 +10,13 @@ import api from '../utils/api'
 import { Link } from 'react-router-dom'
 import QyntraLogo from '../components/QyntraLogo'
 import { Avatar } from '../utils/avatarUtils'
-import { applyAppearanceSettings, cacheAppearance, loadCachedSettings, bindSystemThemeListener } from '../utils/theme'
+import {
+  applyAppearanceSettings,
+  cacheAppearance,
+  loadCachedSettings,
+  bindSystemThemeListener,
+  applyThemeMode
+} from '../utils/theme'
 import { StoryViewerProvider } from '../components/StoryViewerContext'
 
 const navItems = [
@@ -38,9 +44,56 @@ export default function MainLayout() {
   const [searchResults, setSearchResults] = useState([])
   const [showSearch, setShowSearch] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const [themeMode, setThemeMode] = useState(() => {
+    const id = user?.id || user?._id
+    const cached = id ? loadCachedSettings(id) : loadCachedSettings(null)
+    return cached?.theme === 'light' ? 'light' : 'dark'
+  })
+  const avatarMenuRef = useRef(null)
   
   const isDashboard = location.pathname === '/dashboard'
   const canGoBack = !isDashboard && location.pathname !== '/'
+
+  useEffect(() => {
+    if (!avatarMenuOpen) return
+    const onDoc = (e) => {
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target)) {
+        setAvatarMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+    }
+  }, [avatarMenuOpen])
+
+  const persistTheme = async (nextTheme) => {
+    setThemeMode(nextTheme)
+    applyThemeMode(nextTheme)
+    const id = user?.id || user?._id
+    const cached = (id ? loadCachedSettings(id) : null) || {}
+    const next = { ...cached, theme: nextTheme, colorTheme: cached.colorTheme || 'orange' }
+    applyAppearanceSettings(next)
+    cacheAppearance(next)
+    if (id) {
+      try {
+        const saved = localStorage.getItem(`settings_${id}`)
+        const parsed = saved ? JSON.parse(saved) : {}
+        const merged = { ...parsed, ...next, theme: nextTheme }
+        localStorage.setItem(`settings_${id}`, JSON.stringify(merged))
+        await api.put('/users/profile', { settings: merged })
+      } catch {
+        /* local already updated */
+      }
+    }
+  }
+
+  const toggleTheme = () => {
+    persistTheme(themeMode === 'light' ? 'dark' : 'light')
+  }
   
   useEffect(() => { 
     fetchNotifications()
@@ -72,6 +125,7 @@ export default function MainLayout() {
           cacheAppearance(data.settings)
           localStorage.setItem(`settings_${id}`, JSON.stringify(data.settings))
           bindSystemThemeListener(() => data.settings.theme || 'dark')
+          setThemeMode(data.settings.theme === 'light' ? 'light' : data.settings.theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : 'dark')
         }
       } catch {
         /* keep cached */
@@ -270,8 +324,14 @@ export default function MainLayout() {
               </NavLink>
             ))}
             
-            <div className="flex items-center gap-1.5 sm:gap-3 ml-1 sm:ml-2 pl-1.5 sm:pl-2 border-l border-white/10">
-              <NavLink to="/profile" className="flex items-center gap-2">
+            <div className="relative flex items-center gap-1.5 sm:gap-3 ml-1 sm:ml-2 pl-1.5 sm:pl-2 border-l border-white/10" ref={avatarMenuRef}>
+              <button
+                type="button"
+                onClick={() => setAvatarMenuOpen((v) => !v)}
+                className="flex items-center gap-2 rounded-lg p-0.5 transition hover:bg-white/5"
+                aria-label="Menú de cuenta"
+                aria-expanded={avatarMenuOpen}
+              >
                 <div className="relative">
                   <Avatar avatar={user?.avatar} name={user?.name} size="sm" />
                   {unreadCount > 0 && (
@@ -279,7 +339,93 @@ export default function MainLayout() {
                   )}
                 </div>
                 <span className="hidden md:block text-sm">{user?.name}</span>
-              </NavLink>
+              </button>
+
+              <AnimatePresence>
+                {avatarMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                    className="absolute right-0 top-full mt-2 w-64 z-[60] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
+                      <p className="font-semibold text-sm truncate">{user?.name}</p>
+                      <p className="text-xs text-[color:var(--text-muted)] truncate">{user?.email}</p>
+                    </div>
+                    <div className="p-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAvatarMenuOpen(false)
+                          navigate('/profile')
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                      >
+                        <FiUser size={16} className="text-primary-500" />
+                        Ver perfil
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAvatarMenuOpen(false)
+                          navigate('/settings')
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                      >
+                        <FiSettings size={16} className="text-accent-cyan" />
+                        Configuración
+                      </button>
+
+                      <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl">
+                        <span className="flex items-center gap-3 text-sm">
+                          {themeMode === 'light' ? (
+                            <FiSun size={16} className="text-accent-yellow" />
+                          ) : (
+                            <FiMoon size={16} className="text-accent-purple" />
+                          )}
+                          Tema {themeMode === 'light' ? 'claro' : 'oscuro'}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={themeMode === 'dark'}
+                          onClick={toggleTheme}
+                          className={`relative h-7 w-12 rounded-full transition-colors ${
+                            themeMode === 'dark' ? 'bg-primary-500' : 'bg-gray-300'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow transition-transform ${
+                              themeMode === 'dark' ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          >
+                            {themeMode === 'dark' ? (
+                              <FiMoon size={12} className="text-primary-500" />
+                            ) : (
+                              <FiSun size={12} className="text-amber-500" />
+                            )}
+                          </span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setAvatarMenuOpen(false)
+                          await logout()
+                          navigate('/', { replace: true })
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-400 hover:bg-red-500/10 transition"
+                      >
+                        <FiLogOut size={16} />
+                        Cerrar sesión
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {user?.role === 'admin' && (
                 <NavLink to="/admin" className="hidden sm:inline-flex px-2 py-1 bg-accent-purple/20 text-accent-purple text-xs rounded-full">Admin</NavLink>
               )}
@@ -288,7 +434,7 @@ export default function MainLayout() {
                   await logout()
                   navigate('/', { replace: true })
                 }}
-                className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500"
+                className="hidden sm:inline-flex p-1.5 sm:p-2 text-gray-400 hover:text-red-500"
                 aria-label="Cerrar sesión"
               >
                 <FiLogOut size={18} />

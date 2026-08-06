@@ -37,8 +37,13 @@ function mapParticipant(row, userMap, includeLevel = false) {
     user: mapUserBrief(u, includeLevel) || row.user_id,
     progress: Number(row.progress) || 0,
     completed: !!row.completed,
-    completedAt: row.completed ? row.joined_at : null,
-    joinedAt: row.joined_at
+    completedAt: row.completed_at || (row.completed ? row.joined_at : null),
+    joinedAt: row.joined_at,
+    status: row.status || 'joined',
+    startedAt: row.started_at || null,
+    pausedAt: row.paused_at || null,
+    accumulatedMs: Number(row.accumulated_ms) || 0,
+    lastProgressAt: row.last_progress_at || null
   }
 }
 
@@ -73,6 +78,16 @@ async function hydrateChallenge(row, { includeLevel = false, sortParticipants = 
   return mapped
 }
 
+async function getDefaultXpForType(type) {
+  const { data } = await supabaseAdmin
+    .from('challenge_types')
+    .select('default_xp')
+    .eq('id', type)
+    .eq('active', true)
+    .maybeSingle()
+  return data?.default_xp || 50
+}
+
 async function createChallengeWithJoin({
   title,
   description,
@@ -87,6 +102,11 @@ async function createChallengeWithJoin({
   featured = false,
   isPublic = true
 }) {
+  let xp = reward?.xp
+  if (!xp) {
+    xp = await getDefaultXpForType(type)
+  }
+
   const { data: challenge, error } = await supabaseAdmin
     .from('challenges')
     .insert({
@@ -97,7 +117,7 @@ async function createChallengeWithJoin({
       unit: unit || null,
       start_date: startDate,
       end_date: endDate,
-      reward: { ...(reward || { xp: 100 }), featured, isPublic },
+      reward: { ...(reward || {}), xp, featured, isPublic },
       image: image || null,
       created_by: createdBy
     })
@@ -110,13 +130,114 @@ async function createChallengeWithJoin({
     challenge_id: challenge.id,
     user_id: createdBy,
     progress: 0,
-    completed: false
+    completed: false,
+    status: 'joined'
   })
 
   return challenge
 }
 
-// Get all active challenges
+// ─── Challenge Types ────────────────────────────────────────────────
+
+router.get('/types', authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('challenge_types')
+      .select('*')
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+
+    if (error) throw error
+    res.json(data || [])
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener tipos de reto', error: error.message })
+  }
+})
+
+// Admin CRUD for challenge types
+router.get('/admin/types', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('challenge_types')
+      .select('*')
+      .order('sort_order', { ascending: true })
+
+    if (error) throw error
+    res.json(data || [])
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener tipos', error: error.message })
+  }
+})
+
+router.post('/admin/types', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id, name, unit, default_xp, icon, sort_order, active } = req.body
+    if (!id || !name) {
+      return res.status(400).json({ message: 'ID y nombre son requeridos' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('challenge_types')
+      .insert({
+        id,
+        name,
+        unit: unit || 'unidades',
+        default_xp: default_xp || 50,
+        icon: icon || '🎯',
+        sort_order: sort_order || 99,
+        active: active !== false
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.status(201).json(data)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al crear tipo', error: error.message })
+  }
+})
+
+router.put('/admin/types/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { name, unit, default_xp, icon, sort_order, active } = req.body
+    const updates = { updated_at: new Date().toISOString() }
+    if (name !== undefined) updates.name = name
+    if (unit !== undefined) updates.unit = unit
+    if (default_xp !== undefined) updates.default_xp = default_xp
+    if (icon !== undefined) updates.icon = icon
+    if (sort_order !== undefined) updates.sort_order = sort_order
+    if (active !== undefined) updates.active = active
+
+    const { data, error } = await supabaseAdmin
+      .from('challenge_types')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.json(data)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar tipo', error: error.message })
+  }
+})
+
+router.delete('/admin/types/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('challenge_types')
+      .delete()
+      .eq('id', req.params.id)
+
+    if (error) throw error
+    res.json({ message: 'Tipo eliminado' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al eliminar tipo', error: error.message })
+  }
+})
+
+// ─── Challenge CRUD & Listing ───────────────────────────────────────
+
 router.get('/', authenticate, async (req, res) => {
   try {
     const { active = true, featured } = req.query
@@ -149,7 +270,6 @@ router.get('/', authenticate, async (req, res) => {
   }
 })
 
-// Get user's challenges
 router.get('/my', authenticate, async (req, res) => {
   try {
     const { data: parts, error: partsError } = await supabaseAdmin
@@ -175,7 +295,6 @@ router.get('/my', authenticate, async (req, res) => {
   }
 })
 
-// Get single challenge
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -193,7 +312,6 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 })
 
-// Create challenge
 router.post('/', authenticate, async (req, res) => {
   try {
     const { title, type, goal, startDate, endDate, reward, targetUsers, description, unit, image } =
@@ -224,7 +342,7 @@ router.post('/', authenticate, async (req, res) => {
         unit,
         startDate,
         endDate,
-        reward: reward || { xp: 100 },
+        reward: reward || {},
         image,
         createdBy: req.user.id,
         isPublic: false
@@ -262,7 +380,7 @@ router.post('/', authenticate, async (req, res) => {
         unit,
         startDate,
         endDate,
-        reward: reward || { xp: 100 },
+        reward: reward || {},
         image,
         createdBy: req.user.id,
         isPublic: true
@@ -287,7 +405,8 @@ router.post('/', authenticate, async (req, res) => {
   }
 })
 
-// Join challenge
+// ─── Join / Leave ───────────────────────────────────────────────────
+
 router.post('/:id/join', authenticate, async (req, res) => {
   try {
     const { data: challenge } = await supabaseAdmin
@@ -319,7 +438,8 @@ router.post('/:id/join', authenticate, async (req, res) => {
       challenge_id: challenge.id,
       user_id: req.user.id,
       progress: 0,
-      completed: false
+      completed: false,
+      status: 'joined'
     })
 
     await notifyUser({
@@ -340,7 +460,6 @@ router.post('/:id/join', authenticate, async (req, res) => {
   }
 })
 
-// Leave challenge
 router.delete('/:id/leave', authenticate, async (req, res) => {
   try {
     const { data: challenge } = await supabaseAdmin
@@ -365,7 +484,125 @@ router.delete('/:id/leave', authenticate, async (req, res) => {
   }
 })
 
-// Update progress
+// ─── Session flow: Start / Pause / Resume ───────────────────────────
+
+router.post('/:id/start', authenticate, async (req, res) => {
+  try {
+    const { data: participant } = await supabaseAdmin
+      .from('challenge_participants')
+      .select('*')
+      .eq('challenge_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    if (!participant) {
+      return res.status(400).json({ message: 'No participas en este reto' })
+    }
+    if (participant.completed) {
+      return res.status(400).json({ message: 'Ya completaste este reto' })
+    }
+    if (participant.status === 'active') {
+      return res.status(400).json({ message: 'El reto ya está en curso' })
+    }
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('challenge_participants')
+      .update({
+        status: 'active',
+        started_at: now,
+        paused_at: null
+      })
+      .eq('challenge_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.json({ message: 'Reto iniciado', participant: data })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al iniciar reto', error: error.message })
+  }
+})
+
+router.post('/:id/pause', authenticate, async (req, res) => {
+  try {
+    const { data: participant } = await supabaseAdmin
+      .from('challenge_participants')
+      .select('*')
+      .eq('challenge_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    if (!participant) {
+      return res.status(400).json({ message: 'No participas en este reto' })
+    }
+    if (participant.status !== 'active') {
+      return res.status(400).json({ message: 'El reto no está activo' })
+    }
+
+    const now = Date.now()
+    const startedMs = new Date(participant.started_at).getTime()
+    const elapsedSinceStart = now - startedMs
+    const newAccumulated = (Number(participant.accumulated_ms) || 0) + elapsedSinceStart
+
+    const { data, error } = await supabaseAdmin
+      .from('challenge_participants')
+      .update({
+        status: 'paused',
+        paused_at: new Date().toISOString(),
+        accumulated_ms: newAccumulated
+      })
+      .eq('challenge_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.json({ message: 'Reto pausado', participant: data })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al pausar reto', error: error.message })
+  }
+})
+
+router.post('/:id/resume', authenticate, async (req, res) => {
+  try {
+    const { data: participant } = await supabaseAdmin
+      .from('challenge_participants')
+      .select('*')
+      .eq('challenge_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    if (!participant) {
+      return res.status(400).json({ message: 'No participas en este reto' })
+    }
+    if (participant.status !== 'paused') {
+      return res.status(400).json({ message: 'El reto no está pausado' })
+    }
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('challenge_participants')
+      .update({
+        status: 'active',
+        started_at: now,
+        paused_at: null
+      })
+      .eq('challenge_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.json({ message: 'Reto reanudado', participant: data })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al reanudar reto', error: error.message })
+  }
+})
+
+// ─── Progress ───────────────────────────────────────────────────────
+
 router.put('/:id/progress', authenticate, async (req, res) => {
   try {
     const { progress } = req.body
@@ -395,9 +632,16 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'No participas en este reto' })
     }
 
+    if (participant.status !== 'active') {
+      return res.status(400).json({ message: 'Debes tener el reto activo para actualizar progreso' })
+    }
+
     const { data: updatedParticipant, error } = await supabaseAdmin
       .from('challenge_participants')
-      .update({ progress })
+      .update({
+        progress,
+        last_progress_at: new Date().toISOString()
+      })
       .eq('challenge_id', challenge.id)
       .eq('user_id', req.user.id)
       .select('*')
@@ -440,7 +684,8 @@ router.put('/:id/progress', authenticate, async (req, res) => {
   }
 })
 
-// Complete challenge and get XP
+// ─── Complete ───────────────────────────────────────────────────────
+
 router.post('/:id/complete', authenticate, async (req, res) => {
   try {
     const { data: challenge } = await supabaseAdmin
@@ -473,9 +718,21 @@ router.post('/:id/complete', authenticate, async (req, res) => {
     }
 
     const completedAt = new Date().toISOString()
+
+    // Compute final elapsed time
+    let finalAccumulatedMs = Number(participant.accumulated_ms) || 0
+    if (participant.status === 'active' && participant.started_at) {
+      finalAccumulatedMs += Date.now() - new Date(participant.started_at).getTime()
+    }
+
     await supabaseAdmin
       .from('challenge_participants')
-      .update({ completed: true })
+      .update({
+        completed: true,
+        status: 'completed',
+        completed_at: completedAt,
+        accumulated_ms: finalAccumulatedMs
+      })
       .eq('challenge_id', challenge.id)
       .eq('user_id', req.user.id)
 
@@ -597,7 +854,18 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         user: req.user.id,
         progress: Number(participant.progress) || 0,
         completed: true,
-        completedAt
+        completedAt,
+        accumulatedMs: finalAccumulatedMs
+      },
+      challengeData: {
+        challengeId: challenge.id,
+        title: challenge.title,
+        type: challenge.type,
+        goal: challenge.goal,
+        unit: challenge.unit,
+        xpAwarded: challenge.reward?.xp || 100,
+        accumulatedMs: finalAccumulatedMs,
+        createdBy: challenge.created_by
       },
       motivationalMessage: randomMessage,
       unlockedBadges: unlockedBadges.map((b) => ({ id: b.id, name: b.name, icon: b.icon })),
@@ -624,7 +892,8 @@ router.post('/:id/complete', authenticate, async (req, res) => {
   }
 })
 
-// Get leaderboard
+// ─── Leaderboard ────────────────────────────────────────────────────
+
 router.get('/:id/leaderboard', authenticate, async (req, res) => {
   try {
     const { data: challenge } = await supabaseAdmin

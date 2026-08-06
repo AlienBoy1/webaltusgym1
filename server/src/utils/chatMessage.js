@@ -27,6 +27,9 @@ function previewLabel(text, attachment) {
   if (attachment?.type === 'story') {
     return text?.trim() || '📸 Estado de Qyntra'
   }
+  if (attachment?.type === 'post') {
+    return text?.trim() || `📝 ${attachment.authorName || 'Publicación'} · ${attachment.snippet || 'Qyntra Gym'}`
+  }
   return text || ''
 }
 

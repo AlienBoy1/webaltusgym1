@@ -52,20 +52,26 @@ async function enrichPosts(posts, viewerId = null) {
       : Promise.resolve({ data: [] })
   ])
 
+  const likeUserIds = (likes || []).map((l) => l.user_id)
   const authorIds = [
     ...posts.map((p) => p.user_id),
     ...(sharedRows || []).map((p) => p.user_id),
-    ...(comments || []).map((c) => c.user_id)
+    ...(comments || []).map((c) => c.user_id),
+    ...likeUserIds
   ]
   const userMap = await getProfilesMap(authorIds)
 
   const likesByPost = {}
   const reactionByPostUser = {}
+  const reactionSummaryByPost = {}
   for (const l of likes || []) {
     if (!likesByPost[l.post_id]) likesByPost[l.post_id] = []
     likesByPost[l.post_id].push(l.user_id)
     if (!reactionByPostUser[l.post_id]) reactionByPostUser[l.post_id] = {}
-    reactionByPostUser[l.post_id][l.user_id] = l.emoji || '❤️'
+    const emoji = l.emoji || '❤️'
+    reactionByPostUser[l.post_id][l.user_id] = emoji
+    if (!reactionSummaryByPost[l.post_id]) reactionSummaryByPost[l.post_id] = {}
+    reactionSummaryByPost[l.post_id][emoji] = (reactionSummaryByPost[l.post_id][emoji] || 0) + 1
   }
 
   const commentsByPost = {}
@@ -122,6 +128,21 @@ async function enrichPosts(posts, viewerId = null) {
       }
     }
 
+    const summaryMap = reactionSummaryByPost[row.id] || {}
+    const reactionSummary = Object.entries(summaryMap)
+      .map(([emoji, count]) => ({ emoji, count }))
+      .sort((a, b) => b.count - a.count)
+
+    const reactors = Object.entries(reactionByPostUser[row.id] || {}).map(([uid, emoji]) => {
+      const u = userMap[uid]
+      return {
+        userId: uid,
+        emoji,
+        name: u?.name || 'Usuario',
+        avatar: u?.avatar || null
+      }
+    })
+
     return {
       ...mapPost(row, {
         user: mappedAuthor,
@@ -130,6 +151,8 @@ async function enrichPosts(posts, viewerId = null) {
         workoutData
       }),
       myReaction: viewerId ? reactionByPostUser[row.id]?.[viewerId] || null : null,
+      reactionSummary,
+      reactors,
       sharedFrom
     }
   })
@@ -187,15 +210,46 @@ router.get('/feed', authenticate, async (req, res) => {
 // Get user posts (for profile view)
 router.get('/user/:userId/posts', authenticate, async (req, res) => {
   try {
+    const targetId = req.params.userId
+    const viewerId = req.user.id
+
+    if (targetId !== viewerId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('settings')
+        .eq('id', targetId)
+        .maybeSingle()
+
+      const isPublic = profile?.settings?.privacy?.profilePublic !== false
+      if (!isPublic) {
+        const { data: follow } = await supabaseAdmin
+          .from('follows')
+          .select('id')
+          .eq('follower_id', viewerId)
+          .eq('following_id', targetId)
+          .maybeSingle()
+
+        if (!follow) {
+          return res.json({
+            posts: [],
+            locked: true,
+            reason: 'private_profile',
+            message:
+              'Este usuario no tiene su perfil público para mostrar sus publicaciones a todo el mundo. Solicita seguirlo para ver el contenido que comparte.'
+          })
+        }
+      }
+    }
+
     const { data: posts, error } = await supabaseAdmin
       .from('posts')
       .select('*')
-      .eq('user_id', req.params.userId)
+      .eq('user_id', targetId)
       .order('created_at', { ascending: false })
       .limit(50)
 
     if (error) throw error
-    res.json(await enrichPosts(posts || [], req.user.id))
+    res.json(await enrichPosts(posts || [], viewerId))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener publicaciones', error: error.message })
   }

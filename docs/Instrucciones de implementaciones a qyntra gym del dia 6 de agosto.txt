@@ -1,0 +1,133 @@
+Instrucciones de implementaciones a Qyntra del dia 6 de Agosto
+
+
+-Solucionar el apartado de reacciones en las publicaciones ya que no funciona correctamnnete, la app debe de dejar además, poder ver quien reaccionó a la publicación y las distintas reacciones se van alojando a un lado del icono de corazon (asi como se anidan las reacciones de una publicación en Facebook)
+
+-La app ahorita esta contando como si fuera viernes y no lo es, es jueves, hay que solucionar ese aartado también
+
+-En las configuraciones, cuando un usuario active la función de perfil publico, todos los usuarios que no lo sigan pero que lo encuentren buscándolo en la app  o interactuando con su perfil para verlo no deben de poder ver sus publicaciones y la app de manera nativa debe decirle a el usuario que al usuario que esta viendo no tiene su perfil publico para mostrar sus publicaciones a todo el mundo, que solicite seguirlo para poder ver el contenido que comparte (Esto genera mas privacidad entre usuarios que solo quieren compartir su contenido con quienes lo siguen)
+
+-El buzon de notificaciones debe de tener la función de poder marcarlas como leida y al marcarlas como leidas se deben de alojar en un filtro llamado 'Leidas', las notificaciones leidas se pueden borrar y las no leidas no
+
+-Cuando le doy clic a configuración la app parpadea en negro para posteriormente seguir en tema claro (Esto solo cuando el usuario tiene el modo claro activo) hay que solucionar ese bug para que no parpadee asi
+
+-En móvil, no se encuentra en el navbar superior el icono de acceso rápido a configuración y ordenador si, ponerlo en móvil hará que se sature, asi que hay que hacer que al darle clic al icono de la imagen o avatar del usuario en la navbar superior se desplieguen de forma nativa 4 opciones; 1.- Ver perfil 2.- Configuración 3.- Cerrar sesión y 4.- un switch o toogle moderno, profesional premium que sirva para intercalar entre tema claro y oscuro, todas funcionando en su totalidad
+
+-En comunidad, es necesario que el usuario al scrollear durante esta pantalla, la app le ofrezca un apartado de 'Personas que quizá conoczas' exactamente igual a como funciona ese apartado con Facebook, te mostrara cards con perfiles que no sigue el usuario, tendrá dos botones adicionales a su imagen y su nombre como información, el primer botón será 'Seguir' el cual funciona para solicitud de seguimiento al usuario y el  otro botón será de 'Ver perfil' el cual al cliquearlo llevara al usuario al perfil del usuario en cuestión, nota muy importante; mientras la app no tenga tantos usuarios, basta con que la app muestre a los pocos usuarios y si no hay ningún usuario que no siga el usuario que esta explorando comunidad para que le aparezcan las personas que quizá conozca, esta función igual debe de aparecer, pero diciendo 'No hay personas para recomendar' 
+
+
+El sistema de creación de retos debe de tener mas administración en cuestión a cuanto xp se puede ganar con los retos que se van creando, las variantes de retos tendrán xp específico por tipo de entrenamiento
+-Entrenamiento = 125 xp
+-Racha = 175 xp
+-Calorias = 100 xp
+- Distancia = 110 xp
+-Peso levantado = 200 xp
+-Social = 75 xp
+-Personalizado = 50 xp
+Todos estos valores de xp los debe de pdoer adminsitrar y configuraar el administrador desde el apartado de configuración en un apartado específico para retos, donde pueda agregar tipode entrenamiento adicionales y su valor de experiencia como editar los ya existentes. Al momento de crear un reto cada opción de tipo de entrenamiento debe contener una etiqueta informativa de cuanto xp otorga ese tip de entrenamiento
+
+Los usuarios que se registren a los retos y al querer realizarlos, la forma en como los completan debe de gestionarse mejor, es decir, primero es unirse al reto, una vez que se une al reto, no debe de poder actualizar su progreso solamente y ya darle en actualizar, tiene que haber una opción que diga 'Iniciar reto' donde empiece a contar su tiempo, entonces asi una vez iniciado el reto el usuario ya podrá actualizar su progreso y la app al detectar que el usuario ya escribió el valor del objetivo registrado del reto para el tiempo y habilita al usuario el botón de 'actualizar' si el reto se completo se hace la animación igual a la de cuando se termina un entrenamiento y el flujo debe de ser igual, se le debe de felicitar al usuario y preguntarle si desea compartir su reto logrado a la comundad (La informacióncompartida de un reto es toda la info general del reto como titulo, ojbetivo, creador del reto (todo esto adjunto a la publicación compartida) y como contenido del usuario se adjuntara su tiempo realizado, su objetivo alcanzado y la experiencia adquirida a su perfil completar el reto, si un usuario durante su reto en progreso actualiza su progreso pero desea descansar debe de tener una funci´n especial de 'Pausar reto' la cual al cliquearse el timmer del reto para, pero, no se puede actualizar progreso si el reto esta pausado, el usuario debe de reanudar el reto para poder seguir actualizando progreso hasta completar el objetivo, todo esto nativo de la aplicación cada perfil debe de tener un apartado en su pestaña de su perfil similar a la de 'mis entrenamientos' pero esta se debe llamar 'mis retos' y al entrar se verán sus retos ya realizados, el flujo debe de ser el mismo que el de la pestaña de 'mis entrenamientos' pero a ambas interfaces ya sea al ver un reto dentro de mis retos un entrenamiento dentro de mis entrenamientos, se debe de tener la opción de compartirlo si el usuario desea
+
+-La card del mensaje motivacional y bienvenida del usuario debe de profesionalizarse más, verse mas premium y tener el dble de mensajes para alternar de los que tiene ahora
+
+-El recuadro detrás de la foto de perfil de cada usuario debe funcionar como portada, similar a como se manejan las fotos de portada de los usuarios en fb, debe de haber una opción para poder editarla en el perfil de cada usuario, asi cada usuario podrá editar su foto de prtada como desee, esta foto debe de adaptarse tanto en mobiles como en odenadores, viéndose igual, correcta, bien ajustada y con la resolución que se supone se subió
+
+-La ventana emergente de ver todas, dentro del apartado de mis insignias en la interfasz del perfil del usuario tiene mala responsividad y estructuración, falta profesionalizarla y volverla mas premium y adaptativa a la app 
+
+-Las hisotrias que se visualizan desde el apartado de comunidad deben de tener una etiqueta de la hora a la que fue subida esta hisotira, esta alojada a un lado del nombre del usuario en l historia que se esta visualizando en ese momento
+
+-Las historias deben de contener en su barra superir que identifica que historia es la animación de progresión para pasar a la siguiente historia, asi como Instagram
+
+-Las publicaciónes del apartado de comunidad al darle a compartir a una, la app debe de mostrar opciones, compartir con la comunidad, compartir con un usuario en especifico (Al darle clic a esta se desplza un menú emergente nativo de la app para seleccionar a el usuario o los usuarios a los que se les desea compartir dicha publicación) la forma de compartir una publicación con otros usuarios es similar a la de responderle historias a los usuarios o compartir una historia con un usuario, se adjunta el contenido de la publicación original y se escribe un mensaje adicional si se desea antes de enviar. también, de momento, quiero que la app permita compartir publicaciones en whatsapp, que al darle compartir y seleccionar whatsapp, se adjunte la publicación a whatsapp con diseño nativo de la aplicación qyntragym con el contenido referenciado que se esta intentando compartir, incluso al darle compartir a una publicación en comunidad, debe de permitir también 'añadirlo a historias' el cual si se selecciona hace una imagne miniatura de la publicación a compartir y la adjunta a las historias y ya solo lleva a el usuario a ese apartado para escribir algo en descripción o simplemente darle a publicar para posteriormente poder publicar esa publicación compartida añadida a las historias (Es totalmente igual que cuando se comaprte una publicación de insta a las historias de isnta y en la historia se ve la publicación como tal)
+
+
+-Profesonalizar y volver extremadamente mas premium el dashboard inicial al que se le redirige al usuario justo después de iniciar sesión
+
+
+NOTAS: todas las implementaciónes que se redactaron aquí deben de funcionar en su totalidad, deben de aplicarse de forma adaptativa a el diseño y estructura ya de la aplicación, de forma que todas y cada una de las implementaciones sean y se vean completamente nativas de la aplicación, 1005 responsivas en todo tipo de dispositivo y sin ningún error lógico, ni de diseño, ni de animación ni de transición
+
+-Toda implementación debe de ser documentada al final de este aarchivo con el mismo nivel de redacción que el mio y en primera persona, abordando cada apartado con temas de que se hizo, para que se hizo, como se hizo, que código se utilizo y cual es la función de ese código
+
+-No hacer ninguna otra acción que no venga aquí como instrucción mas que lo que se esta pidiendo, 100% funcional, lógico y sin ningún margen de error
+
+
+================================================================================
+DOCUMENTACIÓN DE LO IMPLEMENTADO — 6 de Agosto
+================================================================================
+
+Reacciones en publicaciones
+Qué hice: corregí el sistema de reacciones para que se vea y se use como en Facebook.
+Para qué: poder reaccionar con varias emociones, ver el resumen anidado al lado del corazón y saber quién reaccionó.
+Cómo: el backend en enrichPosts ahora arma reactionSummary y reactors desde post_likes (emoji por usuario). En el cliente, PostReactionButton muestra hasta 3 emojis apilados junto al contador y abre PostReactorsModal al tocarlos.
+Código clave: PostReactionButton.jsx (UI + picker), PostReactorsModal.jsx (lista de quién reaccionó), server/src/routes/social.js → enrichPosts (agrega summary/reactors), Social.jsx y ProfileFeed.jsx (onShowReactors / actualización local al reaccionar).
+
+Día de la semana en clases (jueves vs viernes)
+Qué hice: dejé de usar el nombre del día en español del navegador y pasé a número de día JS.
+Para qué: evitar que por locale/casing la app marcara mal el día (p. ej. viernes en lugar de jueves) y que domingo (0) se filtrara por ser falsy.
+Cómo: selectedDay inicia con new Date().getDay() y el filtro compara dayOfWeek == null vs number.
+Código: client/src/pages/user/Classes.jsx — arreglo DAYS + filtro numérico.
+
+Perfil no público / privacidad de publicaciones
+Qué hice: si el usuario desactiva “Perfil Público”, quien no lo sigue no puede ver sus publicaciones.
+Para qué: dar privacidad real y empujar a pedir seguimiento para ver contenido.
+Cómo: GET /social/user/:userId/posts revisa settings.privacy.profilePublic; si es privado y no hay follow, responde { locked: true, message }. UserProfile muestra el mensaje nativo pidiendo seguir.
+Código: server/src/routes/social.js (gating), UserProfile.jsx (postsLocked + copy), Settings.jsx (descripción clara del toggle).
+
+Buzón de notificaciones
+Qué hice: filtros Todas / Sin leer / Leídas, marcar como leída y borrar solo leídas.
+Para qué: ordenar el buzón y evitar borrar lo que aún no se revisó.
+Cómo: filtro client-side en Notifications.jsx; DELETE /notifications/:id solo si read === true.
+Código: Notifications.jsx, server/src/routes/notifications.js, notificationStore.js.
+
+Parpadeo negro al abrir Configuración (modo claro)
+Qué hice: eliminé el mount con theme: 'dark' hardcoded y el auto-save antes de hidratar.
+Para qué: que el modo claro no se pise un segundo a oscuro.
+Cómo: inicializo desde loadCachedSettings, flag hydrated, applyAppearanceSettings y auto-save solo después de cargar.
+Código: client/src/pages/user/Settings.jsx + theme.js (loadCachedSettings).
+
+Menú del avatar en navbar (móvil y desktop)
+Qué hice: al tocar el avatar se abre un menú nativo con Ver perfil, Configuración, Cerrar sesión y un toggle premium de tema claro/oscuro.
+Para qué: acceder a configuración en móvil sin saturar el header (el icono de settings sigue oculto en sm).
+Cómo: dropdown en MainLayout con persistTheme (localStorage + PUT /users/profile).
+Código: client/src/layouts/MainLayout.jsx.
+
+Personas que quizá conozcas (Comunidad)
+Qué hice: bloque tipo Facebook al scrollear el feed (tras la 2ª publicación, o al final si hay pocas).
+Para qué: descubrir gente y enviar solicitudes de seguimiento.
+Cómo: GET /users/search?filter=not_following, cards con Seguir / Ver perfil, y empty state “No hay personas para recomendar”.
+Código: PeopleYouMayKnow.jsx + inserción en Social.jsx.
+
+Retos: XP por tipo + administración + flujo Iniciar/Pausar/Completar + Mis retos
+Qué hice: tipos con XP por defecto, CRUD admin, sesión de reto con timer, y pestaña Mis retos en perfil.
+Para qué: administrar XP, completar retos como un entrenamiento real y compartir el logro.
+Cómo: migración challenge_types + columnas de sesión en challenge_participants; APIs /types, /admin/types, /:id/start|pause|resume; progreso solo en status=active; confetti + share al completar; Profile “Mis Retos”.
+Código: supabase/migrations/20260806_challenge_types_and_session.sql, server/src/routes/challenges.js, admin/Settings.jsx (tab Retos), Challenges.jsx, Profile.jsx (MyChallengesSection). Mis entrenamientos ya tenía Compartir en Comunidad (MyWorkouts.jsx).
+
+Card motivacional y dashboard premium
+Qué hice: dupliqué los mensajes motivacionales (~48) y mostré dos líneas; profesionalicé el hero del dashboard.
+Para qué: bienvenida más premium justo después del login.
+Cómo: dos seeds distintos en MOTIVATIONAL_MESSAGES, hero con texturas/orbes y motion.
+Código: client/src/pages/user/Dashboard.jsx.
+
+Foto de portada de perfil
+Qué hice: el banner detrás del avatar es portada editable (object-cover, responsive).
+Para qué: que cada usuario personalice su perfil como en Facebook.
+Cómo: se guarda coverUrl dentro de profile JSON vía PUT /users/profile (merge), botón “Editar portada” en Profile propio; UserProfile la muestra.
+Código: Profile.jsx, UserProfile.jsx, server/src/routes/users.js.
+
+Modal “Ver todas” de insignias
+Qué hice: rediseñé BadgesModal a bottom-sheet móvil / modal desktop, sticky header, grid adaptativo y targets táctiles grandes.
+Para qué: que sea usable y premium en cualquier pantalla.
+Código: BadgesModal.jsx.
+
+Historias: hora + barra de progreso tipo Instagram
+Qué hice: timestamp relativo junto al nombre y progreso JS sincronizado con pause/resume (remainingMs).
+Para qué: saber cuándo se subió y ver el avance real de cada historia.
+Código: StoriesRail.jsx (formatDistanceToNow + progressPct con requestAnimationFrame).
+
+Compartir publicaciones (comunidad / DM / WhatsApp / historias)
+Qué hice: sheet de opciones al compartir: comunidad, usuarios (chat con attachment type post), WhatsApp con tarjeta canvas Qyntra, y añadir a historias (draft en sessionStorage + compose).
+Para qué: viralizar contenido como en Instagram/Facebook.
+Código: SharePostSheet.jsx, Social.jsx/UserProfile.jsx, Chat.jsx (PostAttachmentBubble), chatMessage.js (preview post), StoriesRail (evento qyntra:open-story-compose).
+
+NOTA OPERATIVA: aplicar en Supabase la migración 20260806_challenge_types_and_session.sql para tipos de reto y campos de sesión de participantes.

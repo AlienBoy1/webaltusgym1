@@ -121,6 +121,7 @@ export const useNotificationStore = create((set, get) => ({
       })
     } catch (error) {
       console.error('Error deleting notification:', error)
+      throw error
     }
   },
 

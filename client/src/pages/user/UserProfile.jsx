@@ -12,7 +12,8 @@ import {
   FiCheck,
   FiX,
   FiMessageCircle,
-  FiClock
+  FiClock,
+  FiLock
 } from 'react-icons/fi'
 import api from '../../utils/api'
 import { useAuthStore } from '../../store/authStore'
@@ -20,6 +21,8 @@ import BadgesModal from '../../components/BadgesModal'
 import ProfileFeed from '../../components/ProfileFeed'
 import ProfileAvatar from '../../components/ProfileAvatar'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
+import SharePostSheet from '../../components/SharePostSheet'
+import PostReactorsModal from '../../components/PostReactorsModal'
 import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import { useAppDialog } from '../../components/AppDialog'
@@ -47,6 +50,7 @@ export default function UserProfile() {
   const [posts, setPosts] = useState([])
   const [showPosts, setShowPosts] = useState(false)
   const [loadingPosts, setLoadingPosts] = useState(false)
+  const [postsLocked, setPostsLocked] = useState(false)
   const [listModal, setListModal] = useState(null) // 'followers' | 'following' | null
   const [listUsers, setListUsers] = useState([])
   const [loadingList, setLoadingList] = useState(false)
@@ -54,6 +58,9 @@ export default function UserProfile() {
   const [loadingRequests, setLoadingRequests] = useState(false)
   const [hasStories, setHasStories] = useState(false)
   const [selectedRoutine, setSelectedRoutine] = useState(null)
+  const [sharePostTarget, setSharePostTarget] = useState(null)
+  const [sharingPost, setSharingPost] = useState(false)
+  const [reactorsPost, setReactorsPost] = useState(null)
 
   const isOwnProfile = currentUser?._id === id
 
@@ -118,7 +125,7 @@ export default function UserProfile() {
       const { data } = await api.get(`/social/${id}/follow-status`)
       setFollowStatus(data)
 
-      if (data.isFollowing && currentUser._id !== id) {
+      if (currentUser._id !== id) {
         loadUserPosts()
       }
     } catch (error) {
@@ -130,7 +137,13 @@ export default function UserProfile() {
     setLoadingPosts(true)
     try {
       const { data } = await api.get(`/social/user/${id}/posts`)
-      setPosts(data)
+      if (data && !Array.isArray(data) && data.locked) {
+        setPosts([])
+        setPostsLocked(true)
+      } else {
+        setPosts(Array.isArray(data) ? data : data?.posts || [])
+        setPostsLocked(false)
+      }
       setShowPosts(true)
     } catch (error) {
       console.error('Error fetching posts:', error)
@@ -273,9 +286,65 @@ export default function UserProfile() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="card text-center"
+        className="card text-center overflow-hidden p-0"
       >
-        <div className="relative inline-block mb-4">
+        <div className="relative h-[150px] sm:h-[236px] overflow-hidden">
+          {user.profile?.coverUrl ? (
+            <img
+              src={user.profile.coverUrl}
+              alt=""
+              className="h-full w-full scale-[1.02] object-cover object-center"
+            />
+          ) : (
+            <div
+              className="h-full w-full"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgba(var(--color-primary-rgb),0.42), rgba(var(--color-accent-rgb),0.16) 55%, rgba(var(--color-primary-rgb),0.22))'
+              }}
+            />
+          )}
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-16"
+            style={{
+              background:
+                'linear-gradient(to bottom, rgba(0,0,0,0.28), rgba(0,0,0,0.08) 45%, transparent)'
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 85% at 50% 20%, transparent 40%, rgba(0,0,0,0.18) 100%)'
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[72%] sm:h-[68%]"
+            style={{
+              background: `
+                linear-gradient(
+                  to top,
+                  var(--bg-card) 0%,
+                  color-mix(in srgb, var(--bg-card) 92%, transparent) 18%,
+                  color-mix(in srgb, var(--bg-card) 55%, transparent) 42%,
+                  color-mix(in srgb, var(--bg-card) 18%, transparent) 68%,
+                  transparent 100%
+                )
+              `
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
+            style={{
+              background:
+                'linear-gradient(to top, rgba(var(--color-primary-rgb),0.12), rgba(var(--color-primary-rgb),0.04) 45%, transparent)'
+            }}
+          />
+        </div>
+        <div className="relative z-10 -mt-16 px-4 pb-5 sm:-mt-[4.5rem] sm:px-6">
+        <div className="relative mb-4 inline-block">
+          <div className="absolute -inset-1 rounded-full bg-[color:var(--bg-card)]/80 blur-[1px]" aria-hidden />
+          <div className="relative">
           <ProfileAvatar
             avatar={user.avatar}
             name={user.name}
@@ -283,6 +352,7 @@ export default function UserProfile() {
             hasStories={hasStories}
             onViewStory={openStory}
           />
+          </div>
         </div>
 
         <h1 className="font-display text-2xl mb-1">{user.name}</h1>
@@ -347,6 +417,7 @@ export default function UserProfile() {
             </button>
           </div>
         )}
+        </div>
       </motion.div>
 
       {isOwnProfile && (
@@ -542,7 +613,16 @@ export default function UserProfile() {
             )}
           </div>
 
-          {(isOwnProfile || showPosts) && (
+          {(isOwnProfile || showPosts) && postsLocked ? (
+            <div className="card text-center py-10 px-4">
+              <FiLock size={36} className="mx-auto mb-3 opacity-50" style={{ color: 'var(--text-muted)' }} />
+              <p className="font-semibold mb-2">Perfil no público</p>
+              <p className="text-sm leading-relaxed max-w-sm mx-auto" style={{ color: 'var(--text-secondary)' }}>
+                Este usuario no tiene su perfil público para mostrar sus publicaciones a todo el mundo.
+                Solicita seguirlo para ver el contenido que comparte.
+              </p>
+            </div>
+          ) : (isOwnProfile || showPosts) && (
             <ProfileFeed
               posts={posts}
               loading={loadingPosts}
@@ -582,6 +662,8 @@ export default function UserProfile() {
                   toast.error('Error al reaccionar')
                 }
               }}
+              onShare={(post) => setSharePostTarget(post)}
+              onShowReactors={(post) => setReactorsPost(post)}
             />
           )}
         </motion.div>
@@ -593,6 +675,36 @@ export default function UserProfile() {
         routine={selectedRoutine?.workout}
         author={selectedRoutine?.author || user}
         onAdopt={() => adoptRoutineFromPost(selectedRoutine?.workout)}
+      />
+
+      <SharePostSheet
+        open={Boolean(sharePostTarget)}
+        post={sharePostTarget}
+        onClose={() => !sharingPost && setSharePostTarget(null)}
+        sharingCommunity={sharingPost}
+        onShareCommunity={async ({ content, mood, poll }) => {
+          if (!sharePostTarget) return
+          try {
+            setSharingPost(true)
+            await api.post(`/social/${sharePostTarget._id || sharePostTarget.id}/share`, {
+              content,
+              mood,
+              poll
+            })
+            setSharePostTarget(null)
+            toast.success('Publicación compartida en tu feed')
+          } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al compartir')
+          } finally {
+            setSharingPost(false)
+          }
+        }}
+      />
+
+      <PostReactorsModal
+        open={Boolean(reactorsPost)}
+        onClose={() => setReactorsPost(null)}
+        reactors={reactorsPost?.reactors || []}
       />
 
       <AnimatePresence>

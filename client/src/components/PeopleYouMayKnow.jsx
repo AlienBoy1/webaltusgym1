@@ -1,0 +1,105 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { FiUserPlus, FiUser } from 'react-icons/fi'
+import api from '../utils/api'
+import { Avatar } from '../utils/avatarUtils'
+import toast from 'react-hot-toast'
+
+export default function PeopleYouMayKnow() {
+  const [people, setPeople] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/users/search?q=&filter=not_following')
+        if (!cancelled) setPeople(Array.isArray(data) ? data.slice(0, 12) : [])
+      } catch {
+        if (!cancelled) setPeople([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleFollow = async (userId) => {
+    setBusyId(userId)
+    try {
+      await api.post(`/social/${userId}/follow`)
+      toast.success('Solicitud de seguimiento enviada')
+      setPeople((prev) => prev.filter((p) => (p._id || p.id) !== userId))
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo enviar la solicitud')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="my-2">
+      <div className="flex items-center justify-between mb-3 px-0.5">
+        <h2 className="font-display text-lg tracking-wide">Personas que quizá conozcas</h2>
+      </div>
+
+      {loading ? (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="w-40 flex-shrink-0 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 animate-pulse h-48"
+            />
+          ))}
+        </div>
+      ) : people.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-4 py-8 text-center">
+          <p className="text-sm text-[color:var(--text-secondary)]">No hay personas para recomendar</p>
+        </div>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+          {people.map((person, i) => {
+            const pid = person._id || person.id
+            return (
+              <motion.article
+                key={pid}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(i * 0.05, 0.3) }}
+                className="w-40 flex-shrink-0 snap-start rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-3.5 flex flex-col items-center text-center"
+              >
+                <Avatar avatar={person.avatar} name={person.name} size="lg" />
+                <p className="mt-2.5 font-semibold text-sm truncate w-full">{person.name}</p>
+                {person.stats?.level != null && (
+                  <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">Nv. {person.stats.level}</p>
+                )}
+                <div className="mt-auto w-full pt-3 space-y-1.5">
+                  <button
+                    type="button"
+                    disabled={busyId === pid}
+                    onClick={() => handleFollow(pid)}
+                    className="w-full btn-primary py-1.5 text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                  >
+                    <FiUserPlus size={12} />
+                    Seguir
+                  </button>
+                  <Link
+                    to={`/user/${pid}`}
+                    className="w-full btn-secondary py-1.5 text-xs flex items-center justify-center gap-1"
+                  >
+                    <FiUser size={12} />
+                    Ver perfil
+                  </Link>
+                </div>
+              </motion.article>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}

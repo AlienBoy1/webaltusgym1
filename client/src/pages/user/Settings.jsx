@@ -9,7 +9,8 @@ import {
   COLOR_THEMES,
   applyAppearanceSettings,
   cacheAppearance,
-  bindSystemThemeListener
+  bindSystemThemeListener,
+  loadCachedSettings
 } from '../../utils/theme'
 import { setWorkoutPreferences } from '../../utils/workoutSession'
 import { getStorageAccessGranted, setStorageAccessGranted } from '../../utils/storageAccess'
@@ -28,6 +29,30 @@ const settingsSections = [
   { id: 'units', title: 'Unidades', icon: FiTarget, color: 'cyan' }
 ]
 
+const DEFAULT_SETTINGS = {
+  notifications: { push: false, email: true, workoutReminders: true, socialActivity: true, challenges: true, marketing: false },
+  privacy: { profilePublic: true, showProgress: true, showWorkouts: true, allowMessages: true },
+  workout: { restTimerDefault: 60, autoStartTimer: true, vibration: true, sound: true, keepScreenOn: true },
+  theme: 'dark',
+  colorTheme: 'orange',
+  language: 'es',
+  accessibility: { reducedMotion: false, highContrast: false, fontSize: 'medium', voiceControl: false },
+  units: { weight: 'kg', distance: 'km', height: 'cm' }
+}
+
+function mergeSettings(base, incoming) {
+  if (!incoming || typeof incoming !== 'object') return { ...base }
+  return {
+    ...base,
+    ...incoming,
+    notifications: { ...base.notifications, ...(incoming.notifications || {}) },
+    privacy: { ...base.privacy, ...(incoming.privacy || {}) },
+    workout: { ...base.workout, ...(incoming.workout || {}) },
+    accessibility: { ...base.accessibility, ...(incoming.accessibility || {}) },
+    units: { ...base.units, ...(incoming.units || {}) }
+  }
+}
+
 export default function UserSettings() {
   const { user } = useAuthStore()
   const dialog = useAppDialog()
@@ -36,15 +61,11 @@ export default function UserSettings() {
   const [storageAccess, setStorageAccess] = useState(() => getStorageAccessGranted())
   const [googleLinked, setGoogleLinked] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [settings, setSettings] = useState({
-    notifications: { push: false, email: true, workoutReminders: true, socialActivity: true, challenges: true, marketing: false },
-    privacy: { profilePublic: true, showProgress: true, showWorkouts: true, allowMessages: true },
-    workout: { restTimerDefault: 60, autoStartTimer: true, vibration: true, sound: true, keepScreenOn: true },
-    theme: 'dark',
-    colorTheme: 'orange',
-    language: 'es',
-    accessibility: { reducedMotion: false, highContrast: false, fontSize: 'medium', voiceControl: false },
-    units: { weight: 'kg', distance: 'km', height: 'cm' }
+  const [hydrated, setHydrated] = useState(false)
+  const [settings, setSettings] = useState(() => {
+    const uid = user?._id || user?.id
+    const cached = uid ? loadCachedSettings(uid) : loadCachedSettings(null)
+    return mergeSettings(DEFAULT_SETTINGS, cached || {})
   })
   const [saving, setSaving] = useState(false)
 
@@ -96,22 +117,27 @@ export default function UserSettings() {
   
   const loadSettings = async () => {
     try {
-      // Try to load from backend first
       const { data } = await api.get('/users/profile')
       if (data?.settings) {
-        setSettings(data.settings)
-        applySettings(data.settings)
+        const merged = mergeSettings(DEFAULT_SETTINGS, data.settings)
+        setSettings(merged)
+        applySettings(merged)
+        setHydrated(true)
         return
       }
-    } catch (error) {
-      // Fallback to localStorage
+    } catch {
       const saved = localStorage.getItem(`settings_${user?._id}`)
       if (saved) {
-        const parsed = JSON.parse(saved)
-        setSettings(parsed)
-        applySettings(parsed)
+        try {
+          const merged = mergeSettings(DEFAULT_SETTINGS, JSON.parse(saved))
+          setSettings(merged)
+          applySettings(merged)
+        } catch {
+          /* keep current */
+        }
       }
     }
+    setHydrated(true)
   }
   
   const applySettings = (settingsToApply) => {
@@ -136,13 +162,11 @@ export default function UserSettings() {
     
     setSaving(true)
     try {
-      // Save to backend
       await api.put('/users/profile', { settings })
-      // Also save to localStorage as backup
       localStorage.setItem(`settings_${user?._id}`, JSON.stringify(settings))
+      cacheAppearance(settings)
       toast.success('Configuración guardada')
     } catch (error) {
-      // Fallback to localStorage only
       localStorage.setItem(`settings_${user?._id}`, JSON.stringify(settings))
       toast.success('Configuración guardada localmente')
     } finally {
@@ -150,18 +174,18 @@ export default function UserSettings() {
     }
   }
   
-  // Auto-save on change (debounced)
+  // Auto-save on change (debounced) — only after hydration to avoid wiping light theme
   useEffect(() => {
-    if (!user?._id) return
+    if (!user?._id || !hydrated) return
     
     const timeoutId = setTimeout(() => {
       localStorage.setItem(`settings_${user?._id}`, JSON.stringify(settings))
-      // Auto-save to backend in background
+      cacheAppearance(settings)
       api.put('/users/profile', { settings }).catch(() => {})
     }, 1000)
     
     return () => clearTimeout(timeoutId)
-  }, [settings, user?._id])
+  }, [settings, user?._id, hydrated])
   
   const handlePushToggle = async (enabled) => {
     if (enabled) {
@@ -331,7 +355,7 @@ export default function UserSettings() {
                 <h2 className="font-display text-xl flex items-center gap-2"><FiEye className="text-accent-cyan" /> Privacidad</h2>
                 <div className="space-y-4">
                   {[
-                    { key: 'profilePublic', label: 'Perfil Público', desc: 'Otros pueden ver tu perfil' },
+                    { key: 'profilePublic', label: 'Perfil Público', desc: 'Si está desactivado, solo tus seguidores ven tus publicaciones' },
                     { key: 'showProgress', label: 'Mostrar Progreso', desc: 'Compartir estadísticas y logros' },
                     { key: 'showWorkouts', label: 'Mostrar Entrenamientos', desc: 'Visible en tu perfil público' },
                     { key: 'allowMessages', label: 'Permitir Mensajes', desc: 'Recibir mensajes de otros usuarios' },

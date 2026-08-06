@@ -16,6 +16,8 @@ import {
   FiEye
 } from 'react-icons/fi'
 import api from '../utils/api'
+import { formatDistanceToNow } from 'date-fns'
+import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { Avatar } from '../utils/avatarUtils'
@@ -80,6 +82,30 @@ export default function StoriesRail({
   const remainingMsRef = useRef(null)
   const openStoryHandled = useRef(null)
   const paused = menuOpen || shareOpen || favoritesOpen || viewersOpen || replyFocused || Boolean(reply.trim())
+  const [progressPct, setProgressPct] = useState(0)
+  const progressRafRef = useRef(null)
+
+  useEffect(() => {
+    const openDraft = () => {
+      try {
+        const raw = sessionStorage.getItem('qyntra:storyDraft')
+        if (!raw) return
+        const draft = JSON.parse(raw)
+        sessionStorage.removeItem('qyntra:storyDraft')
+        if (!draft?.mediaUrl) return
+        setMediaData(draft.mediaUrl)
+        setMediaPreview(draft.mediaUrl)
+        setMediaType(draft.mediaType || 'image')
+        setCaption(draft.caption || '')
+        setComposeOpen(true)
+      } catch {
+        /* ignore */
+      }
+    }
+    window.addEventListener('qyntra:open-story-compose', openDraft)
+    openDraft()
+    return () => window.removeEventListener('qyntra:open-story-compose', openDraft)
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -386,6 +412,25 @@ export default function StoriesRail({
       }
     }
   }, [currentStory?._id, currentStory?.id, goNext, paused])
+
+  useEffect(() => {
+    if (!currentStory) { setProgressPct(0); return }
+    const full = currentStory.mediaType === 'video' ? MAX_VIDEO_SECONDS * 1000 : 5500
+    const computePct = () => {
+      const rem = remainingMsRef.current ?? full
+      const t0 = storyStartedAtRef.current
+      let elapsed = full - rem
+      if (t0 != null) elapsed += Date.now() - t0
+      return Math.min(100, (elapsed / full) * 100)
+    }
+    if (paused) { setProgressPct(computePct()); return }
+    const tick = () => {
+      setProgressPct(computePct())
+      progressRafRef.current = requestAnimationFrame(tick)
+    }
+    progressRafRef.current = requestAnimationFrame(tick)
+    return () => { if (progressRafRef.current) cancelAnimationFrame(progressRafRef.current) }
+  }, [currentStory?._id, currentStory?.id, paused])
 
   const react = async (emoji) => {
     if (!currentStory) return
@@ -837,24 +882,12 @@ export default function StoriesRail({
                 {currentGroup.stories.map((s, i) => (
                   <div key={s._id || s.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25">
                     <div
-                      className={`h-full bg-white ${
-                        i < viewer.storyIndex
-                          ? 'w-full'
-                          : i === viewer.storyIndex
-                            ? 'animate-story-progress'
-                            : 'w-0'
-                      }`}
-                      style={
-                        i === viewer.storyIndex
-                          ? {
-                              animationDuration:
-                                currentStory.mediaType === 'video'
-                                  ? `${MAX_VIDEO_SECONDS}s`
-                                  : '5.5s',
-                              animationPlayState: paused ? 'paused' : 'running'
-                            }
-                          : undefined
-                      }
+                      className="h-full bg-white"
+                      style={{
+                        width: i < viewer.storyIndex ? '100%'
+                             : i === viewer.storyIndex ? `${progressPct}%`
+                             : '0%'
+                      }}
                     />
                   </div>
                 ))}
@@ -863,9 +896,16 @@ export default function StoriesRail({
               <div className="absolute left-0 right-0 top-6 z-30 flex items-center justify-between gap-2 px-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
                 <div className="flex min-w-0 items-center gap-2">
                   <Avatar avatar={currentGroup.user?.avatar} name={currentGroup.user?.name} size="sm" />
-                  <span className="truncate text-sm font-semibold drop-shadow" style={{ color: '#fff' }}>
-                    {currentGroup.user?.name}
-                  </span>
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-semibold drop-shadow" style={{ color: '#fff' }}>
+                      {currentGroup.user?.name}
+                    </span>
+                    {currentStory.createdAt && (
+                      <span className="text-[11px] drop-shadow" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                        {formatDistanceToNow(new Date(currentStory.createdAt), { addSuffix: true, locale: es })}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button

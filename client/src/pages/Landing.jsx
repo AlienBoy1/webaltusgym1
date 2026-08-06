@@ -35,7 +35,7 @@ function LandingPicture({ image, className = '', imgClassName = '', priority = f
         sizes={sizes}
         loading={priority ? 'eager' : 'lazy'}
         decoding={priority ? 'sync' : 'async'}
-        fetchPriority={priority ? 'high' : 'auto'}
+        fetchpriority={priority ? 'high' : 'auto'}
         draggable={false}
       />
     </picture>

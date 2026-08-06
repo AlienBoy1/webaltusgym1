@@ -17,7 +17,9 @@ export default function ProfileFeed({
   onOpenRoutine,
   currentUserId = null,
   onDelete,
-  onReact
+  onReact,
+  onShare,
+  onShowReactors
 }) {
   const [menuPostId, setMenuPostId] = useState(null)
 
@@ -164,14 +166,21 @@ export default function ProfileFeed({
               <PostReactionButton
                 myReaction={myReaction}
                 likesCount={likes}
+                reactionSummary={post.reactionSummary || []}
                 onReact={(emoji) => onReact?.(post._id || post.id, emoji)}
+                onShowReactors={() => onShowReactors?.(post)}
               />
               <span className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
                 <FiMessageCircle size={17} /> {comments}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
+              <button
+                type="button"
+                onClick={() => onShare?.(post)}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:text-accent-cyan transition"
+                aria-label="Compartir"
+              >
                 <FiShare2 size={17} />
-              </span>
+              </button>
             </footer>
           </article>
         )

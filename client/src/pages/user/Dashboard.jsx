@@ -30,7 +30,31 @@ const MOTIVATIONAL_MESSAGES = [
   'El sistema está listo. Tú también. A entrenar.',
   'La disciplina silenciosa es el verdadero flex.',
   'Hoy eliges movimiento. Eso ya te pone por delante.',
-  'Tu historial de XP es el diario de tu superación.'
+  'Tu historial de XP es el diario de tu superación.',
+  'Las excusas no queman calorías. Tú sí.',
+  'No necesitas motivación: necesitas compromiso contigo mismo.',
+  'Cada repetición te aleja del que eras y te acerca al que serás.',
+  'El dolor de hoy es la fuerza de mañana.',
+  'Los límites están en la cabeza, no en los músculos.',
+  'Nadie construyó un gran cuerpo sentado. Tú ya estás aquí.',
+  'Si hoy te cuesta, mañana te costará menos. Eso es progreso.',
+  'Tu único rival real es la versión que no entrenó.',
+  'Más peso en la barra, menos peso en la mente.',
+  'El gym no es un castigo: es una inversión en tu futuro.',
+  'Hoy te levantas, te presentas y ejecutas. Simple y poderoso.',
+  'La consistencia es el suplemento que nadie vende y todos necesitan.',
+  'No cuentas los días. Haz que los días cuenten.',
+  'El sudor de hoy es la confianza de mañana.',
+  'Tu cuerpo puede. Es tu mente la que debes convencer.',
+  'Cada paso hacia el gym es un paso hacia tu mejor vida.',
+  'Entrena como si tu versión ideal te estuviera mirando.',
+  'Hoy es lunes interior. Siempre es buen día para empezar.',
+  'El progreso no se ve todos los días, pero se siente cada semana.',
+  'No esperes resultados distintos si entrenas igual que ayer.',
+  'Lo que haces cuando nadie mira define quién eres realmente.',
+  'El primer paso siempre es el más difícil. Ya lo diste.',
+  'Transforma tu disciplina en tu superpoder.',
+  'Recuerda por qué empezaste. Y luego sigue.'
 ]
 
 function pickMessage(seedKey) {
@@ -69,10 +93,14 @@ export default function Dashboard() {
         ? 'Buenas tardes'
         : 'Buenas noches'
 
-  const motivation = useMemo(
-    () => pickMessage(`${user?._id || user?.id || 'guest'}-${visitTick}-${Date.now()}`),
-    [user?._id, user?.id, visitTick]
-  )
+  const [motivation, motivation2] = useMemo(() => {
+    const seed = `${user?._id || user?.id || 'guest'}-${visitTick}-${Date.now()}`
+    const m1 = pickMessage(seed)
+    const m2 = pickMessage(seed + '-sec')
+    if (m2 !== m1) return [m1, m2]
+    const idx = MOTIVATIONAL_MESSAGES.indexOf(m1)
+    return [m1, MOTIVATIONAL_MESSAGES[(idx + 7) % MOTIVATIONAL_MESSAGES.length]]
+  }, [user?._id, user?.id, visitTick])
 
   const quickStats = [
     {
@@ -106,25 +134,49 @@ export default function Dashboard() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-3xl p-6"
+        className="noise relative overflow-hidden rounded-3xl p-6 sm:p-8"
         style={{
           background:
-            'linear-gradient(135deg, rgba(var(--color-primary-rgb),0.95), rgba(var(--color-primary-rgb),0.75) 55%, rgba(var(--color-accent-rgb),0.35))'
+            'linear-gradient(135deg, rgba(var(--color-primary-rgb),0.95) 0%, rgba(var(--color-primary-rgb),0.72) 50%, rgba(var(--color-accent-rgb),0.4) 100%)'
         }}
       >
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute -bottom-8 -left-8 h-28 w-28 rounded-full bg-black/10" />
+        <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/10 blur-sm" />
+        <div className="pointer-events-none absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-black/[0.12]" />
+        <div className="pointer-events-none absolute right-1/4 top-1/3 h-16 w-16 rounded-full bg-white/[0.06]" />
+        <div className="pointer-events-none absolute bottom-4 right-8 h-24 w-24 rounded-full border border-white/[0.08]" />
 
         <div className="relative z-10 text-white">
-          <p className="text-sm text-white/80">{greeting}</p>
-          <h1 className="font-display mb-3 text-3xl tracking-wide md:text-4xl">
+          <motion.p
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.15 }}
+            className="text-sm font-medium tracking-wide text-white/80"
+          >
+            {greeting}
+          </motion.p>
+          <motion.h1
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.25 }}
+            className="font-display mb-4 text-3xl tracking-wide md:text-4xl"
+          >
             {user?.name || 'Atleta'}
-          </h1>
-          <div className="rounded-2xl border border-white/20 bg-black/20 px-4 py-3 backdrop-blur-md">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/70">
-              Motivación Qyntra
-            </p>
-            <p className="mt-1.5 text-base leading-relaxed text-white/95 sm:text-lg">{motivation}</p>
+          </motion.h1>
+          <div className="space-y-2">
+            <div className="rounded-2xl border border-white/20 bg-black/25 px-4 py-3 backdrop-blur-md">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/60">
+                Motivación Qyntra
+              </p>
+              <p className="mt-1.5 text-base leading-relaxed text-white/95 sm:text-lg">{motivation}</p>
+            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="rounded-xl border border-white/10 bg-white/[0.07] px-4 py-2.5 backdrop-blur-sm"
+            >
+              <p className="text-sm italic leading-relaxed text-white/75">{motivation2}</p>
+            </motion.div>
           </div>
 
           {user?.role === 'admin' && (
@@ -145,6 +197,7 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
+            whileHover={{ y: -3, transition: { duration: 0.2 } }}
             className="card"
           >
             <div
@@ -236,10 +289,10 @@ export default function Dashboard() {
             { to: '/challenges', label: 'Retos', hint: 'Compite', icon: FiTarget, tone: 'purple' },
             { to: '/classes', label: 'Clases', hint: 'Agenda', icon: FiClock, tone: 'green' }
           ].map((action) => (
+            <motion.div key={action.to} whileHover={{ y: -3 }} transition={{ duration: 0.2 }}>
             <Link
-              key={action.to}
               to={action.to}
-              className="card flex flex-col items-center text-center transition-transform hover:scale-[1.03]"
+              className="card flex flex-col items-center text-center"
             >
               <div
                 className="mb-2.5 flex h-11 w-11 items-center justify-center rounded-2xl"
@@ -271,6 +324,7 @@ export default function Dashboard() {
                 {action.hint}
               </div>
             </Link>
+            </motion.div>
           ))}
         </div>
       </motion.div>

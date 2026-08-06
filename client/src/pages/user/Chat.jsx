@@ -24,6 +24,38 @@ function MessageTicks({ status }) {
   )
 }
 
+function PostAttachmentBubble({ attachment, isMe, hasText }) {
+  if (!attachment || attachment.type !== 'post') return null
+  return (
+    <div
+      className={`w-full overflow-hidden rounded-xl text-left ${
+        hasText ? 'mb-2' : ''
+      } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
+    >
+      <div className="flex items-stretch gap-0">
+        <div className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-gradient-to-br from-primary-500/40 to-black sm:h-20 sm:w-[60px]">
+          {attachment.image ? (
+            <img src={attachment.image} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-lg">📝</div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center px-2.5 py-2">
+          <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${isMe ? 'text-white/65' : 'text-gray-400'}`}>
+            {isMe ? 'Compartiste una publicación' : 'Te compartió una publicación'}
+          </p>
+          <p className={`mt-0.5 text-xs font-medium ${isMe ? 'text-white/90' : 'text-gray-200'}`}>
+            {attachment.authorName || 'Usuario'}
+          </p>
+          <p className={`mt-0.5 line-clamp-2 text-xs leading-snug ${isMe ? 'text-white/75' : 'text-gray-300'}`}>
+            {attachment.snippet || 'Publicación de Qyntra'}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   if (!attachment || attachment.type !== 'story') return null
   const isReply = attachment.kind === 'reply' || hasText
@@ -610,6 +642,11 @@ export default function Chat() {
                         }
                         toast.error('No se pudo abrir este estado')
                       }}
+                    />
+                    <PostAttachmentBubble
+                      attachment={msg.attachment}
+                      isMe={msg.sender === 'me'}
+                      hasText={Boolean(msg.text?.trim())}
                     />
                     {msg.text ? <p className="break-words">{msg.text}</p> : null}
                     {!msg.text && !msg.attachment ? (

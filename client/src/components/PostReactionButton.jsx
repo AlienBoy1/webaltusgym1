@@ -11,12 +11,15 @@ export const POST_REACTIONS = [
 ]
 
 /**
- * Facebook-style: click = ❤️ like toggle, long-press = reaction picker (story reactions).
+ * Facebook-style: click = ❤️ like toggle, long-press = reaction picker.
+ * Stacked distinct reaction emojis nest beside the heart/count.
  */
 export default function PostReactionButton({
   myReaction = null,
   likesCount = 0,
+  reactionSummary = [],
   onReact,
+  onShowReactors,
   disabled = false
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -57,8 +60,13 @@ export default function PostReactionButton({
   const display = myReaction || null
   const active = Boolean(display)
 
+  const stacked = (Array.isArray(reactionSummary) ? reactionSummary : [])
+    .filter((r) => r?.emoji && r.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-1.5 min-w-0">
       <button
         type="button"
         disabled={disabled}
@@ -71,7 +79,7 @@ export default function PostReactionButton({
           endPress()
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+        className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm transition ${
           active
             ? 'text-[color:var(--color-primary)]'
             : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
@@ -79,8 +87,27 @@ export default function PostReactionButton({
         title="Clic: Me gusta · Mantén: más reacciones"
       >
         <span className="text-lg leading-none">{display || '🤍'}</span>
-        <span>{likesCount}</span>
+        <span className="tabular-nums">{likesCount}</span>
       </button>
+
+      {stacked.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onShowReactors?.()}
+          className="inline-flex items-center -space-x-1.5 pl-0.5 pr-1 py-1 rounded-full hover:bg-[color:var(--bg-muted)] transition"
+          title="Ver quién reaccionó"
+          aria-label="Ver quién reaccionó"
+        >
+          {stacked.map((r) => (
+            <span
+              key={r.emoji}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-sm shadow-sm"
+            >
+              {r.emoji}
+            </span>
+          ))}
+        </button>
+      )}
 
       <AnimatePresence>
         {pickerOpen && (
