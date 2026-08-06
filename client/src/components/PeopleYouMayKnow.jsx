@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FiUserPlus, FiUser } from 'react-icons/fi'
+import { FiUserPlus, FiUser, FiMessageCircle } from 'react-icons/fi'
 import api from '../utils/api'
 import { Avatar } from '../utils/avatarUtils'
 import toast from 'react-hot-toast'
 
 export default function PeopleYouMayKnow() {
+  const navigate = useNavigate()
   const [people, setPeople] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
@@ -15,7 +16,7 @@ export default function PeopleYouMayKnow() {
     let cancelled = false
     ;(async () => {
       try {
-        const { data } = await api.get('/users/search?q=&filter=not_following')
+        const { data } = await api.get('/users/search?q=&filter=suggestions')
         if (!cancelled) setPeople(Array.isArray(data) ? data.slice(0, 12) : [])
       } catch {
         if (!cancelled) setPeople([])
@@ -33,12 +34,68 @@ export default function PeopleYouMayKnow() {
     try {
       await api.post(`/social/${userId}/follow`)
       toast.success('Solicitud de seguimiento enviada')
-      setPeople((prev) => prev.filter((p) => (p._id || p.id) !== userId))
+      setPeople((prev) =>
+        prev.map((p) =>
+          (p._id || p.id) === userId
+            ? { ...p, hasPendingRequest: true, isFollowing: false }
+            : p
+        )
+      )
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo enviar la solicitud')
     } finally {
       setBusyId(null)
     }
+  }
+
+  const openChat = (person) => {
+    const pid = person._id || person.id
+    navigate('/chat', {
+      state: {
+        startWith: {
+          _id: pid,
+          name: person.name,
+          avatar: person.avatar
+        }
+      }
+    })
+  }
+
+  const actionButton = (person, pid) => {
+    if (person.isFollowing) {
+      return (
+        <button
+          type="button"
+          onClick={() => openChat(person)}
+          className="w-full btn-primary py-1.5 text-xs flex items-center justify-center gap-1"
+        >
+          <FiMessageCircle size={12} />
+          Mensaje
+        </button>
+      )
+    }
+    if (person.hasPendingRequest) {
+      return (
+        <button
+          type="button"
+          disabled
+          className="w-full btn-secondary py-1.5 text-xs opacity-70 cursor-not-allowed"
+        >
+          Solicitud enviada
+        </button>
+      )
+    }
+    return (
+      <button
+        type="button"
+        disabled={busyId === pid}
+        onClick={() => handleFollow(pid)}
+        className="w-full btn-primary py-1.5 text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+      >
+        <FiUserPlus size={12} />
+        Seguir
+      </button>
+    )
   }
 
   return (
@@ -78,15 +135,7 @@ export default function PeopleYouMayKnow() {
                   <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">Nv. {person.stats.level}</p>
                 )}
                 <div className="mt-auto w-full pt-3 space-y-1.5">
-                  <button
-                    type="button"
-                    disabled={busyId === pid}
-                    onClick={() => handleFollow(pid)}
-                    className="w-full btn-primary py-1.5 text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                  >
-                    <FiUserPlus size={12} />
-                    Seguir
-                  </button>
+                  {actionButton(person, pid)}
                   <Link
                     to={`/user/${pid}`}
                     className="w-full btn-secondary py-1.5 text-xs flex items-center justify-center gap-1"

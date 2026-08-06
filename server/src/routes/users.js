@@ -213,18 +213,41 @@ router.get('/search', authenticate, async (req, res) => {
 
     const { data, error } = await query
     if (error) throw error
-    res.json(
-      (data || []).map((u) => ({
-        _id: u.id,
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        avatar: u.avatar || null,
-        stats: u.stats || null,
-        membership: u.membership || null,
-        role: u.role || 'user'
-      }))
-    )
+
+    const [{ data: followingRows }, { data: pendingRows }] = await Promise.all([
+      supabaseAdmin
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', req.user.id),
+      supabaseAdmin
+        .from('follow_requests')
+        .select('to_user_id')
+        .eq('from_user_id', req.user.id)
+    ])
+    const followingSet = new Set((followingRows || []).map((f) => f.following_id))
+    const pendingSet = new Set((pendingRows || []).map((r) => r.to_user_id))
+
+    let users = (data || []).map((u) => ({
+      _id: u.id,
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      avatar: u.avatar || null,
+      stats: u.stats || null,
+      membership: u.membership || null,
+      role: u.role || 'user',
+      isFollowing: followingSet.has(u.id),
+      hasPendingRequest: pendingSet.has(u.id)
+    }))
+
+    // Suggestions: prioritize people you don't follow yet, then people you already follow
+    if (filter === 'suggestions') {
+      users = users
+        .sort((a, b) => Number(a.isFollowing) - Number(b.isFollowing))
+        .slice(0, 16)
+    }
+
+    res.json(users)
   } catch (error) {
     console.error('Error searching users:', error)
     res.status(500).json({ message: 'Error al buscar usuarios', error: error.message })
