@@ -16,6 +16,8 @@ import { Avatar } from '../utils/avatarUtils'
 import toast from 'react-hot-toast'
 import ShareComposerModal from './ShareComposerModal'
 import { buildNativePostShareImage } from '../utils/buildNativePostShareImage'
+import { buildPostShareText, getInviteUrl } from '../utils/appLinks'
+import { useAuthStore } from '../store/authStore'
 
 function postSnippet(post) {
   if (!post) return 'Publicación de Qyntra Gym'
@@ -59,6 +61,7 @@ export default function SharePostSheet({
   sharingCommunity = false
 }) {
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const [step, setStep] = useState('menu') // menu | community | users
   const [contacts, setContacts] = useState([])
   const [query, setQuery] = useState('')
@@ -66,6 +69,8 @@ export default function SharePostSheet({
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [whatsLoading, setWhatsLoading] = useState(false)
+
+  const inviteUrl = getInviteUrl(user?.id || user?._id)
 
   useEffect(() => {
     if (!open) {
@@ -132,8 +137,12 @@ export default function SharePostSheet({
   const shareWhatsApp = async () => {
     if (!post) return
     setWhatsLoading(true)
+    const text = buildPostShareText({
+      authorName: postAuthorName(post),
+      snippet: postSnippet(post),
+      inviteUrl
+    })
     try {
-      const text = `🏋️ Qyntra Gym\n${postAuthorName(post)}: ${postSnippet(post)}\n\nÚnete a la comunidad en Qyntra Gym.`
       let file
       try {
         const dataUrl = await buildNativePostShareImage(post)
@@ -146,16 +155,20 @@ export default function SharePostSheet({
       }
 
       if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], text, title: 'Qyntra Gym' })
+        await navigator.share({
+          files: [file],
+          text,
+          title: 'Qyntra Gym',
+          url: inviteUrl
+        })
       } else if (navigator.share) {
-        await navigator.share({ text, title: 'Qyntra Gym' })
+        await navigator.share({ text, title: 'Qyntra Gym', url: inviteUrl })
       } else {
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
       }
       onClose?.()
     } catch (error) {
       if (error?.name !== 'AbortError') {
-        const text = `🏋️ Qyntra Gym\n${postAuthorName(post)}: ${postSnippet(post)}`
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
       }
     } finally {

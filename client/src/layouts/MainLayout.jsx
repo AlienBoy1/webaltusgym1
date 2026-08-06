@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun } from 'react-icons/fi'
+import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun, FiUserPlus } from 'react-icons/fi'
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
+import InviteFriendsModal from '../components/InviteFriendsModal'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -45,6 +46,7 @@ export default function MainLayout() {
   const [showSearch, setShowSearch] = useState(false)
   const [searching, setSearching] = useState(false)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [themeMode, setThemeMode] = useState(() => {
     const id = user?.id || user?._id
     const cached = id ? loadCachedSettings(id) : loadCachedSettings(null)
@@ -376,6 +378,17 @@ export default function MainLayout() {
                         <FiSettings size={16} className="text-accent-cyan" />
                         Configuración
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAvatarMenuOpen(false)
+                          setInviteOpen(true)
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                      >
+                        <FiUserPlus size={16} className="text-accent-yellow" />
+                        Invitar a amigos
+                      </button>
 
                       <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl">
                         <span className="flex items-center gap-3 text-sm">
@@ -529,6 +542,7 @@ export default function MainLayout() {
       
       {/* Notification Prompt */}
       <NotificationPrompt />
+      <InviteFriendsModal open={inviteOpen} onClose={() => setInviteOpen(false)} user={user} />
     </div>
     </StoryViewerProvider>
   )

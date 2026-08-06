@@ -16,7 +16,17 @@ import {
 export default function Register() {
   const [searchParams] = useSearchParams()
   const fromGoogle = searchParams.get('google') === '1'
+  const inviteRef = searchParams.get('ref')
   const pending = readPendingGoogleRegistration()
+
+  useEffect(() => {
+    if (!inviteRef) return
+    try {
+      sessionStorage.setItem('qyntra:inviteRef', String(inviteRef))
+    } catch {
+      /* ignore */
+    }
+  }, [inviteRef])
 
   const [name, setName] = useState(pending?.name || '')
   const [email, setEmail] = useState(pending?.email || '')
