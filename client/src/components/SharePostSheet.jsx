@@ -15,10 +15,12 @@ import api from '../utils/api'
 import { Avatar } from '../utils/avatarUtils'
 import toast from 'react-hot-toast'
 import ShareComposerModal from './ShareComposerModal'
+import { buildNativePostShareImage } from '../utils/buildNativePostShareImage'
 
 function postSnippet(post) {
   if (!post) return 'Publicación de Qyntra Gym'
   if (post.workoutData?.name) return post.workoutData.name
+  if (post.workoutData?.challengeTitle) return post.workoutData.challengeTitle
   if (post.badgeData?.name) return `Insignia: ${post.badgeData.name}`
   if (post.content) {
     return String(post.content)
@@ -32,213 +34,6 @@ function postSnippet(post) {
 function postAuthorName(post) {
   if (typeof post?.user === 'object') return post.user?.name || 'Usuario'
   return 'Usuario'
-}
-
-async function buildWhatsAppCard(post) {
-  const w = 720
-  const h = 1280
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-
-  const grad = ctx.createLinearGradient(0, 0, w, h)
-  grad.addColorStop(0, '#0A0A0F')
-  grad.addColorStop(0.45, '#16121A')
-  grad.addColorStop(1, '#FF6B35')
-  ctx.fillStyle = grad
-  ctx.fillRect(0, 0, w, h)
-
-  ctx.fillStyle = 'rgba(255,255,255,0.08)'
-  ctx.beginPath()
-  ctx.arc(w - 60, 100, 160, 0, Math.PI * 2)
-  ctx.fill()
-
-  ctx.fillStyle = '#FFFFFF'
-  ctx.font = 'bold 44px system-ui, sans-serif'
-  ctx.fillText('QYNTRA GYM', 48, 88)
-
-  ctx.fillStyle = 'rgba(255,255,255,0.72)'
-  ctx.font = '24px system-ui, sans-serif'
-  ctx.fillText('Publicación compartida', 48, 128)
-
-  const cardX = 36
-  const cardY = 170
-  const cardW = w - 72
-  const cardH = 860
-  ctx.fillStyle = 'rgba(16,16,22,0.94)'
-  roundRect(ctx, cardX, cardY, cardW, cardH, 32)
-  ctx.fill()
-
-  // Brand accent bar
-  ctx.fillStyle = '#FF6B35'
-  roundRect(ctx, cardX, cardY, 10, cardH, 8)
-  ctx.fill()
-
-  const author = postAuthorName(post)
-  const typeLabel =
-    post.postType === 'workout' || post.workoutData
-      ? 'Entrenamiento'
-      : post.postType === 'challenge' || post.workoutData?.shareKind === 'challenge'
-        ? 'Reto'
-        : post.postType === 'badge' || post.badgeData
-          ? 'Insignia'
-          : post.postType === 'poll' || post.poll
-            ? 'Encuesta'
-            : 'Publicación'
-
-  ctx.fillStyle = 'rgba(255,107,53,0.22)'
-  roundRect(ctx, cardX + 36, cardY + 28, 180, 36, 18)
-  ctx.fill()
-  ctx.fillStyle = '#FFB089'
-  ctx.font = 'bold 18px system-ui, sans-serif'
-  ctx.fillText(typeLabel.toUpperCase(), cardX + 52, cardY + 52)
-
-  ctx.fillStyle = '#FFFFFF'
-  ctx.font = 'bold 34px system-ui, sans-serif'
-  ctx.fillText(author.slice(0, 28), cardX + 36, cardY + 110)
-
-  let y = cardY + 160
-  const content = postSnippet(post)
-  ctx.fillStyle = 'rgba(255,255,255,0.92)'
-  ctx.font = '28px system-ui, sans-serif'
-  wrapText(ctx, content, cardX + 36, y, cardW - 72, 38)
-  y += Math.min(160, Math.ceil(content.length / 28) * 38 + 20)
-
-  const wd = post.workoutData
-  if (wd) {
-    const stats = [
-      wd.name ? `💪 ${wd.name}` : null,
-      wd.completedExercises != null
-        ? `${wd.completedExercises}/${wd.totalExercises || wd.completedExercises} ejercicios`
-        : null,
-      wd.totalSets != null ? `${wd.totalSets} series` : null,
-      wd.durationSeconds != null
-        ? `${Math.floor((wd.durationSeconds || 0) / 60)} min`
-        : null,
-      wd.xpAwarded != null ? `+${wd.xpAwarded} XP` : null,
-      wd.challengeGoal != null
-        ? `Meta: ${wd.challengeGoal}${wd.challengeUnit ? ` ${wd.challengeUnit}` : ''}`
-        : null
-    ].filter(Boolean)
-
-    ctx.fillStyle = 'rgba(255,255,255,0.06)'
-    roundRect(ctx, cardX + 28, y, cardW - 56, Math.max(120, stats.length * 42 + 36), 20)
-    ctx.fill()
-
-    ctx.fillStyle = '#FFFFFF'
-    ctx.font = '24px system-ui, sans-serif'
-    stats.forEach((line, idx) => {
-      ctx.fillText(line.slice(0, 40), cardX + 48, y + 48 + idx * 42)
-    })
-    y += Math.max(120, stats.length * 42 + 56)
-  }
-
-  if (post.badgeData?.name) {
-    ctx.fillStyle = 'rgba(234,179,8,0.18)'
-    roundRect(ctx, cardX + 28, y, cardW - 56, 90, 20)
-    ctx.fill()
-    ctx.fillStyle = '#FACC15'
-    ctx.font = 'bold 28px system-ui, sans-serif'
-    ctx.fillText(`${post.badgeData.icon || '🏅'} ${post.badgeData.name}`, cardX + 48, y + 55)
-    y += 110
-  }
-
-  if (post.mood) {
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'
-    ctx.font = '22px system-ui, sans-serif'
-    ctx.fillText(`Estado: ${post.mood}`, cardX + 36, y + 10)
-    y += 40
-  }
-
-  if (post.poll?.question) {
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'
-    ctx.font = '24px system-ui, sans-serif'
-    wrapText(ctx, `📊 ${post.poll.question}`, cardX + 36, y + 10, cardW - 72, 34)
-    y += 80
-  }
-
-  const imageSrc = post.images?.[0]
-  if (imageSrc && y < cardY + cardH - 240) {
-    try {
-      const img = await loadImage(imageSrc)
-      const ih = Math.min(280, cardY + cardH - y - 40)
-      const iw = cardW - 72
-      ctx.save()
-      roundRect(ctx, cardX + 36, y, iw, ih, 18)
-      ctx.clip()
-      ctx.drawImage(img, cardX + 36, y, iw, ih)
-      ctx.restore()
-    } catch {
-      /* ignore image */
-    }
-  } else if (!wd && !post.badgeData && !imageSrc) {
-    // Fill empty space with Qyntra message so card never looks blank
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'
-    roundRect(ctx, cardX + 28, Math.min(y + 20, cardY + cardH - 220), cardW - 56, 180, 20)
-    ctx.fill()
-    ctx.fillStyle = 'rgba(255,255,255,0.75)'
-    ctx.font = '26px system-ui, sans-serif'
-    wrapText(
-      ctx,
-      content || 'Mira esta publicación en la comunidad de Qyntra Gym.',
-      cardX + 52,
-      Math.min(y + 80, cardY + cardH - 150),
-      cardW - 104,
-      36
-    )
-  }
-
-  ctx.fillStyle = 'rgba(255,255,255,0.6)'
-  ctx.font = '22px system-ui, sans-serif'
-  ctx.fillText('Abre Qyntra Gym para ver más', 48, h - 70)
-
-  return canvas.toDataURL('image/png')
-}
-
-function roundRect(ctx, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2)
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.arcTo(x + width, y, x + width, y + height, r)
-  ctx.arcTo(x + width, y + height, x, y + height, r)
-  ctx.arcTo(x, y + height, x, y, r)
-  ctx.arcTo(x, y, x + width, y, r)
-  ctx.closePath()
-}
-
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = String(text || '').split(/\s+/)
-  let line = ''
-  let yy = y
-  let lines = 0
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word
-    if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line, x, yy)
-      line = word
-      yy += lineHeight
-      lines += 1
-      if (lines >= 4) {
-        ctx.fillText(`${line}…`, x, yy)
-        return
-      }
-    } else {
-      line = test
-    }
-  }
-  if (line) ctx.fillText(line, x, yy)
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
 }
 
 function postAttachment(post) {
@@ -278,7 +73,6 @@ export default function SharePostSheet({
       setSelected([])
       setMessage('')
       setQuery('')
-      return
     }
   }, [open])
 
@@ -342,7 +136,7 @@ export default function SharePostSheet({
       const text = `🏋️ Qyntra Gym\n${postAuthorName(post)}: ${postSnippet(post)}\n\nÚnete a la comunidad en Qyntra Gym.`
       let file
       try {
-        const dataUrl = await buildWhatsAppCard(post)
+        const dataUrl = await buildNativePostShareImage(post)
         if (dataUrl) {
           const blob = await (await fetch(dataUrl)).blob()
           file = new File([blob], 'qyntra-post.png', { type: 'image/png' })
@@ -372,8 +166,7 @@ export default function SharePostSheet({
   const addToStories = async () => {
     if (!post) return
     try {
-      // Always use branded card so shared stories look complete (like WhatsApp share)
-      const mediaUrl = await buildWhatsAppCard(post)
+      const mediaUrl = await buildNativePostShareImage(post)
       if (!mediaUrl) {
         toast.error('No se pudo preparar la miniatura')
         return
@@ -390,7 +183,6 @@ export default function SharePostSheet({
         })
       )
       onClose?.()
-      // Ensure we are on a screen with StoryViewerProvider; then open compose
       if (!window.location.pathname.includes('/social')) {
         navigate('/social')
         window.setTimeout(() => {
@@ -432,7 +224,7 @@ export default function SharePostSheet({
                   { id: 'community', icon: FiUsers, label: 'Compartir con la comunidad', desc: 'Publícala en tu feed', color: 'text-primary-500' },
                   { id: 'users', icon: FiMessageCircle, label: 'Enviar a un usuario', desc: 'Como mensaje directo', color: 'text-accent-cyan' },
                   { id: 'whatsapp', icon: FaWhatsapp, label: 'WhatsApp', desc: 'Diseño nativo Qyntra', color: 'text-green-500' },
-                  { id: 'stories', icon: FiPlusSquare, label: 'Añadir a historias', desc: 'Miniatura de la publicación', color: 'text-accent-yellow' }
+                  { id: 'stories', icon: FiPlusSquare, label: 'Añadir a historias', desc: 'Como en el feed de comunidad', color: 'text-accent-yellow' }
                 ].map((item) => (
                   <button
                     key={item.id}
