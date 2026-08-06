@@ -290,6 +290,24 @@ router.get('/search', authenticate, async (req, res) => {
       const ids = (following || []).map((f) => f.following_id)
       if (!ids.length) return res.json([])
       query = query.in('id', ids)
+    } else if (filter === 'mentions') {
+      // Only mutual follows may be @mentioned
+      const [{ data: followingRowsM }, { data: followerRowsM }] = await Promise.all([
+        supabaseAdmin
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', req.user.id),
+        supabaseAdmin
+          .from('follows')
+          .select('follower_id')
+          .eq('following_id', req.user.id)
+      ])
+      const followingSetM = new Set((followingRowsM || []).map((f) => f.following_id))
+      const mutualIds = (followerRowsM || [])
+        .map((f) => f.follower_id)
+        .filter((id) => followingSetM.has(id))
+      if (!mutualIds.length) return res.json([])
+      query = query.in('id', mutualIds).not('username', 'is', null)
     } else if (filter === 'not_following') {
       const { data: following } = await supabaseAdmin
         .from('follows')
@@ -342,9 +360,9 @@ router.get('/search', authenticate, async (req, res) => {
       hasPendingRequest: pendingSet.has(u.id)
     }))
 
-    // Mentions: prioritize username prefix matches
-    if (filter === 'mentions' && q?.trim()) {
-      const term = normalizeUsername(q)
+    // Mentions: prioritize username prefix matches (already mutual-only)
+    if (filter === 'mentions') {
+      const term = normalizeUsername(q || '')
       users = users
         .filter((u) => u.username)
         .sort((a, b) => {
@@ -389,6 +407,23 @@ router.get('/:id', authenticate, async (req, res) => {
     const { data: profile, error } = await query.maybeSingle()
 
     if (error || !profile) return res.status(404).json({ message: 'Usuario no encontrado' })
+
+    // Hide badges from visitors when profile is private and they don't follow
+    if (profile.id !== req.user.id) {
+      const isPublic = profile.settings?.privacy?.profilePublic !== false
+      if (!isPublic) {
+        const { data: follow } = await supabaseAdmin
+          .from('follows')
+          .select('id')
+          .eq('follower_id', req.user.id)
+          .eq('following_id', profile.id)
+          .maybeSingle()
+        if (!follow) {
+          profile.badges = []
+        }
+      }
+    }
+
     const withSocial = await attachSocial(supabaseAdmin, profile)
     res.json(mapProfile(withSocial))
   } catch (error) {

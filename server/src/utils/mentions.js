@@ -3,24 +3,42 @@ import { extractMentionUsernames } from './username.js'
 import { notifyUser } from '../services/notificationService.js'
 import { encodeChatContent } from './chatMessage.js'
 
+/** Mutual-follow set for an actor (ids of users who follow each other with actor). */
+export async function getMutualFollowIds(actorId) {
+  if (!actorId) return new Set()
+  const [{ data: following }, { data: followers }] = await Promise.all([
+    supabaseAdmin.from('follows').select('following_id').eq('follower_id', actorId),
+    supabaseAdmin.from('follows').select('follower_id').eq('following_id', actorId)
+  ])
+  const followingSet = new Set((following || []).map((f) => f.following_id))
+  const mutual = new Set()
+  for (const row of followers || []) {
+    if (followingSet.has(row.follower_id)) mutual.add(row.follower_id)
+  }
+  return mutual
+}
+
 /**
- * Resolve @handles in text → profile rows (excluding actor).
+ * Resolve @handles in text → profiles the actor may mention (mutual follows only).
  */
 export async function resolveMentions(text, actorId) {
   const handles = extractMentionUsernames(text)
   if (!handles.length) return []
 
-  const { data, error } = await supabaseAdmin
-    .from('profiles')
-    .select('id, name, username, avatar')
-    .in('username', handles)
+  const [{ data, error }, mutualIds] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, name, username, avatar')
+      .in('username', handles),
+    getMutualFollowIds(actorId)
+  ])
 
   if (error) {
     console.error('resolveMentions:', error.message)
     return []
   }
 
-  return (data || []).filter((u) => u.id !== actorId)
+  return (data || []).filter((u) => u.id !== actorId && mutualIds.has(u.id))
 }
 
 /**

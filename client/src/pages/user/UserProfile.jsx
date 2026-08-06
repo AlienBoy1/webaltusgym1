@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
@@ -61,11 +61,36 @@ export default function UserProfile() {
   const [sharePostTarget, setSharePostTarget] = useState(null)
   const [sharingPost, setSharingPost] = useState(false)
   const [reactorsPost, setReactorsPost] = useState(null)
+  const [followStatusReady, setFollowStatusReady] = useState(false)
+  const privateAlertFor = useRef(null)
 
-  const isOwnProfile = currentUser?._id === id
+  const resolvedId = user?._id || user?.id || id
+  const isOwnProfile = Boolean(
+    currentUser &&
+      resolvedId &&
+      (currentUser._id === resolvedId || currentUser.id === resolvedId || currentUser._id === id)
+  )
+
+  const isProfilePublic = user?.settings?.privacy?.profilePublic !== false
+  const canViewPrivateContent = useMemo(() => {
+    if (!user) return false
+    if (isOwnProfile) return true
+    if (isProfilePublic) return true
+    if (!followStatusReady) return false
+    return followStatus.isFollowing
+  }, [user, isOwnProfile, followStatus.isFollowing, isProfilePublic, followStatusReady])
+
+  const isLockedVisitor = Boolean(
+    user && !isOwnProfile && !isProfilePublic && followStatusReady && !followStatus.isFollowing
+  )
+  const waitingPrivateGate = Boolean(
+    user && !isOwnProfile && !isProfilePublic && !followStatusReady
+  )
 
   useEffect(() => {
     if (id) {
+      setFollowStatusReady(false)
+      privateAlertFor.current = null
       fetchUser()
       checkFollowStatus()
       checkStories()
@@ -77,6 +102,16 @@ export default function UserProfile() {
       }
     }
   }, [id, currentUser?._id])
+
+  // After profile loads by username/id, refresh follow status with UUID
+  useEffect(() => {
+    if (!user?._id && !user?.id) return
+    const uid = user._id || user.id
+    if (uid === id) return
+    checkFollowStatus(uid)
+    if (!isOwnProfile) loadUserPosts(uid)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id, user?.id])
 
   const checkStories = async () => {
     try {
@@ -118,25 +153,30 @@ export default function UserProfile() {
     }
   }
 
-  const checkFollowStatus = async () => {
-    if (!currentUser?._id || !id) return
+  const checkFollowStatus = async (targetId = id) => {
+    if (!currentUser?._id || !targetId) {
+      setFollowStatusReady(true)
+      return
+    }
 
     try {
-      const { data } = await api.get(`/social/${id}/follow-status`)
+      const { data } = await api.get(`/social/${targetId}/follow-status`)
       setFollowStatus(data)
 
-      if (currentUser._id !== id) {
-        loadUserPosts()
+      if (currentUser._id !== targetId) {
+        loadUserPosts(targetId)
       }
     } catch (error) {
       console.error('Error checking follow status:', error)
+    } finally {
+      setFollowStatusReady(true)
     }
   }
 
-  const loadUserPosts = async () => {
+  const loadUserPosts = async (targetId = id) => {
     setLoadingPosts(true)
     try {
-      const { data } = await api.get(`/social/user/${id}/posts`)
+      const { data } = await api.get(`/social/user/${targetId}/posts`)
       if (data && !Array.isArray(data) && data.locked) {
         setPosts([])
         setPostsLocked(true)
@@ -169,7 +209,7 @@ export default function UserProfile() {
     setLoadingList(true)
     setListUsers([])
     try {
-      const { data } = await api.get(`/social/${type}?userId=${id}`)
+      const { data } = await api.get(`/social/${type}?userId=${resolvedId || id}`)
       setListUsers(data || [])
     } catch (error) {
       toast.error('Error al cargar lista')
@@ -180,8 +220,9 @@ export default function UserProfile() {
   }
 
   const handleFollow = async () => {
+    const targetId = resolvedId || id
     try {
-      const { data } = await api.post(`/social/${id}/follow`)
+      const { data } = await api.post(`/social/${targetId}/follow`)
       if (data.status === 'pending') {
         setFollowStatus((prev) => ({ ...prev, hasPendingRequest: true }))
         toast.success('Solicitud enviada')
@@ -193,16 +234,49 @@ export default function UserProfile() {
           followersCount: (prev.followersCount || 0) + 1
         }))
         toast.success('Ahora sigues a este usuario')
-        loadUserPosts()
+        loadUserPosts(targetId)
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al seguir usuario')
     }
   }
 
+  // Private profile alert (native) — once per visited profile, after follow status is known
+  useEffect(() => {
+    if (!user || loading || isOwnProfile || !followStatusReady) return
+    if (followStatus.isFollowing || isProfilePublic) return
+    const uid = user._id || user.id
+    if (!uid || privateAlertFor.current === uid) return
+    privateAlertFor.current = uid
+
+    ;(async () => {
+      const wantsFollow = await dialog.confirm(
+        'Este perfil es privado. Quienes no lo siguen no pueden ver sus publicaciones ni sus insignias, ni interactuar con su contenido social.\n\nSigue a este usuario para ver sus publicaciones e insignias e interactuar con él.',
+        {
+          title: 'Perfil privado',
+          confirmLabel: 'Seguir',
+          cancelLabel: 'Entendido',
+          tone: 'info'
+        }
+      )
+      if (wantsFollow && !followStatus.hasPendingRequest) {
+        await handleFollow()
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    user?._id,
+    user?.id,
+    loading,
+    isOwnProfile,
+    followStatusReady,
+    followStatus.isFollowing,
+    isProfilePublic
+  ])
+
   const handleUnfollow = async () => {
     try {
-      await api.post(`/social/${id}/unfollow`)
+      await api.post(`/social/${resolvedId || id}/unfollow`)
       setFollowStatus((prev) => ({
         ...prev,
         isFollowing: false,
@@ -218,7 +292,7 @@ export default function UserProfile() {
 
   const handleCancelRequest = async () => {
     try {
-      await api.post(`/social/${id}/cancel-follow`)
+      await api.post(`/social/${resolvedId || id}/cancel-follow`)
       setFollowStatus((prev) => ({ ...prev, hasPendingRequest: false }))
       toast.success('Solicitud cancelada')
     } catch (error) {
@@ -548,7 +622,7 @@ export default function UserProfile() {
             <FiAward className="text-accent-yellow" />
             Insignias
           </h2>
-          {(user.badges?.length > 0 || isOwnProfile) && (
+          {canViewPrivateContent && (user.badges?.length > 0 || isOwnProfile) && (
             <button
               onClick={() => setShowBadges(true)}
               className="text-primary-500 hover:text-primary-400 text-sm"
@@ -558,7 +632,24 @@ export default function UserProfile() {
           )}
         </div>
 
-        {user.badges && user.badges.length > 0 ? (
+        {isLockedVisitor || waitingPrivateGate ? (
+          <div className="text-center py-8 px-3">
+            <FiLock size={32} className="mx-auto mb-3 opacity-50" style={{ color: 'var(--text-muted)' }} />
+            <p className="font-semibold mb-2">Insignias ocultas</p>
+            <p className="text-sm leading-relaxed max-w-sm mx-auto" style={{ color: 'var(--text-secondary)' }}>
+              Sigue a este usuario para ver sus publicaciones e insignias e interactuar con él.
+            </p>
+            {isLockedVisitor && !followStatus.hasPendingRequest && (
+              <button
+                type="button"
+                onClick={handleFollow}
+                className="btn-primary mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm"
+              >
+                <FiUserPlus size={16} /> Seguir
+              </button>
+            )}
+          </div>
+        ) : user.badges && user.badges.length > 0 ? (
           <div className="grid grid-cols-4 gap-2 sm:gap-3">
             {user.badges.slice(0, 8).map((badge, index) => (
               <div
@@ -587,7 +678,7 @@ export default function UserProfile() {
         )}
       </motion.div>
 
-      {(isOwnProfile || followStatus.isFollowing) && (
+      {(isOwnProfile || canViewPrivateContent || isLockedVisitor || waitingPrivateGate) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -599,11 +690,11 @@ export default function UserProfile() {
               <FiUsers className="text-primary-500" />
               Publicaciones
             </h2>
-            {!isOwnProfile && (
+            {!isOwnProfile && canViewPrivateContent && (
               <button
                 onClick={() => {
                   if (!showPosts && posts.length === 0) {
-                    loadUserPosts()
+                    loadUserPosts(resolvedId || id)
                   } else {
                     setShowPosts(!showPosts)
                   }
@@ -615,16 +706,24 @@ export default function UserProfile() {
             )}
           </div>
 
-          {(isOwnProfile || showPosts) && postsLocked ? (
+          {isLockedVisitor || waitingPrivateGate || postsLocked ? (
             <div className="card text-center py-10 px-4">
               <FiLock size={36} className="mx-auto mb-3 opacity-50" style={{ color: 'var(--text-muted)' }} />
               <p className="font-semibold mb-2">Perfil no público</p>
               <p className="text-sm leading-relaxed max-w-sm mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                Este usuario no tiene su perfil público para mostrar sus publicaciones a todo el mundo.
-                Solicita seguirlo para ver el contenido que comparte.
+                Sigue a este usuario para ver sus publicaciones e insignias e interactuar con él.
               </p>
+              {!isOwnProfile && isLockedVisitor && !followStatus.hasPendingRequest && (
+                <button
+                  type="button"
+                  onClick={handleFollow}
+                  className="btn-primary mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm"
+                >
+                  <FiUserPlus size={16} /> Seguir
+                </button>
+              )}
             </div>
-          ) : (isOwnProfile || showPosts) && (
+          ) : (isOwnProfile || showPosts || canViewPrivateContent) && (
             <ProfileFeed
               posts={posts}
               loading={loadingPosts}
@@ -757,7 +856,11 @@ export default function UserProfile() {
         )}
       </AnimatePresence>
 
-      <BadgesModal isOpen={showBadges} onClose={() => setShowBadges(false)} userId={id} />
+      <BadgesModal
+        isOpen={showBadges && canViewPrivateContent}
+        onClose={() => setShowBadges(false)}
+        userId={resolvedId || id}
+      />
     </div>
   )
 }

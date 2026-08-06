@@ -147,7 +147,9 @@ export default function MentionInput({
             <p className="p-3 text-xs text-[color:var(--text-muted)]">Buscando…</p>
           ) : suggestions.length === 0 ? (
             <p className="p-3 text-xs text-[color:var(--text-muted)]">
-              {query ? 'Sin coincidencias' : 'Escribe un username'}
+              {query
+                ? 'Sin coincidencias entre quienes se siguen mutuamente'
+                : 'Solo puedes mencionar a quien te sigue y tú también sigues'}
             </p>
           ) : (
             suggestions.map((u, i) => (
