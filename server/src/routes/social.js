@@ -7,17 +7,56 @@ import { resolveMentions, notifyPostMentions } from '../utils/mentions.js'
 
 const router = express.Router()
 
+const POST_REACTION_EMOJIS = new Set(['❤️', '💪', '🧴', '🔥', '⚡', '🏆'])
+
+function isMissingEmojiColumn(error) {
+  const msg = String(error?.message || error?.details || '')
+  const code = String(error?.code || '')
+  return code === '42703' || (msg.includes('emoji') && msg.includes('does not exist'))
+}
+
+function normalizeReactionEmoji(raw) {
+  if (raw === null || raw === undefined || raw === '') return null
+  const s = String(raw)
+  // Accept heart with/without variation selector
+  if (s === '❤' || s === '❤️') return '❤️'
+  if (POST_REACTION_EMOJIS.has(s)) return s
+  return null
+}
+
 function mapComment(row, userMap = {}) {
   const u = userMap[row.user_id]
   return {
     _id: row.id,
     id: row.id,
+    parentId: row.parent_id || null,
     user: u
       ? { _id: u.id, id: u.id, name: u.name, username: u.username || null, avatar: u.avatar }
       : row.user_id,
     content: row.content,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    replies: []
   }
+}
+
+/** Nest flat comments into Facebook-style threads (root + replies). */
+function nestComments(flat = []) {
+  const byId = Object.create(null)
+  const roots = []
+  for (const c of flat) {
+    byId[c._id || c.id] = { ...c, replies: [] }
+  }
+  for (const c of flat) {
+    const id = c._id || c.id
+    const node = byId[id]
+    const parentId = c.parentId
+    if (parentId && byId[parentId]) {
+      byId[parentId].replies.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  return roots
 }
 
 async function getProfilesMap(ids) {
@@ -30,34 +69,46 @@ async function getProfilesMap(ids) {
   return Object.fromEntries((data || []).map((p) => [p.id, p]))
 }
 
-async function enrichPosts(posts, viewerId = null) {
+async function enrichPosts(posts, viewerId = null, options = {}) {
+  const lite = Boolean(options.lite)
   if (!posts?.length) return []
 
   const postIds = posts.map((p) => p.id)
   const sharedIds = [...new Set(posts.map((p) => p.shared_from).filter(Boolean))]
 
-  const [{ data: likes }, { data: comments }, { data: sharedRows }] = await Promise.all([
-    supabaseAdmin.from('post_likes').select('post_id, user_id, emoji').in('post_id', postIds).then(async (res) => {
-      if (res.error && String(res.error.message || '').includes('emoji')) {
+  const likesQuery = supabaseAdmin
+    .from('post_likes')
+    .select(lite ? 'post_id, user_id, emoji' : 'post_id, user_id, emoji')
+    .in('post_id', postIds)
+    .then(async (res) => {
+      if (res.error && isMissingEmojiColumn(res.error)) {
         return supabaseAdmin.from('post_likes').select('post_id, user_id').in('post_id', postIds)
       }
       return res
-    }),
-    supabaseAdmin
-      .from('post_comments')
-      .select('*')
-      .in('post_id', postIds)
-      .order('created_at', { ascending: true }),
+    })
+
+  const commentsQuery = lite
+    ? supabaseAdmin.from('post_comments').select('post_id').in('post_id', postIds)
+    : supabaseAdmin
+        .from('post_comments')
+        .select('*')
+        .in('post_id', postIds)
+        .order('created_at', { ascending: true })
+
+  const [{ data: likes }, { data: comments }, { data: sharedRows }] = await Promise.all([
+    likesQuery,
+    commentsQuery,
     sharedIds.length
       ? supabaseAdmin.from('posts').select('*').in('id', sharedIds)
       : Promise.resolve({ data: [] })
   ])
 
-  const likeUserIds = (likes || []).map((l) => l.user_id)
+  const likeUserIds = lite ? [] : (likes || []).map((l) => l.user_id)
+  const commentUserIds = lite ? [] : (comments || []).map((c) => c.user_id)
   const authorIds = [
     ...posts.map((p) => p.user_id),
     ...(sharedRows || []).map((p) => p.user_id),
-    ...(comments || []).map((c) => c.user_id),
+    ...commentUserIds,
     ...likeUserIds
   ]
   const userMap = await getProfilesMap(authorIds)
@@ -69,16 +120,26 @@ async function enrichPosts(posts, viewerId = null) {
     if (!likesByPost[l.post_id]) likesByPost[l.post_id] = []
     likesByPost[l.post_id].push(l.user_id)
     if (!reactionByPostUser[l.post_id]) reactionByPostUser[l.post_id] = {}
-    const emoji = l.emoji || '❤️'
+    const emoji = normalizeReactionEmoji(l.emoji) || l.emoji || '❤️'
     reactionByPostUser[l.post_id][l.user_id] = emoji
     if (!reactionSummaryByPost[l.post_id]) reactionSummaryByPost[l.post_id] = {}
     reactionSummaryByPost[l.post_id][emoji] = (reactionSummaryByPost[l.post_id][emoji] || 0) + 1
   }
 
   const commentsByPost = {}
-  for (const c of comments || []) {
-    if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = []
-    commentsByPost[c.post_id].push(mapComment(c, userMap))
+  const commentCountByPost = {}
+  if (lite) {
+    for (const c of comments || []) {
+      commentCountByPost[c.post_id] = (commentCountByPost[c.post_id] || 0) + 1
+    }
+  } else {
+    for (const c of comments || []) {
+      if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = []
+      commentsByPost[c.post_id].push(mapComment(c, userMap))
+    }
+    for (const pid of Object.keys(commentsByPost)) {
+      commentsByPost[pid] = nestComments(commentsByPost[pid])
+    }
   }
 
   const sharedMap = Object.fromEntries((sharedRows || []).map((p) => [p.id, p]))
@@ -134,27 +195,36 @@ async function enrichPosts(posts, viewerId = null) {
       .map(([emoji, count]) => ({ emoji, count }))
       .sort((a, b) => b.count - a.count)
 
-    const reactors = Object.entries(reactionByPostUser[row.id] || {}).map(([uid, emoji]) => {
-      const u = userMap[uid]
-      return {
-        userId: uid,
-        emoji,
-        name: u?.name || 'Usuario',
-        avatar: u?.avatar || null
-      }
-    })
+    const reactors = lite
+      ? []
+      : Object.entries(reactionByPostUser[row.id] || {}).map(([uid, emoji]) => {
+          const u = userMap[uid]
+          return {
+            userId: uid,
+            emoji,
+            name: u?.name || 'Usuario',
+            username: u?.username || null,
+            avatar: u?.avatar || null
+          }
+        })
+
+    const mappedComments = lite ? [] : commentsByPost[row.id] || []
+    const commentsCount = lite
+      ? commentCountByPost[row.id] || 0
+      : undefined
 
     return {
       ...mapPost(row, {
         user: mappedAuthor,
         likes: likesByPost[row.id] || [],
-        comments: commentsByPost[row.id] || [],
+        comments: mappedComments,
         workoutData
       }),
       myReaction: viewerId ? reactionByPostUser[row.id]?.[viewerId] || null : null,
       reactionSummary,
       reactors,
-      sharedFrom
+      sharedFrom,
+      ...(lite ? { commentsCount, commentsLoaded: false } : { commentsLoaded: true })
     }
   })
 }
@@ -182,9 +252,12 @@ async function bumpSocialInteractions(userId) {
   }
 }
 
-// Get feed (own posts + posts from users you follow)
+// Get feed (own posts + posts from users you follow) — paginated + lite enrich
 router.get('/feed', authenticate, async (req, res) => {
   try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 30)
+    const before = req.query.before || null
+
     const { data: following } = await supabaseAdmin
       .from('follows')
       .select('following_id')
@@ -193,18 +266,103 @@ router.get('/feed', authenticate, async (req, res) => {
     const followingIds = (following || []).map((f) => f.following_id)
     const feedUserIds = [...new Set([req.user.id, ...followingIds])]
 
-    const { data: posts, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('posts')
       .select('*')
       .in('user_id', feedUserIds)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .limit(limit + 1)
 
+    if (before) {
+      query = query.lt('created_at', before)
+    }
+
+    const { data: posts, error } = await query
     if (error) throw error
 
-    res.json(await enrichPosts(posts || [], req.user.id))
+    const rows = posts || []
+    const hasMore = rows.length > limit
+    const page = hasMore ? rows.slice(0, limit) : rows
+    const enriched = await enrichPosts(page, req.user.id, { lite: true })
+    const nextCursor = page.length ? page[page.length - 1].created_at : null
+
+    res.json({
+      posts: enriched,
+      hasMore,
+      nextCursor
+    })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener feed', error: error.message })
+  }
+})
+
+// Single post (native detail view)
+router.get('/post/:id', authenticate, async (req, res) => {
+  try {
+    const { data: post, error } = await supabaseAdmin
+      .from('posts')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (error) throw error
+    if (!post) return res.status(404).json({ message: 'Publicación no encontrada' })
+
+    if (post.user_id !== req.user.id) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('settings')
+        .eq('id', post.user_id)
+        .maybeSingle()
+      const isPublic = profile?.settings?.privacy?.profilePublic !== false
+      if (!isPublic) {
+        const { data: follow } = await supabaseAdmin
+          .from('follows')
+          .select('id')
+          .eq('follower_id', req.user.id)
+          .eq('following_id', post.user_id)
+          .maybeSingle()
+        if (!follow) {
+          return res.status(403).json({ message: 'Esta publicación no está disponible' })
+        }
+      }
+    }
+
+    const [enriched] = await enrichPosts([post], req.user.id)
+    res.json(enriched)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener publicación', error: error.message })
+  }
+})
+
+// Who reacted (always fresh — used by reactors modal)
+router.get('/:id/reactors', authenticate, async (req, res) => {
+  try {
+    const { data: likes, error } = await supabaseAdmin
+      .from('post_likes')
+      .select('user_id, emoji')
+      .eq('post_id', req.params.id)
+      .then(async (result) => {
+        if (result.error && String(result.error.message || '').includes('emoji')) {
+          return supabaseAdmin.from('post_likes').select('user_id').eq('post_id', req.params.id)
+        }
+        return result
+      })
+    if (error) throw error
+
+    const userMap = await getProfilesMap((likes || []).map((l) => l.user_id))
+    const reactors = (likes || []).map((l) => {
+      const u = userMap[l.user_id]
+      return {
+        userId: l.user_id,
+        emoji: normalizeReactionEmoji(l.emoji) || l.emoji || '❤️',
+        name: u?.name || 'Usuario',
+        username: u?.username || null,
+        avatar: u?.avatar || null
+      }
+    })
+    res.json(reactors)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener reacciones', error: error.message })
   }
 })
 
@@ -417,7 +575,18 @@ router.post('/:id/poll/vote', authenticate, async (req, res) => {
 router.post('/:id/like', authenticate, async (req, res) => {
   try {
     const emojiRaw = req.body?.emoji
-    const emoji = emojiRaw === null || emojiRaw === '' ? null : (emojiRaw || '❤️')
+    // null = explicit unlike; undefined/omit = toggle heart; string = set that reaction
+    let emoji
+    if (emojiRaw === null) {
+      emoji = null
+    } else if (emojiRaw === undefined || emojiRaw === '') {
+      emoji = '❤️'
+    } else {
+      emoji = normalizeReactionEmoji(emojiRaw)
+      if (!emoji) {
+        return res.status(400).json({ message: 'Reacción no válida' })
+      }
+    }
 
     const { data: post } = await supabaseAdmin
       .from('posts')
@@ -429,18 +598,23 @@ router.post('/:id/like', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Publicación no encontrada' })
     }
 
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: existingErr } = await supabaseAdmin
       .from('post_likes')
       .select('*')
       .eq('post_id', post.id)
       .eq('user_id', req.user.id)
       .maybeSingle()
 
+    if (existingErr && isMissingEmojiColumn(existingErr)) {
+      // select * still works without column; ignore
+    } else if (existingErr) {
+      throw existingErr
+    }
+
     let liked = false
     let myReaction = null
 
     if (emoji === null) {
-      // Explicit unlike
       if (existing) {
         await supabaseAdmin
           .from('post_likes')
@@ -450,8 +624,7 @@ router.post('/:id/like', authenticate, async (req, res) => {
       }
       liked = false
       myReaction = null
-    } else if (existing && (existing.emoji || '❤️') === emoji) {
-      // Toggle off same reaction
+    } else if (existing && normalizeReactionEmoji(existing.emoji || '❤️') === emoji) {
       await supabaseAdmin
         .from('post_likes')
         .delete()
@@ -465,29 +638,30 @@ router.post('/:id/like', authenticate, async (req, res) => {
         .update({ emoji })
         .eq('post_id', post.id)
         .eq('user_id', req.user.id)
-      if (error && String(error.message || '').includes('emoji')) {
-        // Column not migrated yet — keep like without emoji
-        liked = true
-        myReaction = '❤️'
-      } else if (error) throw error
-      else {
-        liked = true
-        myReaction = emoji
-      }
-    } else {
-      const payload = { post_id: post.id, user_id: req.user.id, emoji }
-      let { error } = await supabaseAdmin.from('post_likes').insert(payload)
-      if (error && String(error.message || '').includes('emoji')) {
-        const retry = await supabaseAdmin
-          .from('post_likes')
-          .insert({ post_id: post.id, user_id: req.user.id })
-        error = retry.error
-        myReaction = '❤️'
-      } else {
-        myReaction = emoji
+      if (isMissingEmojiColumn(error)) {
+        return res.status(503).json({
+          message:
+            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
+          code: 'MISSING_EMOJI_COLUMN'
+        })
       }
       if (error) throw error
       liked = true
+      myReaction = emoji
+    } else {
+      const { error } = await supabaseAdmin
+        .from('post_likes')
+        .insert({ post_id: post.id, user_id: req.user.id, emoji })
+      if (isMissingEmojiColumn(error)) {
+        return res.status(503).json({
+          message:
+            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
+          code: 'MISSING_EMOJI_COLUMN'
+        })
+      }
+      if (error) throw error
+      liked = true
+      myReaction = emoji
     }
 
     const { count } = await supabaseAdmin
@@ -495,26 +669,39 @@ router.post('/:id/like', authenticate, async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('post_id', post.id)
 
-    // Re-read stored emoji so client gets the real value (not a silent heart fallback)
     if (liked) {
-      const { data: stored } = await supabaseAdmin
+      const { data: stored, error: storedErr } = await supabaseAdmin
         .from('post_likes')
         .select('emoji')
         .eq('post_id', post.id)
         .eq('user_id', req.user.id)
         .maybeSingle()
-      if (stored?.emoji) myReaction = stored.emoji
-      else if (emoji) myReaction = emoji
+      if (isMissingEmojiColumn(storedErr)) {
+        return res.status(503).json({
+          message:
+            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
+          code: 'MISSING_EMOJI_COLUMN'
+        })
+      }
+      if (stored?.emoji) myReaction = normalizeReactionEmoji(stored.emoji) || stored.emoji
     }
 
-    // Build summary for nested reaction chips
-    const { data: likeRows } = await supabaseAdmin
+    const { data: likeRows, error: summaryErr } = await supabaseAdmin
       .from('post_likes')
       .select('emoji')
       .eq('post_id', post.id)
+
+    if (isMissingEmojiColumn(summaryErr)) {
+      return res.status(503).json({
+        message:
+          'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
+        code: 'MISSING_EMOJI_COLUMN'
+      })
+    }
+
     const summaryMap = {}
     for (const row of likeRows || []) {
-      const e = row.emoji || '❤️'
+      const e = normalizeReactionEmoji(row.emoji) || row.emoji || '❤️'
       summaryMap[e] = (summaryMap[e] || 0) + 1
     }
     const reactionSummary = Object.entries(summaryMap)
@@ -527,10 +714,13 @@ router.post('/:id/like', authenticate, async (req, res) => {
   }
 })
 
-// Comment on post
+// Comment on post (optional parentId = reply)
 router.post('/:id/comment', authenticate, async (req, res) => {
   try {
-    const { content } = req.body
+    const { content, parentId } = req.body
+    if (!content?.trim()) {
+      return res.status(400).json({ message: 'El comentario no puede estar vacío' })
+    }
 
     const { data: post } = await supabaseAdmin
       .from('posts')
@@ -542,12 +732,41 @@ router.post('/:id/comment', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Publicación no encontrada' })
     }
 
-    const { error: insertError } = await supabaseAdmin.from('post_comments').insert({
+    let parent_id = null
+    if (parentId) {
+      const { data: parent } = await supabaseAdmin
+        .from('post_comments')
+        .select('id, post_id, parent_id')
+        .eq('id', parentId)
+        .maybeSingle()
+      if (!parent || parent.post_id !== post.id) {
+        return res.status(400).json({ message: 'Comentario padre inválido' })
+      }
+      // Only one nesting level: replies attach to the root comment
+      parent_id = parent.parent_id || parent.id
+    }
+
+    const insertPayload = {
       post_id: post.id,
       user_id: req.user.id,
-      content
-    })
-    if (insertError) throw insertError
+      content: content.trim()
+    }
+    if (parent_id) insertPayload.parent_id = parent_id
+
+    const { error: insertError } = await supabaseAdmin.from('post_comments').insert(insertPayload)
+    if (insertError) {
+      // Fallback if parent_id column not migrated yet
+      if (parent_id && String(insertError.message || '').includes('parent_id')) {
+        const retry = await supabaseAdmin.from('post_comments').insert({
+          post_id: post.id,
+          user_id: req.user.id,
+          content: content.trim()
+        })
+        if (retry.error) throw retry.error
+      } else {
+        throw insertError
+      }
+    }
 
     await bumpSocialInteractions(req.user.id)
 
@@ -575,7 +794,7 @@ router.post('/:id/comment', authenticate, async (req, res) => {
       .order('created_at', { ascending: true })
 
     const userMap = await getProfilesMap((comments || []).map((c) => c.user_id))
-    res.json((comments || []).map((c) => mapComment(c, userMap)))
+    res.json(nestComments((comments || []).map((c) => mapComment(c, userMap))))
   } catch (error) {
     res.status(500).json({ message: 'Error al comentar', error: error.message })
   }

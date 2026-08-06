@@ -8,7 +8,26 @@ const listeners = {
   userTyping: new Set(),
   userOnline: new Set(),
   userOffline: new Set(),
-  messageSent: new Set()
+  messageSent: new Set(),
+  presenceSync: new Set()
+}
+
+let trackedUserId = null
+
+function buildPresenceMap(state) {
+  const map = new Map()
+  Object.entries(state || {}).forEach(([id, metas]) => {
+    const list = Array.isArray(metas) ? metas : []
+    const latest = list[list.length - 1] || {}
+    map.set(String(id), latest.status || 'online')
+  })
+  return map
+}
+
+function emitPresenceSync() {
+  if (!presenceChannel) return
+  const map = buildPresenceMap(presenceChannel.presenceState())
+  emit('presenceSync', map)
 }
 
 function emit(event, payload) {
@@ -36,6 +55,7 @@ export function offChatEvent(event, handler) {
 export function initSocket(userId) {
   cleanupSocket()
   if (!userId) return null
+  trackedUserId = String(userId)
 
   messageChannel = supabase
     .channel(`messages:${userId}`)
@@ -82,19 +102,51 @@ export function initSocket(userId) {
     .on('presence', { event: 'sync' }, () => {
       const state = presenceChannel.presenceState()
       Object.keys(state).forEach((id) => emit('userOnline', id))
+      emitPresenceSync()
     })
-    .on('presence', { event: 'join' }, ({ key }) => emit('userOnline', key))
-    .on('presence', { event: 'leave' }, ({ key }) => emit('userOffline', key))
+    .on('presence', { event: 'join' }, ({ key }) => {
+      emit('userOnline', key)
+      emitPresenceSync()
+    })
+    .on('presence', { event: 'leave' }, ({ key }) => {
+      emit('userOffline', key)
+      emitPresenceSync()
+    })
     .on('broadcast', { event: 'typing' }, ({ payload }) => {
       if (payload?.to === userId) emit('userTyping', { from: payload.from })
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        await presenceChannel.track({ user_id: userId, online_at: new Date().toISOString() })
+        await presenceChannel.track({
+          user_id: userId,
+          status: 'online',
+          updated_at: new Date().toISOString()
+        })
       }
     })
 
   return { messageChannel, presenceChannel }
+}
+
+export function getPresenceChannel() {
+  return presenceChannel
+}
+
+/** Current presence Map(userId → status) from the live channel, if subscribed. */
+export function getPresenceSnapshot() {
+  if (!presenceChannel) return new Map()
+  return buildPresenceMap(presenceChannel.presenceState())
+}
+
+export function trackPresence(payload = {}) {
+  if (!presenceChannel) return Promise.resolve()
+  const user_id = payload.user_id || trackedUserId
+  if (!user_id) return Promise.resolve()
+  return presenceChannel.track({
+    user_id,
+    status: payload.status || 'online',
+    updated_at: payload.updated_at || new Date().toISOString()
+  })
 }
 
 export function disconnectSocket() {
@@ -110,6 +162,7 @@ function cleanupSocket() {
     supabase.removeChannel(presenceChannel)
     presenceChannel = null
   }
+  trackedUserId = null
 }
 
 export function sendTyping(to, from) {
@@ -172,6 +225,8 @@ export default {
   onChatEvent,
   offChatEvent,
   sendTyping,
+  trackPresence,
+  getPresenceChannel,
   requestNotificationPermission,
   showNotification
 }

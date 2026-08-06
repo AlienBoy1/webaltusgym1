@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiX, FiAward, FiLock, FiUnlock, FiShare2, FiInfo, FiCalendar } from 'react-icons/fi'
 import api from '../utils/api'
@@ -106,10 +107,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
 
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <div
-        className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center bg-black/70"
+        className="app-overlay-sheet fixed inset-0 z-[120] flex items-end sm:items-center sm:justify-center bg-black/70"
         onClick={onClose}
       >
         <motion.div
@@ -117,11 +118,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 40 }}
           onClick={(e) => e.stopPropagation()}
-          className="flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] overflow-hidden"
+          className="app-bottom-sheet-panel flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] overflow-hidden"
           style={{
             background: 'var(--bg-card)',
-            maxHeight: 'min(92svh, 720px)',
-            paddingBottom: 'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))'
+            maxHeight: 'min(92svh, 720px)'
           }}
         >
           <div
@@ -178,7 +178,7 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
                     return (
                       <motion.button
                         type="button"
-                        key={badge.id || index}
+                        key={String(badge.id || badge._id || `badge-${index}`)}
                         initial={{ opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: Math.min(index * 0.03, 0.5) }}
@@ -259,7 +259,7 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
       <AnimatePresence>
         {selectedBadge && (
           <div
-            className="fixed inset-0 z-[60] flex items-end sm:items-center sm:justify-center bg-black/80 p-0 sm:p-4"
+            className="fixed inset-0 z-[130] flex items-end sm:items-center sm:justify-center bg-black/80 p-0 sm:p-4"
             onClick={() => setSelectedBadge(null)}
           >
             <motion.div
@@ -267,10 +267,9 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 30 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] p-5 sm:p-6"
+              className="app-bottom-sheet-panel w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] p-5 sm:p-6"
               style={{
-                background: 'var(--bg-card)',
-                paddingBottom: 'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))'
+                background: 'var(--bg-card)'
               }}
             >
               <div className="flex items-center justify-between mb-5">
@@ -396,6 +395,7 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
           </div>
         )}
       </AnimatePresence>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

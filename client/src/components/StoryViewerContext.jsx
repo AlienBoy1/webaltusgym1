@@ -1,11 +1,13 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import StoriesRail from './StoriesRail'
+import { dispatchStoryClose, dispatchStoryOpen } from '../utils/presence'
 
 const StoryViewerContext = createContext(null)
 
 export function StoryViewerProvider({ children }) {
   const [openUserId, setOpenUserId] = useState(null)
   const [openStoryId, setOpenStoryId] = useState(null)
+  const prevOpenRef = useRef(false)
 
   const openUserStory = useCallback((userId) => {
     if (!userId) return
@@ -23,6 +25,17 @@ export function StoryViewerProvider({ children }) {
     setOpenUserId(null)
     setOpenStoryId(null)
   }, [])
+
+  useEffect(() => {
+    const open = Boolean(openUserId || openStoryId)
+    if (open) {
+      prevOpenRef.current = true
+      dispatchStoryOpen({ userId: openUserId, storyId: openStoryId })
+    } else if (prevOpenRef.current) {
+      prevOpenRef.current = false
+      dispatchStoryClose()
+    }
+  }, [openUserId, openStoryId])
 
   const value = useMemo(
     () => ({ openUserStory, openStoryById, closeUserStory, openUserId, openStoryId }),

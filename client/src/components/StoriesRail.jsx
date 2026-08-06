@@ -24,6 +24,8 @@ import { Avatar } from '../utils/avatarUtils'
 import { getStorageAccessGranted } from '../utils/storageAccess'
 import { useAppDialog } from './AppDialog'
 import MentionInput, { MentionText } from './MentionInput'
+import { dispatchStoryClose, dispatchStoryOpen } from '../utils/presence'
+import ProtectedMedia from './ProtectedMedia'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -83,6 +85,7 @@ export default function StoriesRail({
   const storyStartedAtRef = useRef(null)
   const remainingMsRef = useRef(null)
   const openStoryHandled = useRef(null)
+  const viewerWasOpenRef = useRef(false)
   const paused = menuOpen || shareOpen || favoritesOpen || viewersOpen || replyFocused || Boolean(reply.trim())
   const [progressPct, setProgressPct] = useState(0)
   const progressRafRef = useRef(null)
@@ -239,7 +242,23 @@ export default function StoriesRail({
     currentGroup &&
     (currentGroup.user?._id || currentGroup.user) === user?._id
 
-  const closeViewer = () => {
+  useEffect(() => {
+    if (viewer != null) {
+      viewerWasOpenRef.current = true
+      const group = groups[viewer.groupIndex]
+      dispatchStoryOpen({
+        userId: group?.user?._id || group?.user || null,
+        storyId: group?.stories?.[viewer.storyIndex]?._id || group?.stories?.[viewer.storyIndex]?.id || null
+      })
+      return
+    }
+    if (viewerWasOpenRef.current) {
+      viewerWasOpenRef.current = false
+      dispatchStoryClose()
+    }
+  }, [viewer, groups])
+
+  const closeViewer = useCallback(() => {
     setViewer(null)
     setMenuOpen(false)
     setShareOpen(false)
@@ -250,9 +269,34 @@ export default function StoriesRail({
     setReplyFocused(false)
     if (timerRef.current) window.clearTimeout(timerRef.current)
     openStoryHandled.current = null
+    dispatchStoryClose()
     onForceClose?.()
     if (showRail) load()
-  }
+  }, [showRail, load, onForceClose])
+
+  const closeViewerRef = useRef(closeViewer)
+  closeViewerRef.current = closeViewer
+
+  const requestCloseViewer = useCallback(() => {
+    if (window.history.state?.qyntraStory) {
+      window.history.back()
+      return
+    }
+    closeViewer()
+  }, [closeViewer])
+
+  // Hardware / browser back closes story viewer instead of leaving the page
+  useEffect(() => {
+    if (viewer == null) return undefined
+    window.history.pushState({ qyntraStory: true }, '')
+    const onPop = () => {
+      closeViewerRef.current()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+    }
+  }, [viewer != null]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openViewers = async () => {
     if (!currentStory || !isOwnStory) return
@@ -336,7 +380,8 @@ export default function StoriesRail({
     if (viewer == null) return
     const group = groups[viewer.groupIndex]
     if (!group) {
-      setViewer(null)
+      if (window.history.state?.qyntraStory) window.history.back()
+      else closeViewer()
       return
     }
     if (viewer.storyIndex < group.stories.length - 1) {
@@ -344,10 +389,10 @@ export default function StoriesRail({
     } else if (viewer.groupIndex < groups.length - 1) {
       setViewer({ groupIndex: viewer.groupIndex + 1, storyIndex: 0 })
     } else {
-      setViewer(null)
-      load()
+      if (window.history.state?.qyntraStory) window.history.back()
+      else closeViewer()
     }
-  }, [viewer, groups, load])
+  }, [viewer, groups, closeViewer])
 
   const goPrev = () => {
     if (viewer == null) return
@@ -473,7 +518,7 @@ export default function StoriesRail({
         }
       }
     })
-    closeViewer()
+    requestCloseViewer()
   }
 
   const openShare = async () => {
@@ -553,7 +598,7 @@ export default function StoriesRail({
         (s) => (s._id || s.id) !== (currentStory._id || currentStory.id)
       )
       if (remaining.length === 0) {
-        closeViewer()
+        requestCloseViewer()
       } else {
         const nextIndex = Math.min(viewer.storyIndex, remaining.length - 1)
         setGroups((prev) =>
@@ -830,7 +875,8 @@ export default function StoriesRail({
                 }`}
               >
                 {mediaType === 'video' ? (
-                  <video
+                  <ProtectedMedia
+                    as="video"
                     src={mediaPreview}
                     autoPlay
                     loop
@@ -839,7 +885,7 @@ export default function StoriesRail({
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <img
+                  <ProtectedMedia
                     src={mediaPreview}
                     alt=""
                     className={
@@ -941,7 +987,7 @@ export default function StoriesRail({
                   </button>
                   <button
                     type="button"
-                    onClick={closeViewer}
+                    onClick={requestCloseViewer}
                     className="rounded-full bg-black/40 p-2"
                     style={{ color: '#fff' }}
                   >
@@ -1013,7 +1059,8 @@ export default function StoriesRail({
                   aria-label="Siguiente"
                 />
                 {currentStory.mediaType === 'video' ? (
-                  <video
+                  <ProtectedMedia
+                    as="video"
                     key={currentStory._id || currentStory.id}
                     src={currentStory.mediaUrl}
                     autoPlay
@@ -1027,7 +1074,7 @@ export default function StoriesRail({
                     onEnded={!paused ? goNext : undefined}
                   />
                 ) : (
-                  <img
+                  <ProtectedMedia
                     src={currentStory.mediaUrl}
                     alt=""
                     className="h-full w-full object-cover"
@@ -1322,12 +1369,24 @@ export default function StoriesRail({
                             onClick={() => saveToAlbum(album._id || album.id)}
                             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/5 disabled:opacity-50"
                           >
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary-500/40 to-accent-cyan/30 ring-2 ring-white/10">
+                            <div
+                              data-protected-media="1"
+                              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary-500/40 to-accent-cyan/30 ring-2 ring-white/10"
+                            >
                               {album.coverUrl ? (
                                 album.coverType === 'video' ? (
-                                  <video src={album.coverUrl} muted className="h-full w-full object-cover" />
+                                  <ProtectedMedia
+                                    as="video"
+                                    src={album.coverUrl}
+                                    muted
+                                    className="h-full w-full object-cover"
+                                  />
                                 ) : (
-                                  <img src={album.coverUrl} alt="" className="h-full w-full object-cover" />
+                                  <ProtectedMedia
+                                    src={album.coverUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
                                 )
                               ) : (
                                 <FiStar className="text-accent-yellow" />

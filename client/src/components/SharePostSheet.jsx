@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -16,7 +17,7 @@ import { Avatar } from '../utils/avatarUtils'
 import toast from 'react-hot-toast'
 import ShareComposerModal from './ShareComposerModal'
 import { buildNativePostShareImage } from '../utils/buildNativePostShareImage'
-import { buildPostShareText, getInviteUrl } from '../utils/appLinks'
+import { buildPostShareText, getInviteUrl, getPostPath, getPostUrl } from '../utils/appLinks'
 import { useAuthStore } from '../store/authStore'
 
 function postSnippet(post) {
@@ -39,14 +40,17 @@ function postAuthorName(post) {
 }
 
 function postAttachment(post) {
+  const postId = post._id || post.id
   return {
     type: 'post',
     kind: 'share',
-    postId: post._id || post.id,
+    postId,
     authorName: postAuthorName(post),
     snippet: postSnippet(post),
     image: post.images?.[0] || null,
-    postType: post.postType || 'text'
+    postType: post.postType || 'text',
+    path: getPostPath(postId),
+    url: getPostUrl(postId)
   }
 }
 
@@ -71,6 +75,7 @@ export default function SharePostSheet({
   const [whatsLoading, setWhatsLoading] = useState(false)
 
   const inviteUrl = getInviteUrl(user?.id || user?._id)
+  const postUrl = post ? getPostUrl(post._id || post.id) : ''
 
   useEffect(() => {
     if (!open) {
@@ -100,7 +105,11 @@ export default function SharePostSheet({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return contacts
-    return contacts.filter((c) => String(c.name || '').toLowerCase().includes(q))
+    return contacts.filter((c) => {
+      const name = String(c.name || '').toLowerCase()
+      const username = String(c.username || '').toLowerCase()
+      return name.includes(q) || username.includes(q)
+    })
   }, [contacts, query])
 
   const toggle = (id) => {
@@ -111,12 +120,13 @@ export default function SharePostSheet({
     if (!post || selected.length === 0) return
     setSending(true)
     const attachment = postAttachment(post)
+    const caption = message.trim()
     try {
       await Promise.all(
         selected.map((to) =>
           api.post('/chat/send', {
             to,
-            content: message.trim(),
+            content: caption,
             attachment
           })
         )
@@ -140,7 +150,7 @@ export default function SharePostSheet({
     const text = buildPostShareText({
       authorName: postAuthorName(post),
       snippet: postSnippet(post),
-      inviteUrl
+      postUrl: postUrl || inviteUrl
     })
     try {
       let file
@@ -159,10 +169,10 @@ export default function SharePostSheet({
           files: [file],
           text,
           title: 'Qyntra Gym',
-          url: inviteUrl
+          url: postUrl || inviteUrl
         })
       } else if (navigator.share) {
-        await navigator.share({ text, title: 'Qyntra Gym', url: inviteUrl })
+        await navigator.share({ text, title: 'Qyntra Gym', url: postUrl || inviteUrl })
       } else {
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
       }
@@ -209,12 +219,12 @@ export default function SharePostSheet({
     }
   }
 
-  return (
+  return createPortal(
     <>
       <AnimatePresence>
         {open && step === 'menu' && (
           <motion.div
-            className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            className="app-overlay-sheet fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -224,7 +234,7 @@ export default function SharePostSheet({
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 40, opacity: 0 }}
-              className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+              className="app-bottom-sheet-panel relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)]">
                 <h3 className="font-display text-lg">Compartir publicación</h3>
@@ -297,7 +307,7 @@ export default function SharePostSheet({
       <AnimatePresence>
         {open && step === 'users' && (
           <motion.div
-            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            className="app-overlay-sheet fixed inset-0 z-[125] flex items-end sm:items-center justify-center p-0 sm:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -312,7 +322,7 @@ export default function SharePostSheet({
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 40, opacity: 0 }}
-              className="relative w-full sm:max-w-md max-h-[80vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+              className="app-bottom-sheet-panel relative w-full sm:max-w-md max-h-[80vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)]">
                 <button type="button" className="text-sm text-primary-500" onClick={() => setStep('menu')}>
@@ -383,6 +393,7 @@ export default function SharePostSheet({
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </>,
+    document.body
   )
 }

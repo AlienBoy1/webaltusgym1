@@ -3,6 +3,7 @@ import {
   FiActivity, FiTarget, FiZap, FiTrendingUp, 
   FiAward, FiStar, FiHeart, FiShield, FiUser, FiCoffee, FiSun
 } from 'react-icons/fi'
+import ProtectedMedia from '../components/ProtectedMedia'
 
 const exerciseAvatars = {
   muscle: { Icon: FiActivity, gradient: 'from-orange-500 to-red-600' },
@@ -71,8 +72,8 @@ export const Avatar = ({ avatar, name, size = 'md', className = '' }) => {
   
   if (display.type === 'image') {
     return (
-      <div className={`${display.className} ${className}`}>
-        <img src={display.content} alt={name} className="w-full h-full object-cover rounded-full" />
+      <div data-protected-media="1" className={`${display.className} ${className}`}>
+        <ProtectedMedia src={display.content} alt={name || ''} className="w-full h-full object-cover rounded-full" />
       </div>
     )
   }

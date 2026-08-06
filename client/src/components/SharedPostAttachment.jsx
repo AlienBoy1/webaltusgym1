@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { FiActivity, FiAward, FiClock } from 'react-icons/fi'
 import { Avatar } from '../utils/avatarUtils'
+import ProtectedMedia from './ProtectedMedia'
 
 /**
  * Facebook-style embedded original post shown inside a reshare.
@@ -106,9 +107,12 @@ export default function SharedPostAttachment({ shared, onOpenRoutine }) {
         )}
 
         {shared.images?.length > 0 && (
-          <div className={`grid gap-1.5 ${shared.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <div
+            data-protected-media="1"
+            className={`grid gap-1.5 ${shared.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}
+          >
             {shared.images.slice(0, 4).map((img, idx) => (
-              <img
+              <ProtectedMedia
                 key={idx}
                 src={img}
                 alt=""

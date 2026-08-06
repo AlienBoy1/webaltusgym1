@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Avatar } from '../../utils/avatarUtils'
 import { useConfetti } from '../../components/Confetti'
+import { setChallengeTimerActive } from '../../utils/presence'
 
 function formatElapsed(ms) {
   const totalSec = Math.floor(ms / 1000)
@@ -181,6 +182,7 @@ export default function Challenges() {
     if (!confirm('¿Estás seguro de que quieres abandonar este reto?')) return
     try {
       await api.delete(`/challenges/${challengeId}/leave`)
+      setChallengeTimerActive(false)
       toast.success('Has abandonado el reto')
       fetchChallenges()
       fetchMyChallenges()
@@ -196,6 +198,7 @@ export default function Challenges() {
     setSessionLoading(true)
     try {
       await api.post(`/challenges/${challengeId}/start`)
+      setChallengeTimerActive(true)
       toast.success('¡Reto iniciado!')
       fetchChallengeDetails(challengeId)
       fetchMyChallenges()
@@ -210,6 +213,7 @@ export default function Challenges() {
     setSessionLoading(true)
     try {
       await api.post(`/challenges/${challengeId}/pause`)
+      setChallengeTimerActive(false)
       toast.success('Reto pausado')
       fetchChallengeDetails(challengeId)
       fetchMyChallenges()
@@ -224,6 +228,7 @@ export default function Challenges() {
     setSessionLoading(true)
     try {
       await api.post(`/challenges/${challengeId}/resume`)
+      setChallengeTimerActive(true)
       toast.success('Reto reanudado')
       fetchChallengeDetails(challengeId)
       fetchMyChallenges()
@@ -310,6 +315,7 @@ export default function Challenges() {
     try {
       const { data } = await api.post(`/challenges/${selectedChallenge._id}/complete`)
 
+      setChallengeTimerActive(false)
       celebration()
 
       setCompletionData({

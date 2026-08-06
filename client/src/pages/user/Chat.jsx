@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
-import { FiSend, FiSearch, FiArrowLeft, FiPlus, FiX } from 'react-icons/fi'
+import { motion, AnimatePresence } from 'framer-motion'
+import { FiSend, FiSearch, FiArrowLeft, FiPlus, FiX, FiSmile, FiMessageCircle } from 'react-icons/fi'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
@@ -8,15 +8,37 @@ import { onChatEvent, sendTyping, showNotification, requestNotificationPermissio
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
 import { useStoryViewer } from '../../components/StoryViewerContext'
+import PresenceDot from '../../components/PresenceDot'
+import { getPresenceMeta, PRESENCE_STATUS, usePresenceStatus } from '../../utils/presence'
+import { useAppDialog } from '../../components/AppDialog'
+import ChatEmojiPicker from '../../components/ChatEmojiPicker'
+import ProtectedMedia from '../../components/ProtectedMedia'
+import { useChatStore } from '../../store/chatStore'
 
-function MessageTicks({ status }) {
+const MESSAGING_DISABLED_COPY =
+  'Este usuario tiene la mensajería desactivada por ahora. Podrás escribirle cuando la active; inténtalo de nuevo más tarde.'
+
+function isMessagingDisabledUser(u) {
+  if (!u) return false
+  if (u.allowMessages === false) return true
+  if (u.settings?.privacy?.allowMessages === false) return true
+  return false
+}
+
+function MessageTicks({ status, isMe }) {
   if (!status) return null
   const read = status === 'read'
   const delivered = status === 'delivered' || read
   return (
     <span
       className="ml-1 inline-flex items-end text-[11px] leading-none tracking-tighter"
-      style={{ color: read ? '#53bdeb' : 'rgba(255,255,255,0.7)' }}
+      style={{
+        color: read
+          ? '#53bdeb'
+          : isMe
+            ? 'rgba(255,255,255,0.72)'
+            : 'var(--text-muted)'
+      }}
       title={read ? 'Leído' : delivered ? 'Entregado' : 'Enviado'}
     >
       {delivered ? '✓✓' : '✓'}
@@ -24,18 +46,26 @@ function MessageTicks({ status }) {
   )
 }
 
-function PostAttachmentBubble({ attachment, isMe, hasText }) {
+function PostAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   if (!attachment || attachment.type !== 'post') return null
   return (
-    <div
-      className={`w-full overflow-hidden rounded-xl text-left ${
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen?.(attachment)
+      }}
+      className={`w-full overflow-hidden rounded-xl text-left transition hover:opacity-95 active:scale-[0.99] ${
         hasText ? 'mb-2' : ''
       } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
     >
       <div className="flex items-stretch gap-0">
-        <div className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-gradient-to-br from-primary-500/40 to-black sm:h-20 sm:w-[60px]">
+        <div
+          data-protected-media="1"
+          className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-gradient-to-br from-primary-500/40 to-black sm:h-20 sm:w-[60px]"
+        >
           {attachment.image ? (
-            <img src={attachment.image} alt="" className="h-full w-full object-cover" />
+            <ProtectedMedia src={attachment.image} alt="" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-lg">📝</div>
           )}
@@ -50,9 +80,12 @@ function PostAttachmentBubble({ attachment, isMe, hasText }) {
           <p className={`mt-0.5 line-clamp-2 text-xs leading-snug ${isMe ? 'text-white/75' : 'text-gray-300'}`}>
             {attachment.snippet || 'Publicación de Qyntra'}
           </p>
+          <p className={`mt-1 text-[10px] font-medium ${isMe ? 'text-white/80' : 'text-primary-400'}`}>
+            Tocar para ver →
+          </p>
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -78,22 +111,26 @@ function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
       } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
     >
       <div className="flex items-stretch gap-0">
-        <div className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-black sm:h-20 sm:w-[60px]">
+        <div
+          data-protected-media="1"
+          className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-black sm:h-20 sm:w-[60px]"
+        >
           {attachment.mediaType === 'video' ? (
             <>
-              <video
+              <ProtectedMedia
+                as="video"
                 src={attachment.mediaUrl}
                 muted
                 playsInline
                 preload="metadata"
                 className="h-full w-full object-cover"
               />
-              <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-[10px] font-bold text-white">
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25 text-[10px] font-bold text-white">
                 ▶
               </span>
             </>
           ) : (
-            <img
+            <ProtectedMedia
               src={attachment.mediaUrl}
               alt=""
               className="h-full w-full object-cover"
@@ -119,10 +156,15 @@ function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
 
 export default function Chat() {
   const { user } = useAuthStore()
+  const dialog = useAppDialog()
   const navigate = useNavigate()
   const location = useLocation()
   const { openUserStory, openStoryById } = useStoryViewer()
-  const [conversations, setConversations] = useState([])
+  const conversations = useChatStore((s) => s.conversations)
+  const setConversations = useChatStore((s) => s.setConversations)
+  const listLoading = useChatStore((s) => s.loading)
+  const listLoaded = useChatStore((s) => s.loaded)
+  const prefetchConversations = useChatStore((s) => s.prefetch)
   const [selectedChat, setSelectedChat] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
@@ -132,12 +174,16 @@ export default function Chat() {
   const [userSearch, setUserSearch] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
-  const [onlineUsers, setOnlineUsers] = useState(new Set())
   const [userFilter, setUserFilter] = useState('all')
   const [sending, setSending] = useState(false)
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [peerTyping, setPeerTyping] = useState(false)
   const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
   const selectedChatRef = useRef(null)
   const pendingStoryReply = useRef(null)
+  const typingClearRef = useRef(null)
+  const selectedPresence = usePresenceStatus(selectedChat?.otherId)
 
   useEffect(() => {
     selectedChatRef.current = selectedChat
@@ -233,29 +279,24 @@ export default function Chat() {
       })
     }
 
-    const handleUserOnline = (userId) => {
-      setOnlineUsers((prev) => new Set([...prev, userId]))
-    }
-
-    const handleUserOffline = (userId) => {
-      setOnlineUsers((prev) => {
-        const next = new Set(prev)
-        next.delete(userId)
-        return next
-      })
-    }
-
     const unsubMessage = onChatEvent('newMessage', handleNewMessage)
-    const unsubOnline = onChatEvent('userOnline', handleUserOnline)
-    const unsubOffline = onChatEvent('userOffline', handleUserOffline)
+
+    const handleTyping = (payload) => {
+      const from = payload?.from
+      if (!from || selectedChatRef.current?.otherId !== from) return
+      setPeerTyping(true)
+      if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
+      typingClearRef.current = window.setTimeout(() => setPeerTyping(false), 2200)
+    }
+    const unsubTyping = onChatEvent('userTyping', handleTyping)
 
     requestNotificationPermission()
     fetchConversations()
 
     return () => {
       unsubMessage()
-      unsubOnline()
-      unsubOffline()
+      unsubTyping()
+      if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
     }
   }, [user?._id, navigate])
 
@@ -270,24 +311,7 @@ export default function Chat() {
   }, [selectedChat?.otherId])
 
   const fetchConversations = async () => {
-    try {
-      const { data } = await api.get('/chat/conversations')
-      const mapped = (data || []).map((c) => ({
-        ...c,
-        otherId: c.otherId || c.oderId,
-        time: c.time
-          ? new Date(c.time).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
-          : ''
-      }))
-      setConversations((prev) => {
-        const localOnly = prev.filter(
-          (p) => !mapped.some((m) => m.otherId === p.otherId) && !p.lastMessage
-        )
-        return [...localOnly, ...mapped]
-      })
-    } catch (error) {
-      console.error('Error fetching conversations:', error)
-    }
+    await prefetchConversations()
   }
 
   const fetchMessages = async (otherId) => {
@@ -330,11 +354,34 @@ export default function Chat() {
   }
 
   const handleSelectChat = (conv) => {
+    setShowEmoji(false)
+    setPeerTyping(false)
     setSelectedChat({ ...conv, otherId: conv.otherId || conv.oderId })
   }
 
   const handleBack = () => {
+    setShowEmoji(false)
+    setPeerTyping(false)
     setSelectedChat(null)
+  }
+
+  const insertEmoji = (emoji) => {
+    const el = inputRef.current
+    const value = newMessage || ''
+    if (el && typeof el.selectionStart === 'number') {
+      const start = el.selectionStart
+      const end = el.selectionEnd
+      const next = value.slice(0, start) + emoji + value.slice(end)
+      setNewMessage(next)
+      window.requestAnimationFrame(() => {
+        el.focus()
+        const pos = start + emoji.length
+        el.setSelectionRange(pos, pos)
+      })
+    } else {
+      setNewMessage(value + emoji)
+      inputRef.current?.focus()
+    }
   }
 
   const handleSend = async (e) => {
@@ -344,6 +391,7 @@ export default function Chat() {
     const msgText = newMessage.trim()
     const tempId = `temp-${Date.now()}`
     setNewMessage('')
+    setShowEmoji(false)
     setSending(true)
 
     const tempMsg = {
@@ -371,9 +419,23 @@ export default function Chat() {
     } catch (error) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId))
       setNewMessage(msgText)
-      toast.error(error.response?.data?.message || 'Error al enviar mensaje')
+      const apiMsg = error.response?.data?.message || ''
+      const messagingBlocked =
+        error.response?.status === 403 ||
+        /no acepta mensajes/i.test(apiMsg) ||
+        /allowMessages/i.test(apiMsg)
+      if (messagingBlocked) {
+        await dialog.alert(MESSAGING_DISABLED_COPY, {
+          title: 'Mensajería no disponible',
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        })
+      } else {
+        toast.error(apiMsg || 'Error al enviar mensaje')
+      }
     } finally {
       setSending(false)
+      inputRef.current?.focus()
     }
   }
 
@@ -402,7 +464,15 @@ export default function Chat() {
     if (showNewChat) searchUsers()
   }, [userFilter, showNewChat])
 
-  const startConversation = (selectedUser) => {
+  const startConversation = async (selectedUser) => {
+    if (isMessagingDisabledUser(selectedUser)) {
+      await dialog.alert(MESSAGING_DISABLED_COPY, {
+        title: 'Mensajería no disponible',
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     const uid = selectedUser._id || selectedUser.id
     setConversations((prev) => {
       const existingConv = prev.find((c) => c.otherId === uid)
@@ -433,6 +503,17 @@ export default function Chat() {
     const prefill = location.state?.prefill
     const storyReply = location.state?.storyReply
     if (!startWith?._id && !startWith?.id) return
+
+    if (isMessagingDisabledUser(startWith)) {
+      dialog.alert(MESSAGING_DISABLED_COPY, {
+        title: 'Mensajería no disponible',
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
+
     const to = startWith._id || startWith.id
     if (storyReply?.attachment) {
       pendingStoryReply.current = {
@@ -453,346 +534,551 @@ export default function Chat() {
     c.name?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const isOnline = (userId) => onlineUsers.has(userId)
+  const selectedPresenceMeta = getPresenceMeta(selectedPresence || PRESENCE_STATUS.OFFLINE)
 
   return (
-    <div className="h-[calc(100dvh-11rem)] md:h-[calc(100vh-180px)] flex gap-0 md:gap-4 -mx-2 sm:mx-0">
+    <div className="h-[calc(100dvh-10.5rem)] md:h-[calc(100dvh-8.5rem)] flex gap-0 md:gap-3 -mx-3 sm:-mx-1 md:mx-0">
+      {/* Conversation list */}
       <div
-        className={`w-full md:w-80 flex-shrink-0 card p-0 overflow-hidden flex flex-col ${
+        className={`relative w-full md:w-[min(100%,24rem)] lg:w-[26rem] xl:w-[28rem] flex-shrink-0 overflow-hidden flex flex-col rounded-none md:rounded-[1.75rem] border-0 md:border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-none md:shadow-[0_20px_50px_-28px_var(--shadow-color)] ${
           selectedChat ? 'hidden md:flex' : 'flex'
         }`}
       >
-        <div className="p-3 sm:p-4 border-b border-white/5">
-          <div className="flex gap-2">
-            <div className="relative flex-1 min-w-0">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar..."
-                className="input-field pl-10 py-2"
-              />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-90"
+          style={{
+            background:
+              'radial-gradient(ellipse 80% 50% at 0% -10%, rgba(var(--color-primary-rgb),0.14), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 0%, rgba(var(--color-accent-rgb),0.08), transparent 50%)'
+          }}
+          aria-hidden
+        />
+
+        <div className="relative z-[1] px-4 pt-5 pb-3.5 sm:px-5 sm:pt-6">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-primary)]">
+                Inbox
+              </p>
+              <h1 className="mt-1 font-display text-[1.85rem] leading-none tracking-tight text-[color:var(--text-primary)] sm:text-[2.05rem]">
+                Mensajes
+              </h1>
+              <p className="mt-1.5 max-w-[16rem] text-[13px] leading-snug text-[color:var(--text-muted)]">
+                Conversaciones en tiempo real con tu comunidad
+              </p>
             </div>
-            <button
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.92 }}
               onClick={() => setShowNewChat(true)}
-              className="p-2 bg-primary-500 rounded-xl text-white hover:bg-primary-600 flex-shrink-0"
+              className="mt-1 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white shadow-[0_10px_28px_rgba(var(--color-primary-rgb),0.38)] ring-4 ring-[rgba(var(--color-primary-rgb),0.12)] transition hover:brightness-110"
               aria-label="Nueva conversación"
             >
-              <FiPlus size={20} />
-            </button>
+              <FiPlus size={22} strokeWidth={2.5} />
+            </motion.button>
+          </div>
+          <div className="relative">
+            <FiSearch
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[color:var(--text-muted)]"
+              size={17}
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar conversación…"
+              enterKeyHint="search"
+              className="w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/90 py-3 pl-10 pr-4 text-[15px] text-[color:var(--text-primary)] outline-none backdrop-blur-sm transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--color-primary)] focus:bg-[color:var(--bg-app)] focus:ring-4 focus:ring-[rgba(var(--color-primary-rgb),0.12)]"
+            />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {filteredConversations.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 px-4">
-              <p>No hay conversaciones</p>
-              <button onClick={() => setShowNewChat(true)} className="text-primary-500 mt-2">
-                Iniciar una nueva
+        <div className="relative z-[1] flex-1 overflow-y-auto overscroll-contain px-2 pb-3 sm:px-2.5">
+          {!listLoaded ? (
+            <div className="flex flex-col items-center justify-center px-5 py-20">
+              <div className="mb-4 h-10 w-10 animate-spin rounded-full border-[3px] border-[color:var(--border-subtle)] border-t-[color:var(--color-primary)]" />
+              <p className="text-sm font-medium text-[color:var(--text-primary)]">Cargando mensajes…</p>
+              <p className="mt-1 text-xs text-[color:var(--text-muted)]">Preparando tus conversaciones</p>
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="px-5 py-16 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.1)] text-[color:var(--color-primary)] ring-1 ring-[rgba(var(--color-primary-rgb),0.18)]">
+                <FiMessageCircle size={28} />
+              </div>
+              <p className="text-base font-semibold text-[color:var(--text-primary)]">Sin conversaciones aún</p>
+              <p className="mx-auto mt-1.5 max-w-[14rem] text-sm leading-relaxed text-[color:var(--text-muted)]">
+                Empieza un chat con alguien de la comunidad
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowNewChat(true)}
+                className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[rgba(var(--color-primary-rgb),0.25)]"
+              >
+                <FiPlus size={16} />
+                Nueva conversación
               </button>
             </div>
           ) : (
-            filteredConversations.map((conv) => (
-              <button
-                key={conv.id || conv.otherId}
-                onClick={() => handleSelectChat(conv)}
-                className={`w-full flex items-center gap-3 p-3 sm:p-4 hover:bg-dark-200 transition-colors ${
-                  selectedChat?.otherId === conv.otherId ? 'bg-dark-200' : ''
-                }`}
-              >
-                <Link
-                  to={`/user/${conv.otherId}`}
-                  className="relative flex-shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <span
-                    className={
-                      storyUsers.has(conv.otherId)
-                        ? 'inline-flex rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] to-[color:var(--color-accent)] p-[2px]'
-                        : ''
-                    }
+            <div className="space-y-0.5">
+              {filteredConversations.map((conv) => {
+                const active = selectedChat?.otherId === conv.otherId
+                const unread = conv.unread > 0
+                return (
+                  <motion.button
+                    key={conv.id || conv.otherId}
+                    type="button"
+                    layout
+                    whileTap={{ scale: 0.985 }}
+                    onClick={() => handleSelectChat(conv)}
+                    className={`group relative w-full flex items-center gap-3 rounded-[1.25rem] px-3 py-3 text-left transition-colors sm:gap-3.5 sm:px-3.5 sm:py-3.5 ${
+                      active
+                        ? 'bg-[rgba(var(--color-primary-rgb),0.12)] shadow-[inset_0_0_0_1px_rgba(var(--color-primary-rgb),0.18)]'
+                        : 'hover:bg-[color:var(--bg-muted)]/80'
+                    }`}
                   >
-                    <span
-                      className="rounded-full bg-[color:var(--bg-card)] p-[1px]"
-                      onClick={(e) => {
-                        if (!storyUsers.has(conv.otherId)) return
-                        e.preventDefault()
-                        e.stopPropagation()
-                        openUserStory(conv.otherId)
-                      }}
-                      role={storyUsers.has(conv.otherId) ? 'button' : undefined}
-                    >
-                      <Avatar avatar={conv.avatar} name={conv.name} size="md" />
-                    </span>
-                  </span>
-                  {isOnline(conv.otherId) && (
-                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-accent-green rounded-full border-2 border-dark-200" />
-                  )}
-                </Link>
-                <div className="flex-1 text-left min-w-0">
-                  <div className="flex items-center justify-between gap-2">
+                    {active && (
+                      <span
+                        className="absolute left-1 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-[color:var(--color-primary)] sm:left-1.5"
+                        aria-hidden
+                      />
+                    )}
                     <Link
                       to={`/user/${conv.otherId}`}
+                      className="relative flex-shrink-0"
                       onClick={(e) => e.stopPropagation()}
-                      className="font-medium truncate hover:text-primary-500"
                     >
-                      {conv.name}
-                    </Link>
-                    <span className="text-xs text-gray-500 flex-shrink-0">{conv.time}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-gray-400 text-sm truncate">
-                      {conv.lastMessage || 'Nuevo chat'}
-                    </p>
-                    {conv.unread > 0 && (
-                      <span className="w-5 h-5 bg-primary-500 rounded-full text-xs flex items-center justify-center flex-shrink-0">
-                        {conv.unread}
+                      <span
+                        className={
+                          storyUsers.has(conv.otherId)
+                            ? 'inline-flex rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] to-[color:var(--color-accent)] p-[2px] shadow-[0_0_0_1px_rgba(var(--color-primary-rgb),0.15)]'
+                            : ''
+                        }
+                      >
+                        <span
+                          className="rounded-full bg-[color:var(--bg-elevated)] p-[1.5px]"
+                          onClick={(e) => {
+                            if (!storyUsers.has(conv.otherId)) return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            openUserStory(conv.otherId)
+                          }}
+                          role={storyUsers.has(conv.otherId) ? 'button' : undefined}
+                        >
+                          <Avatar avatar={conv.avatar} name={conv.name} size="md" />
+                        </span>
                       </span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))
+                      <PresenceDot userId={conv.otherId} size="md" />
+                    </Link>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span
+                          className={`truncate text-[15px] tracking-tight ${
+                            unread
+                              ? 'font-bold text-[color:var(--text-primary)]'
+                              : 'font-semibold text-[color:var(--text-primary)]'
+                          }`}
+                        >
+                          {conv.name}
+                        </span>
+                        <span
+                          className={`shrink-0 text-[11px] tabular-nums ${
+                            unread
+                              ? 'font-semibold text-[color:var(--color-primary)]'
+                              : 'text-[color:var(--text-muted)]'
+                          }`}
+                        >
+                          {conv.time}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 flex items-center justify-between gap-2.5">
+                        <p
+                          className={`truncate text-[13px] leading-snug sm:text-sm ${
+                            unread
+                              ? 'font-medium text-[color:var(--text-secondary)]'
+                              : 'text-[color:var(--text-muted)]'
+                          }`}
+                        >
+                          {conv.lastMessage || 'Nuevo chat'}
+                        </p>
+                        {unread && (
+                          <span className="inline-flex h-5 min-w-[1.35rem] shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] px-1.5 text-[10px] font-bold text-white shadow-[0_4px_10px_rgba(var(--color-primary-rgb),0.35)]">
+                            {conv.unread > 99 ? '99+' : conv.unread}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.button>
+                )
+              })}
+            </div>
           )}
         </div>
       </div>
 
-      {selectedChat ? (
-        <div className="flex-1 card p-0 flex flex-col overflow-hidden min-w-0">
-          <div className="p-3 sm:p-4 border-b border-white/5 flex items-center gap-3">
-            <button
-              onClick={handleBack}
-              className="md:hidden text-gray-400 hover:text-white flex-shrink-0"
-              aria-label="Volver"
-            >
-              <FiArrowLeft size={20} />
-            </button>
-            <Link
-              to={`/user/${selectedChat.otherId}`}
-              className="relative flex-shrink-0"
-              onClick={(e) => {
-                if (storyUsers.has(selectedChat.otherId)) {
-                  e.preventDefault()
-                  openUserStory(selectedChat.otherId)
-                }
-              }}
-            >
-              <span
-                className={
-                  storyUsers.has(selectedChat.otherId)
-                    ? 'inline-flex rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] to-[color:var(--color-accent)] p-[2px]'
-                    : ''
-                }
-              >
-                <span className="rounded-full bg-[color:var(--bg-card)] p-[1px]">
-                  <Avatar avatar={selectedChat.avatar} name={selectedChat.name} size="sm" />
-                </span>
-              </span>
-              {isOnline(selectedChat.otherId) && (
-                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-accent-green rounded-full border-2 border-dark-200" />
-              )}
-            </Link>
-            <Link to={`/user/${selectedChat.otherId}`} className="flex-1 min-w-0">
-              <div className="font-medium hover:text-primary-500 transition-colors truncate">
-                {selectedChat.name}
-              </div>
-              <div
-                className={`text-xs ${
-                  isOnline(selectedChat.otherId) ? 'text-accent-green' : 'text-gray-500'
-                }`}
-              >
-                {isOnline(selectedChat.otherId) ? 'En línea' : 'Desconectado'}
-              </div>
-            </Link>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-gray-400 py-8">
-                <p>Envía un mensaje para iniciar</p>
-              </div>
-            ) : (
-              messages.map((msg) => (
-                <motion.div
-                  key={msg.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[85%] sm:max-w-[70%] p-3 rounded-2xl ${
-                      msg.sender === 'me'
-                        ? 'bg-primary-500 text-white rounded-br-md'
-                        : 'bg-dark-200 text-white rounded-bl-md'
-                    }`}
-                  >
-                    <StoryAttachmentBubble
-                      attachment={msg.attachment}
-                      isMe={msg.sender === 'me'}
-                      hasText={Boolean(msg.text?.trim())}
-                      onOpen={(att) => {
-                        if (att?.storyId) {
-                          openStoryById(att.storyId)
-                          return
-                        }
-                        if (selectedChat?.otherId) {
-                          openUserStory(selectedChat.otherId)
-                          return
-                        }
-                        toast.error('No se pudo abrir este estado')
-                      }}
-                    />
-                    <PostAttachmentBubble
-                      attachment={msg.attachment}
-                      isMe={msg.sender === 'me'}
-                      hasText={Boolean(msg.text?.trim())}
-                    />
-                    {msg.text ? <p className="break-words">{msg.text}</p> : null}
-                    {!msg.text && !msg.attachment ? (
-                      <p className="break-words opacity-70"> </p>
-                    ) : null}
-                    <p
-                      className={`text-xs mt-1 flex items-center justify-end gap-0.5 ${
-                        msg.sender === 'me' ? 'text-white/70' : 'text-gray-500'
-                      }`}
-                    >
-                      {msg.time}
-                      {msg.sender === 'me' && <MessageTicks status={msg.status || (msg.read ? 'read' : msg.delivered ? 'delivered' : 'sent')} />}
-                    </p>
-                  </div>
-                </motion.div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <form
-            onSubmit={handleSend}
-            className="p-3 sm:p-4 border-t border-white/5 flex gap-2 sm:gap-3"
-          >
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value)
-                handleTyping()
-              }}
-              placeholder="Escribe un mensaje..."
-              className="input-field flex-1 min-w-0"
-            />
-            <button
-              type="submit"
-              disabled={!newMessage.trim() || sending}
-              className="btn-primary px-3 sm:px-4 flex-shrink-0"
-            >
-              <FiSend />
-            </button>
-          </form>
-        </div>
-      ) : (
-        <div className="hidden md:flex flex-1 card items-center justify-center">
-          <div className="text-center text-gray-400">
-            <div className="text-6xl mb-4">💬</div>
-            <p>Selecciona una conversación</p>
-            <button onClick={() => setShowNewChat(true)} className="btn-primary mt-4">
-              Nueva conversación
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showNewChat && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      {/* Thread */}
+      <AnimatePresence mode="wait">
+        {selectedChat ? (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="card max-w-md w-full rounded-b-none sm:rounded-2xl max-h-[90dvh] overflow-hidden flex flex-col"
+            key={selectedChat.otherId}
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+            className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-none md:rounded-2xl border-0 md:border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-none md:shadow-[0_12px_40px_var(--shadow-color)]"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display text-xl">Nueva Conversación</h2>
+            {/* subtle chat wallpaper */}
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.35]"
+              style={{
+                backgroundImage:
+                  'radial-gradient(circle at 12% 18%, rgba(var(--color-primary-rgb),0.10), transparent 42%), radial-gradient(circle at 88% 78%, rgba(var(--color-accent-rgb),0.08), transparent 40%)'
+              }}
+              aria-hidden
+            />
+
+            <header className="relative z-10 flex items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/90 px-3 py-3 backdrop-blur-md sm:px-4">
               <button
-                onClick={() => {
-                  setShowNewChat(false)
-                  setSearchResults([])
-                  setUserSearch('')
-                  setUserFilter('all')
+                type="button"
+                onClick={handleBack}
+                className="rounded-xl p-2 text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)] md:hidden"
+                aria-label="Volver"
+              >
+                <FiArrowLeft size={20} />
+              </button>
+              <Link
+                to={`/user/${selectedChat.otherId}`}
+                className="relative flex-shrink-0"
+                onClick={(e) => {
+                  if (storyUsers.has(selectedChat.otherId)) {
+                    e.preventDefault()
+                    openUserStory(selectedChat.otherId)
+                  }
                 }}
               >
-                <FiX size={24} />
-              </button>
-            </div>
-
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 -mx-1 px-1">
-              {[
-                { id: 'all', label: 'Todos' },
-                { id: 'with_conversation', label: 'Con conversación' },
-                { id: 'following', label: 'Siguiendo' },
-                { id: 'not_following', label: 'No siguiendo' }
-              ].map((filter) => (
-                <button
-                  key={filter.id}
-                  onClick={() => setUserFilter(filter.id)}
-                  className={`px-3 py-1 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                    userFilter === filter.id
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-dark-200 text-gray-400 hover:text-white'
-                  }`}
+                <span
+                  className={
+                    storyUsers.has(selectedChat.otherId)
+                      ? 'inline-flex rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] to-[color:var(--color-accent)] p-[2px]'
+                      : ''
+                  }
                 >
-                  {filter.label}
-                </button>
-              ))}
+                  <span className="rounded-full bg-[color:var(--bg-elevated)] p-[1px]">
+                    <Avatar avatar={selectedChat.avatar} name={selectedChat.name} size="sm" />
+                  </span>
+                </span>
+                <PresenceDot userId={selectedChat.otherId} size="sm" />
+              </Link>
+              <Link to={`/user/${selectedChat.otherId}`} className="min-w-0 flex-1">
+                <div className="truncate font-semibold text-[color:var(--text-primary)] hover:text-[color:var(--color-primary)]">
+                  {selectedChat.name}
+                </div>
+                <div className={`truncate text-xs ${peerTyping ? 'text-[color:var(--color-primary)]' : selectedPresenceMeta.textClass}`}>
+                  {peerTyping ? 'escribiendo…' : selectedPresenceMeta.label}
+                </div>
+              </Link>
+            </header>
+
+            <div className="relative z-10 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5 sm:py-5">
+              {messages.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                  <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-3xl bg-[rgba(var(--color-primary-rgb),0.12)] text-3xl">
+                    💬
+                  </div>
+                  <p className="font-medium text-[color:var(--text-primary)]">Inicia la conversación</p>
+                  <p className="mt-1 max-w-xs text-sm text-[color:var(--text-muted)]">
+                    Envía un mensaje a {selectedChat.name?.split(' ')[0] || 'este usuario'}
+                  </p>
+                </div>
+              ) : (
+                messages.map((msg, idx) => {
+                  const isMe = msg.sender === 'me'
+                  const prev = messages[idx - 1]
+                  const showTail = !prev || prev.sender !== msg.sender
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ type: 'spring', damping: 24, stiffness: 380 }}
+                      className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${showTail ? 'mt-3' : ''}`}
+                    >
+                      <div
+                        className={`relative max-w-[88%] sm:max-w-[72%] px-3.5 py-2.5 shadow-sm ${
+                          isMe
+                            ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)] text-white'
+                            : 'rounded-[1.15rem] rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)]'
+                        }`}
+                      >
+                        <StoryAttachmentBubble
+                          attachment={msg.attachment}
+                          isMe={isMe}
+                          hasText={Boolean(msg.text?.trim())}
+                          onOpen={(att) => {
+                            if (att?.storyId) {
+                              openStoryById(att.storyId)
+                              return
+                            }
+                            if (selectedChat?.otherId) {
+                              openUserStory(selectedChat.otherId)
+                              return
+                            }
+                            toast.error('No se pudo abrir este estado')
+                          }}
+                        />
+                        <PostAttachmentBubble
+                          attachment={msg.attachment}
+                          isMe={isMe}
+                          hasText={Boolean(msg.text?.trim())}
+                          onOpen={(att) => {
+                            const id = att?.postId
+                            if (!id) {
+                              toast.error('No se pudo abrir esta publicación')
+                              return
+                            }
+                            navigate(`/social?post=${encodeURIComponent(id)}`)
+                          }}
+                        />
+                        {msg.text ? (
+                          <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{msg.text}</p>
+                        ) : null}
+                        {!msg.text && !msg.attachment ? (
+                          <p className="break-words opacity-70"> </p>
+                        ) : null}
+                        <p
+                          className={`mt-1 flex items-center justify-end gap-0.5 text-[10px] ${
+                            isMe ? 'text-white/70' : 'text-[color:var(--text-muted)]'
+                          }`}
+                        >
+                          {msg.time}
+                          {isMe && (
+                            <MessageTicks
+                              isMe
+                              status={msg.status || (msg.read ? 'read' : msg.delivered ? 'delivered' : 'sent')}
+                            />
+                          )}
+                        </p>
+                      </div>
+                    </motion.div>
+                  )
+                })
+              )}
+              <AnimatePresence>
+                {peerTyping && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="flex justify-start"
+                  >
+                    <div className="inline-flex items-center gap-1 rounded-2xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] px-3.5 py-2.5">
+                      {[0, 1, 2].map((i) => (
+                        <motion.span
+                          key={i}
+                          className="h-1.5 w-1.5 rounded-full bg-[color:var(--text-muted)]"
+                          animate={{ y: [0, -3, 0], opacity: [0.4, 1, 0.4] }}
+                          transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <div ref={messagesEndRef} />
             </div>
 
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
-                placeholder="Buscar usuario..."
-                className="input-field flex-1 min-w-0"
+            <form
+              onSubmit={handleSend}
+              className="relative z-20 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-2.5 py-2.5 sm:px-4 sm:py-3"
+              style={{ paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom))' }}
+            >
+              <ChatEmojiPicker
+                open={showEmoji}
+                onClose={() => setShowEmoji(false)}
+                onPick={insertEmoji}
               />
-              <button onClick={searchUsers} disabled={searching} className="btn-primary px-4">
-                {searching ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <FiSearch />
-                )}
+              <div className="mx-auto flex max-w-3xl items-end gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEmoji((v) => !v)}
+                  className={`mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition ${
+                    showEmoji
+                      ? 'bg-[rgba(var(--color-primary-rgb),0.16)] text-[color:var(--color-primary)]'
+                      : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
+                  }`}
+                  aria-label="Emojis"
+                  aria-pressed={showEmoji}
+                >
+                  <FiSmile size={22} />
+                </button>
+                <div className="min-w-0 flex-1 rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3.5 py-1 focus-within:border-[color:var(--color-primary)] transition">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => {
+                      setNewMessage(e.target.value)
+                      handleTyping()
+                    }}
+                    onFocus={() => setShowEmoji(false)}
+                    placeholder="Escribe un mensaje…"
+                    className="w-full bg-transparent py-2.5 text-[15px] text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]"
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() || sending}
+                  className="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white shadow-lg shadow-[rgba(var(--color-primary-rgb),0.28)] transition enabled:hover:brightness-110 enabled:active:scale-95 disabled:opacity-40"
+                  aria-label="Enviar"
+                >
+                  {sending ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  ) : (
+                    <FiSend size={18} />
+                  )}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="empty-thread"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="relative hidden min-w-0 flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] md:flex"
+          >
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                backgroundImage:
+                  'radial-gradient(circle at 50% 40%, rgba(var(--color-primary-rgb),0.12), transparent 55%)'
+              }}
+              aria-hidden
+            />
+            <div className="relative z-10 px-8 text-center">
+              <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-[rgba(var(--color-primary-rgb),0.12)] text-4xl">
+                💬
+              </div>
+              <h2 className="font-display text-2xl tracking-wide text-[color:var(--text-primary)]">Tus mensajes</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-[color:var(--text-secondary)]">
+                Selecciona una conversación o inicia una nueva para conectar con tu comunidad.
+              </p>
+              <button type="button" onClick={() => setShowNewChat(true)} className="btn-primary mt-5">
+                Nueva conversación
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto min-h-0 max-h-64">
-              {searching ? (
-                <div className="text-center py-8">
-                  <div className="w-6 h-6 border-2 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
-                </div>
-              ) : searchResults.length === 0 ? (
-                <p className="text-gray-400 text-center py-4">
-                  {userSearch
-                    ? 'No se encontraron usuarios'
-                    : 'Selecciona un filtro o busca un usuario'}
-                </p>
-              ) : (
-                searchResults.map((u) => (
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showNewChat && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] sm:rounded-3xl"
+            >
+              <div className="flex items-center justify-between border-b border-[color:var(--border-subtle)] px-4 py-3.5">
+                <h2 className="font-display text-xl">Nueva conversación</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewChat(false)
+                    setSearchResults([])
+                    setUserSearch('')
+                    setUserFilter('all')
+                  }}
+                  className="rounded-xl p-2 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
+                >
+                  <FiX size={20} />
+                </button>
+              </div>
+
+              <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+                <div className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5">
+                  {[
+                    { id: 'all', label: 'Todos' },
+                    { id: 'with_conversation', label: 'Recientes' },
+                    { id: 'following', label: 'Siguiendo' },
+                    { id: 'not_following', label: 'Descubrir' }
+                  ].map((filter) => (
                     <button
-                      key={u._id}
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setUserFilter(filter.id)}
+                      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                        userFilter === filter.id
+                          ? 'bg-[color:var(--color-primary)] text-white'
+                          : 'bg-[color:var(--bg-muted)] text-[color:var(--text-secondary)]'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
+                    placeholder="Buscar por nombre o @username…"
+                    className="min-w-0 flex-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--color-primary)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={searchUsers}
+                    disabled={searching}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[color:var(--color-primary)] text-white"
+                  >
+                    {searching ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    ) : (
+                      <FiSearch size={18} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                {searching ? (
+                  <div className="py-10 text-center">
+                    <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[color:var(--border-subtle)] border-t-[color:var(--color-primary)]" />
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <p className="px-4 py-10 text-center text-sm text-[color:var(--text-muted)]">
+                    {userSearch ? 'No se encontraron usuarios' : 'Elige un filtro o busca un usuario'}
+                  </p>
+                ) : (
+                  searchResults.map((u) => (
+                    <button
+                      key={u._id || u.id}
+                      type="button"
                       onClick={() => startConversation(u)}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-dark-200 rounded-xl"
+                      className="flex w-full items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-[color:var(--bg-muted)]"
                     >
                       <Avatar avatar={u.avatar} name={u.name} size="sm" className="flex-shrink-0" />
-                      <div className="text-left flex-1 min-w-0">
-                        <div className="font-medium truncate">{u.name}</div>
-                        <div className="text-gray-400 text-sm truncate">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-[color:var(--text-primary)]">{u.name}</div>
+                        <div className="truncate text-sm text-[color:var(--text-muted)]">
                           {u.username ? `@${u.username}` : u.name}
                         </div>
                       </div>
                     </button>
                   ))
-              )}
-            </div>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   )
 }
+

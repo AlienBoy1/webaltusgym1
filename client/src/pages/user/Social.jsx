@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   FiHeart, FiMessageCircle, FiShare2, FiImage, FiSend, FiTrash2, FiX, 
   FiSmile, FiBarChart2, FiCheckCircle, FiAward, FiActivity, FiClock
 } from 'react-icons/fi'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import api from '../../utils/api'
 import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
@@ -20,6 +20,12 @@ import PostReactorsModal from '../../components/PostReactorsModal'
 import PeopleYouMayKnow from '../../components/PeopleYouMayKnow'
 import SharePostSheet from '../../components/SharePostSheet'
 import MentionInput, { MentionText } from '../../components/MentionInput'
+import PostDetailSheet from '../../components/PostDetailSheet'
+import PostCommentsList from '../../components/PostCommentsList'
+import PostImageViewer from '../../components/PostImageViewer'
+import ProtectedMedia from '../../components/ProtectedMedia'
+import SocialFeedSkeleton from '../../components/SocialFeedSkeleton'
+import { countComments } from '../../utils/commentTree'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
@@ -37,10 +43,14 @@ const moods = [
 export default function Social() {
   const { user } = useAuthStore()
   const dialog = useAppDialog()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [posts, setPosts] = useState([])
   const [sharePostTarget, setSharePostTarget] = useState(null)
   const [sharingPost, setSharingPost] = useState(false)
   const [reactorsPost, setReactorsPost] = useState(null)
+  const [detailPost, setDetailPost] = useState(null)
+  const [imageViewer, setImageViewer] = useState(null) // { post, index }
+  const openPostHandled = useRef(null)
   const [newPost, setNewPost] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
   const [selectedMood, setSelectedMood] = useState(null)
@@ -49,8 +59,14 @@ export default function Social() {
   const [postType, setPostType] = useState('text') // text, image, poll, mood, mixed
   const [showCompose, setShowCompose] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState(null)
+  const loadMoreRef = useRef(null)
+  const fetchingMoreRef = useRef(false)
   const [posting, setPosting] = useState(false)
   const [commentTexts, setCommentTexts] = useState({})
+  const [replyToByPost, setReplyToByPost] = useState({})
   const [showComments, setShowComments] = useState({})
   const [commenting, setCommenting] = useState({})
   const [voting, setVoting] = useState({})
@@ -58,9 +74,42 @@ export default function Social() {
   const fileInputRef = useRef(null)
   const imagePreviewRefs = useRef({})
 
+  // Deep link: /social?post={id} → open PostDetailSheet
   useEffect(() => {
-    fetchPosts()
-  }, [])
+    const postId = searchParams.get('post') || searchParams.get('openPost')
+    if (!postId) return
+    if (openPostHandled.current === postId) return
+    openPostHandled.current = postId
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const fromFeed = posts.find((p) => (p._id || p.id) === postId)
+        if (fromFeed) {
+          if (!cancelled) setDetailPost(fromFeed)
+        } else {
+          const { data } = await api.get(`/social/post/${postId}`)
+          if (!cancelled) setDetailPost(data)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error.response?.data?.message || 'No se pudo abrir la publicación')
+          openPostHandled.current = null
+        }
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams)
+          next.delete('post')
+          next.delete('openPost')
+          setSearchParams(next, { replace: true })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [searchParams, posts, setSearchParams])
 
   const adoptRoutine = () => {
     if (!routineModal) return
@@ -75,17 +124,91 @@ export default function Social() {
     }
   }
 
-  const fetchPosts = async () => {
-    try {
+  const fetchPosts = useCallback(async ({ append = false } = {}) => {
+    if (append) {
+      if (fetchingMoreRef.current || !nextCursor) return
+      fetchingMoreRef.current = true
+      setLoadingMore(true)
+    } else {
       setLoading(true)
-      const { data } = await api.get('/social/feed')
-      setPosts(data)
+    }
+    try {
+      const before = append ? nextCursor : undefined
+      const { data } = await api.get('/social/feed', {
+        params: {
+          limit: 10,
+          ...(before ? { before } : {})
+        }
+      })
+      const list = Array.isArray(data) ? data : data?.posts || []
+      const more = Array.isArray(data) ? list.length >= 10 : Boolean(data?.hasMore)
+      const cursor = Array.isArray(data)
+        ? list[list.length - 1]?.createdAt || null
+        : data?.nextCursor || null
+
+      setPosts((prev) => {
+        if (!append) return list
+        const seen = new Set(prev.map((p) => p._id || p.id))
+        return [...prev, ...list.filter((p) => !seen.has(p._id || p.id))]
+      })
+      setHasMore(more)
+      setNextCursor(cursor)
     } catch (error) {
       console.error('Error fetching posts:', error)
-      setPosts([])
+      if (!append) setPosts([])
+      toast.error('No se pudieron cargar las publicaciones')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
+      fetchingMoreRef.current = false
     }
+  }, [nextCursor])
+
+  useEffect(() => {
+    fetchPosts({ append: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const el = loadMoreRef.current
+    if (!el || !hasMore) return undefined
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) fetchPosts({ append: true })
+      },
+      { rootMargin: '240px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [hasMore, fetchPosts, posts.length])
+
+  const ensureCommentsLoaded = async (post) => {
+    const id = post._id || post.id
+    if (post.commentsLoaded !== false) return
+    try {
+      const { data } = await api.get(`/social/post/${id}`)
+      setPosts((prev) =>
+        prev.map((p) =>
+          (p._id || p.id) === id
+            ? {
+                ...p,
+                comments: data.comments || [],
+                commentsLoaded: true,
+                commentsCount: countComments(data.comments || [])
+              }
+            : p
+        )
+      )
+    } catch {
+      /* keep empty */
+    }
+  }
+
+  const toggleComments = (post) => {
+    const id = post._id
+    const opening = !showComments[id]
+    setShowComments({ ...showComments, [id]: opening })
+    if (opening) ensureCommentsLoaded(post)
   }
 
   const handleImageSelect = (e) => {
@@ -223,9 +346,9 @@ export default function Social() {
           const uid = user._id
           let likes = [...(post.likes || [])]
           const has = likes.some((id) => (id?._id || id) === uid)
-          // Prefer the emoji the user selected when liked (avoid heart fallback wiping 🔥 etc.)
+          // Server is source of truth for persisted emoji
           const nextReaction = data.liked
-            ? (emoji || data.myReaction || '❤️')
+            ? (data.myReaction || emoji || '❤️')
             : null
 
           if (data.liked && !has) likes.push(uid)
@@ -270,24 +393,40 @@ export default function Social() {
         })
       )
     } catch (error) {
-      toast.error('Error al reaccionar')
+      const msg =
+        error.response?.data?.code === 'MISSING_EMOJI_COLUMN'
+          ? error.response.data.message
+          : 'Error al reaccionar'
+      toast.error(msg)
     }
   }
 
-  const handleComment = async (postId) => {
+  const handleComment = async (postId, parentId = null) => {
     const commentText = commentTexts[postId] || ''
     if (!commentText.trim()) return
 
+    const replyTo = replyToByPost[postId]
+    const effectiveParentId = parentId ?? (replyTo?._id || replyTo?.id || null)
+
     setCommenting({ ...commenting, [postId]: true })
     try {
-      const { data } = await api.post(`/social/${postId}/comment`, { content: commentText })
+      const { data } = await api.post(`/social/${postId}/comment`, {
+        content: commentText,
+        parentId: effectiveParentId || undefined
+      })
       setPosts(posts.map(post =>
         post._id === postId
-          ? { ...post, comments: data }
+          ? {
+              ...post,
+              comments: data,
+              commentsLoaded: true,
+              commentsCount: countComments(data)
+            }
           : post
       ))
       setCommentTexts({ ...commentTexts, [postId]: '' })
-      toast.success('Comentario publicado')
+      setReplyToByPost((prev) => ({ ...prev, [postId]: null }))
+      toast.success(effectiveParentId ? 'Respuesta publicada' : 'Comentario publicado')
     } catch (error) {
       toast.error('Error al comentar')
     } finally {
@@ -567,9 +706,7 @@ export default function Social() {
 
       {/* Posts Feed */}
       {loading ? (
-        <div className="text-center py-12">
-          <div className="w-8 h-8 border-4 border-dark-100 border-t-primary-500 rounded-full animate-spin mx-auto" />
-        </div>
+        <SocialFeedSkeleton count={4} />
       ) : posts.length === 0 ? (
         <div className="space-y-4">
           <div className="text-center py-12 text-gray-400">
@@ -586,6 +723,10 @@ export default function Social() {
             const myReaction = post.myReaction || null
             const badge = getLevelBadge(post.user?.stats?.level || 1)
             const postComments = post.comments || []
+            const commentsCount =
+              typeof post.commentsCount === 'number'
+                ? post.commentsCount
+                : countComments(postComments)
             const showCommentSection = showComments[post._id]
             const postHasVoted = hasVoted(post)
             const pollTotalVotes = post.poll ? getTotalVotes(post) : 0
@@ -606,16 +747,20 @@ export default function Social() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i * 0.05, 0.25) }}
-                className="card p-4 sm:p-5"
+                className="card p-4 sm:p-5 cursor-pointer"
+                onClick={(e) => {
+                  if (e.target.closest('button, a, [data-no-post-open]')) return
+                  setDetailPost(post)
+                }}
               >
                 {/* Post Header */}
                 <div className="flex items-start gap-3 mb-3 sm:mb-4">
-                  <Link to={`/user/${post.user?._id}`} className="flex-shrink-0">
+                  <Link to={`/user/${post.user?._id}`} className="flex-shrink-0" data-no-post-open>
                     <Avatar avatar={post.user?.avatar} name={post.user?.name} size="md" />
                   </Link>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <Link to={`/user/${post.user?.username || post.user?._id}`} className="min-w-0">
+                      <Link to={`/user/${post.user?.username || post.user?._id}`} className="min-w-0" data-no-post-open>
                         <div className="font-semibold hover:text-primary-500 transition-colors truncate text-sm sm:text-base">
                           {post.user?.name || 'Usuario'}
                         </div>
@@ -628,6 +773,7 @@ export default function Social() {
                           onClick={() => handleDelete(post._id)}
                           className="p-1.5 -mr-1 text-gray-500 hover:text-red-500 flex-shrink-0 rounded-lg hover:bg-dark-100"
                           aria-label="Eliminar"
+                          data-no-post-open
                         >
                           <FiTrash2 size={16} />
                         </button>
@@ -679,6 +825,7 @@ export default function Social() {
                     post.workoutData.shareKind === 'routine') && (
                   <button
                     type="button"
+                    data-no-post-open
                     onClick={() =>
                       setRoutineModal({
                         ...post.workoutData,
@@ -720,6 +867,7 @@ export default function Social() {
                   (post.postType === 'workout' || post.workoutData) && (
                   <button
                     type="button"
+                    data-no-post-open
                     onClick={() => setRoutineModal({
                       ...post.workoutData,
                       user: typeof post.user === 'object' ? post.user : null
@@ -779,41 +927,55 @@ export default function Social() {
                 )}
 
                 {post.sharedFrom && (
-                  <SharedPostAttachment
-                    shared={post.sharedFrom}
-                    onOpenRoutine={(workout, author) =>
-                      setRoutineModal({
-                        ...workout,
-                        user: author || null
-                      })
-                    }
-                  />
+                  <div data-no-post-open>
+                    <SharedPostAttachment
+                      shared={post.sharedFrom}
+                      onOpenRoutine={(workout, author) =>
+                        setRoutineModal({
+                          ...workout,
+                          user: author || null
+                        })
+                      }
+                    />
+                  </div>
                 )}
 
                 {/* Post Images — omit on reshares (live in attachment) */}
                 {!post.sharedFrom && post.images && post.images.length > 0 && (
-                  <div className={`mb-3 sm:mb-4 grid gap-1.5 sm:gap-2 ${
-                    post.images.length === 1 ? 'grid-cols-1' :
-                    'grid-cols-2'
-                  }`}>
+                  <div
+                    data-no-post-open
+                    className={`mb-3 sm:mb-4 grid gap-1.5 sm:gap-2 ${
+                      post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                    }`}
+                  >
                     {post.images.map((img, idx) => (
-                      <img
+                      <button
                         key={idx}
-                        src={img}
-                        alt={`Post ${idx + 1}`}
-                        className={`w-full rounded-xl object-cover ${
-                          post.images.length === 1
-                            ? 'max-h-[280px] sm:max-h-[400px]'
-                            : 'h-36 sm:h-48'
-                        }`}
-                      />
+                        type="button"
+                        data-protected-media="1"
+                        onClick={() => setImageViewer({ post, index: idx })}
+                        className="group relative overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                      >
+                        <ProtectedMedia
+                          src={img}
+                          alt={`Post ${idx + 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          className={`w-full object-cover transition duration-300 group-hover:scale-[1.02] ${
+                            post.images.length === 1
+                              ? 'max-h-[280px] sm:max-h-[400px]'
+                              : 'h-36 sm:h-48'
+                          }`}
+                        />
+                        <span className="pointer-events-none absolute inset-0 bg-black/0 transition group-hover:bg-black/10" />
+                      </button>
                     ))}
                   </div>
                 )}
 
                 {/* Poll */}
                 {post.poll && (
-                  <div className="mb-4 p-4 bg-elevated border border-app rounded-xl">
+                  <div className="mb-4 p-4 bg-elevated border border-app rounded-xl" data-no-post-open>
                     <h4 className="font-semibold mb-3">{post.poll.question}</h4>
                     <div className="space-y-2">
                       {post.poll.options.map((option, idx) => {
@@ -863,7 +1025,11 @@ export default function Social() {
                 )}
 
                 {/* Post Actions */}
-                <div className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-app">
+                <div
+                  className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-app"
+                  data-no-post-open
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <PostReactionButton
                     myReaction={myReaction}
                     likesCount={post.likes?.length || 0}
@@ -873,11 +1039,11 @@ export default function Social() {
                   />
 
                   <button
-                    onClick={() => setShowComments({ ...showComments, [post._id]: !showCommentSection })}
+                    onClick={() => toggleComments(post)}
                     className="flex items-center gap-1.5 sm:gap-2 text-app-secondary hover:text-primary-500 transition-colors min-h-[40px]"
                   >
                     <FiMessageCircle size={18} />
-                    <span className="text-sm tabular-nums">{postComments.length}</span>
+                    <span className="text-sm tabular-nums">{commentsCount}</span>
                   </button>
 
                   <button
@@ -897,38 +1063,54 @@ export default function Social() {
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
                       className="mt-4 pt-4 border-t border-white/5"
+                      data-no-post-open
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {/* Comments List */}
-                      {postComments.length > 0 && (
-                        <div className="space-y-3 mb-4">
-                          {postComments.map((comment, idx) => (
-                            <div key={comment._id || idx} className="flex gap-3">
-                              <Link to={`/user/${comment.user?._id}`} className="flex-shrink-0">
-                                <Avatar avatar={comment.user?.avatar} name={comment.user?.name} size="sm" />
-                              </Link>
-                              <div className="flex-1 min-w-0">
-                                <Link to={`/user/${comment.user?.username || comment.user?._id}`}>
-                                  <div className="font-semibold text-sm hover:text-primary-500 transition-colors">
-                                    {comment.user?.name || 'Usuario'}
-                                  </div>
-                                  {comment.user?.username && (
-                                    <div className="text-[11px] text-primary-500">@{comment.user.username}</div>
-                                  )}
-                                </Link>
-                                <p className="text-gray-300 text-sm">
-                                  <MentionText text={comment.content} />
-                                </p>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: es })}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                      {post.commentsLoaded === false && commentsCount > 0 && postComments.length === 0 ? (
+                        <div className="mb-3 flex justify-center py-4">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[color:var(--border-subtle)] border-t-[color:var(--color-primary)]" />
+                        </div>
+                      ) : (
+                        <PostCommentsList
+                          comments={postComments}
+                          onReply={(c) => {
+                            setReplyToByPost((prev) => ({ ...prev, [post._id]: c }))
+                            const u = typeof c.user === 'object' ? c.user : null
+                            if (u?.username) {
+                              setCommentTexts((prev) => ({
+                                ...prev,
+                                [post._id]:
+                                  (prev[post._id] || '').includes(`@${u.username}`)
+                                    ? prev[post._id]
+                                    : `@${u.username} `
+                              }))
+                            }
+                          }}
+                        />
+                      )}
+
+                      {replyToByPost[post._id] && (
+                        <div className="flex items-center justify-between mb-2 mt-3 px-1 text-xs text-gray-500">
+                          <span>
+                            Respondiendo a{' '}
+                            <strong className="text-white">
+                              {replyToByPost[post._id]?.user?.name || 'usuario'}
+                            </strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReplyToByPost((prev) => ({ ...prev, [post._id]: null }))
+                            }
+                            className="text-primary-500"
+                          >
+                            Cancelar
+                          </button>
                         </div>
                       )}
 
                       {/* Comment Input */}
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 mt-3">
                         <Avatar avatar={user?.avatar} name={user?.name} size="sm" />
                         <div className="flex-1 flex gap-2">
                           <MentionInput
@@ -969,6 +1151,16 @@ export default function Social() {
               <PeopleYouMayKnow />
             </div>
           )}
+          {(hasMore || loadingMore) && (
+            <div ref={loadMoreRef} className="py-6 flex flex-col items-center gap-2">
+              {loadingMore && (
+                <>
+                  <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[color:var(--border-subtle)] border-t-[color:var(--color-primary)]" />
+                  <p className="text-xs text-[color:var(--text-muted)]">Cargando más…</p>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -991,7 +1183,70 @@ export default function Social() {
       <PostReactorsModal
         open={Boolean(reactorsPost)}
         onClose={() => setReactorsPost(null)}
+        postId={reactorsPost?._id || reactorsPost?.id}
         reactors={reactorsPost?.reactors || []}
+      />
+
+      <PostDetailSheet
+        open={Boolean(detailPost)}
+        post={detailPost}
+        onClose={() => {
+          setDetailPost(null)
+          openPostHandled.current = null
+        }}
+        onShare={(post) => {
+          setDetailPost(null)
+          openPostHandled.current = null
+          setSharePostTarget(post)
+        }}
+        onOpenRoutine={(workout, author) =>
+          setRoutineModal({
+            ...workout,
+            user: author || null
+          })
+        }
+        onPostUpdated={(updated) => {
+          if (!updated) return
+          setPosts((prev) =>
+            prev.map((p) =>
+              (p._id || p.id) === (updated._id || updated.id) ? { ...p, ...updated } : p
+            )
+          )
+          setDetailPost((curr) =>
+            curr && (curr._id || curr.id) === (updated._id || updated.id)
+              ? { ...curr, ...updated }
+              : curr
+          )
+          setImageViewer((curr) =>
+            curr?.post && (curr.post._id || curr.post.id) === (updated._id || updated.id)
+              ? { ...curr, post: { ...curr.post, ...updated } }
+              : curr
+          )
+        }}
+      />
+
+      <PostImageViewer
+        open={Boolean(imageViewer)}
+        post={imageViewer?.post}
+        initialIndex={imageViewer?.index || 0}
+        onClose={() => setImageViewer(null)}
+        onShare={(p) => {
+          setImageViewer(null)
+          setSharePostTarget(p)
+        }}
+        onPostUpdated={(updated) => {
+          if (!updated) return
+          setPosts((prev) =>
+            prev.map((p) =>
+              (p._id || p.id) === (updated._id || updated.id) ? { ...p, ...updated } : p
+            )
+          )
+          setImageViewer((curr) =>
+            curr?.post && (curr.post._id || curr.post.id) === (updated._id || updated.id)
+              ? { ...curr, post: { ...curr.post, ...updated } }
+              : curr
+          )
+        }}
       />
     </div>
   )

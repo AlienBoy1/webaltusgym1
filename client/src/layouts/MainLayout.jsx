@@ -1,12 +1,13 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun, FiUserPlus } from 'react-icons/fi'
+import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun, FiUserPlus, FiBookOpen } from 'react-icons/fi'
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
 import InviteFriendsModal from '../components/InviteFriendsModal'
 import UsernameSetupModal from '../components/UsernameSetupModal'
+import AppTutorial, { openAppTutorial } from '../components/AppTutorial'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -20,21 +21,25 @@ import {
   applyThemeMode
 } from '../utils/theme'
 import { StoryViewerProvider } from '../components/StoryViewerContext'
+import PresenceManager from '../components/PresenceManager'
+import PresenceDot from '../components/PresenceDot'
+import { installMediaProtection } from '../components/ProtectedMedia'
+import { useChatStore } from '../store/chatStore'
 
 const navItems = [
-  { path: '/dashboard', icon: FiHome, label: 'Inicio' },
-  { path: '/social', icon: FiUsers, label: 'Social' },
-  { path: '/workouts', icon: FiActivity, label: 'Entrenos' },
-  { path: '/progress', icon: FiTrendingUp, label: 'Progreso' },
-  { path: '/profile', icon: FiUser, label: 'Perfil' },
+  { path: '/dashboard', icon: FiHome, label: 'Inicio', tour: 'nav-dashboard' },
+  { path: '/social', icon: FiUsers, label: 'Social', tour: 'nav-social' },
+  { path: '/workouts', icon: FiActivity, label: 'Entrenos', tour: 'nav-workouts' },
+  { path: '/progress', icon: FiTrendingUp, label: 'Progreso', tour: 'nav-progress' },
+  { path: '/profile', icon: FiUser, label: 'Perfil', tour: 'nav-profile' },
 ]
 
 const headerIcons = [
-  { path: '/classes', icon: FiCalendar },
-  { path: '/challenges', icon: FiTarget },
-  { path: '/chat', icon: FiMessageCircle },
+  { path: '/classes', icon: FiCalendar, tour: 'nav-classes' },
+  { path: '/challenges', icon: FiTarget, tour: 'nav-challenges' },
+  { path: '/chat', icon: FiMessageCircle, tour: 'nav-chat' },
   { path: '/settings', icon: FiSettings },
-  { path: '/notifications', icon: FiBell },
+  { path: '/notifications', icon: FiBell, tour: 'nav-notifications' },
 ]
 
 export default function MainLayout() {
@@ -61,6 +66,8 @@ export default function MainLayout() {
   useEffect(() => {
     if (!avatarMenuOpen) return
     const onDoc = (e) => {
+      // Keep menu open while the product tour is controlling it
+      if (document.body.dataset.qyntraTutorial === '1') return
       if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target)) {
         setAvatarMenuOpen(false)
       }
@@ -72,6 +79,15 @@ export default function MainLayout() {
       document.removeEventListener('touchstart', onDoc)
     }
   }, [avatarMenuOpen])
+
+  useEffect(() => {
+    const onMenu = (e) => {
+      const open = Boolean(e?.detail?.open)
+      setAvatarMenuOpen(open)
+    }
+    window.addEventListener('qyntra:avatar-menu', onMenu)
+    return () => window.removeEventListener('qyntra:avatar-menu', onMenu)
+  }, [])
 
   const persistTheme = async (nextTheme) => {
     setThemeMode(nextTheme)
@@ -98,7 +114,7 @@ export default function MainLayout() {
     persistTheme(themeMode === 'light' ? 'dark' : 'light')
   }
   
-  useEffect(() => { 
+  useEffect(() => {
     fetchNotifications()
     const id = user?.id || user?._id
     if (id) {
@@ -110,6 +126,17 @@ export default function MainLayout() {
       unsubscribeRealtime()
     }
   }, [user])
+
+  useEffect(() => installMediaProtection(), [])
+
+  useEffect(() => {
+    const id = user?.id || user?._id
+    if (!id) {
+      useChatStore.getState().reset()
+      return
+    }
+    useChatStore.getState().prefetch()
+  }, [user?.id, user?._id])
 
   // Apply saved theme / accent across the whole app on session start
   useEffect(() => {
@@ -217,6 +244,7 @@ export default function MainLayout() {
   
   return (
     <StoryViewerProvider>
+    <PresenceManager />
     <div className="min-h-screen bg-dark-500">
       {/* Header */}
       <header className="glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
@@ -312,6 +340,7 @@ export default function MainLayout() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                data-tour={item.tour || undefined}
                 className={({ isActive }) =>
                   `p-1.5 sm:p-2 rounded-lg transition-colors relative ${
                     isActive ? 'text-primary-500' : 'text-gray-400 hover:text-white'
@@ -330,6 +359,7 @@ export default function MainLayout() {
             <div className="relative flex items-center gap-1.5 sm:gap-3 ml-1 sm:ml-2 pl-1.5 sm:pl-2 border-l border-white/10" ref={avatarMenuRef}>
               <button
                 type="button"
+                data-tour="nav-avatar"
                 onClick={() => setAvatarMenuOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-lg p-0.5 transition hover:bg-white/5"
                 aria-label="Menú de cuenta"
@@ -337,6 +367,7 @@ export default function MainLayout() {
               >
                 <div className="relative">
                   <Avatar avatar={user?.avatar} name={user?.name} size="sm" />
+                  <PresenceDot userId={user?.id || user?._id} size="sm" />
                   {unreadCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-primary-500 rounded-full sm:hidden" />
                   )}
@@ -350,7 +381,7 @@ export default function MainLayout() {
                     initial={{ opacity: 0, y: -8, scale: 0.96 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                    className="absolute right-0 top-full mt-2 w-64 z-[60] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-64 z-[100] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
                   >
                     <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
                       <p className="font-semibold text-sm truncate">{user?.name}</p>
@@ -361,6 +392,7 @@ export default function MainLayout() {
                     <div className="p-1.5">
                       <button
                         type="button"
+                        data-tour="menu-profile"
                         onClick={() => {
                           setAvatarMenuOpen(false)
                           navigate('/profile')
@@ -372,6 +404,7 @@ export default function MainLayout() {
                       </button>
                       <button
                         type="button"
+                        data-tour="menu-settings"
                         onClick={() => {
                           setAvatarMenuOpen(false)
                           navigate('/settings')
@@ -383,6 +416,7 @@ export default function MainLayout() {
                       </button>
                       <button
                         type="button"
+                        data-tour="menu-invite"
                         onClick={() => {
                           setAvatarMenuOpen(false)
                           setInviteOpen(true)
@@ -392,8 +426,22 @@ export default function MainLayout() {
                         <FiUserPlus size={16} className="text-accent-yellow" />
                         Invitar a amigos
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAvatarMenuOpen(false)
+                          openAppTutorial()
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                      >
+                        <FiBookOpen size={16} className="text-accent-cyan" />
+                        Tutorial de la app
+                      </button>
 
-                      <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl">
+                      <div
+                        data-tour="menu-theme"
+                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl"
+                      >
                         <span className="flex items-center gap-3 text-sm">
                           {themeMode === 'light' ? (
                             <FiSun size={16} className="text-accent-yellow" />
@@ -427,6 +475,7 @@ export default function MainLayout() {
 
                       <button
                         type="button"
+                        data-tour="menu-logout"
                         onClick={async () => {
                           setAvatarMenuOpen(false)
                           await logout()
@@ -533,7 +582,12 @@ export default function MainLayout() {
           {navItems.map((item) => {
             const isActive = location.pathname === item.path
             return (
-              <NavLink key={item.path} to={item.path} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${isActive ? 'text-primary-500' : 'text-gray-500'}`}>
+              <NavLink
+                key={item.path}
+                to={item.path}
+                data-tour={item.tour}
+                className={`flex flex-col items-center p-2 rounded-lg transition-colors ${isActive ? 'text-primary-500' : 'text-gray-500'}`}
+              >
                 <item.icon size={20} />
                 <span className="text-xs mt-1">{item.label}</span>
                 {isActive && <motion.div layoutId="nav-indicator" className="absolute bottom-0 w-1 h-1 bg-primary-500 rounded-full" />}
@@ -547,6 +601,7 @@ export default function MainLayout() {
       <NotificationPrompt />
       <InviteFriendsModal open={inviteOpen} onClose={() => setInviteOpen(false)} user={user} />
       <UsernameSetupModal open={Boolean(user && !user.username)} />
+      <AppTutorial />
     </div>
     </StoryViewerProvider>
   )

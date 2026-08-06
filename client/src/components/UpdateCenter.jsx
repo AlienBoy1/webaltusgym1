@@ -66,8 +66,10 @@ export default function UpdateCenter() {
   const [scene, setScene] = useState(0)
   const waitingWorkerRef = useRef(null)
   const updatingRef = useRef(false)
+  const promptReadyRef = useRef(false)
+  const pendingPromptRef = useRef(null)
 
-  const openPrompt = useCallback((version, worker = null) => {
+  const showPromptNow = useCallback((version, worker = null) => {
     if (updatingRef.current) return
     if (version) setRemoteVersion(version)
     if (worker) waitingWorkerRef.current = worker
@@ -93,13 +95,35 @@ export default function UpdateCenter() {
     }
   }, [])
 
+  const openPrompt = useCallback((version, worker = null) => {
+    if (updatingRef.current) return
+    // Delay auto-open during session restore / login theater
+    if (!promptReadyRef.current) {
+      pendingPromptRef.current = { version, worker }
+      return
+    }
+    showPromptNow(version, worker)
+  }, [showPromptNow])
+
   useEffect(() => {
     if (!isAuthenticated) {
+      promptReadyRef.current = false
+      pendingPromptRef.current = null
       setVisible(false)
       setPhase('idle')
       updatingRef.current = false
-      return
+      return undefined
     }
+
+    promptReadyRef.current = false
+    const readyTimer = window.setTimeout(() => {
+      promptReadyRef.current = true
+      if (pendingPromptRef.current && !updatingRef.current) {
+        const pending = pendingPromptRef.current
+        pendingPromptRef.current = null
+        showPromptNow(pending.version, pending.worker)
+      }
+    }, 2500)
 
     let cancelled = false
     let pollId
@@ -161,11 +185,12 @@ export default function UpdateCenter() {
 
     return () => {
       cancelled = true
+      clearTimeout(readyTimer)
       clearInterval(pollId)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [isAuthenticated, openPrompt])
+  }, [isAuthenticated, openPrompt, showPromptNow])
 
   useEffect(() => {
     if (phase !== 'updating') return undefined

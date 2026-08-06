@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 import { useEffect, lazy, Suspense } from 'react'
 import UpdateCenter from './components/UpdateCenter'
+import InstallAppPrompt from './components/InstallAppPrompt'
 import WorkoutFloatingPanel from './components/WorkoutFloatingPanel'
 import WorkoutSessionManager from './components/WorkoutSessionManager'
 import SessionTheater from './components/SessionTheater'
@@ -66,6 +67,11 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     }
     const redirect = encodeURIComponent(location.pathname + location.search)
     return <Navigate to={`/login?redirect=${redirect}`} replace />
+  }
+
+  // Avoid blank MainLayout crash while session user is still restoring
+  if (!user) {
+    return <PageFallback />
   }
 
   if (adminOnly && user?.role !== 'admin') {
@@ -151,6 +157,7 @@ function App() {
       />
 
       <UpdateCenter />
+      <InstallAppPrompt />
       <WorkoutSessionManager />
       <WorkoutFloatingPanel />
       <PushNavigationBridge />

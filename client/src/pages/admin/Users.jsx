@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiSearch, FiEdit2, FiTrash2, FiPlus, FiX, FiUserPlus, FiCheck, FiMail, FiClock } from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
+import { useAppDialog } from '../../components/AppDialog'
 
 export default function AdminUsers() {
+  const dialog = useAppDialog()
   const [users, setUsers] = useState([])
   const [registrationRequests, setRegistrationRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -94,7 +96,13 @@ export default function AdminUsers() {
   }
   
   const handleDeleteUser = async (userId) => {
-    if (!confirm('¿Eliminar este usuario?')) return
+    const ok = await dialog.confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.', {
+      title: 'Eliminar usuario',
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+      tone: 'danger'
+    })
+    if (!ok) return
     try {
       await api.delete(`/admin/users/${userId}`)
       setUsers(users.filter(u => u._id !== userId))

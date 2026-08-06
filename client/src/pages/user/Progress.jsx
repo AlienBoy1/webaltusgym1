@@ -218,9 +218,9 @@ export default function Progress() {
         </div>
         
         <div className="grid grid-cols-3 gap-4 md:grid-cols-6">
-          {(badges.length ? badges : [{ id: 'empty', name: 'Sin logros', icon: '—' }]).slice(0, 12).map((badge) => (
+          {(badges.length ? badges : [{ id: 'empty', name: 'Sin logros', icon: '—' }]).slice(0, 12).map((badge, idx) => (
             <div
-              key={badge.id || badge.name}
+              key={String(badge.id || badge._id || badge.name || 'badge') + '-' + idx}
               className="rounded-xl p-3 text-center transition-all"
               style={{ background: 'var(--bg-muted)' }}
             >

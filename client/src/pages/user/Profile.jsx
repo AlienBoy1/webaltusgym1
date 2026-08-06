@@ -13,6 +13,7 @@ import ProfileAvatar from '../../components/ProfileAvatar'
 import ShareProfileSheet from '../../components/ShareProfileSheet'
 import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
+import ProtectedMedia from '../../components/ProtectedMedia'
 
 const menuItems = [
   { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
@@ -633,9 +634,9 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         className="card overflow-hidden p-0"
       >
-        <div className="relative h-[168px] sm:h-[236px] overflow-hidden">
+        <div data-protected-media="1" className="relative h-[168px] sm:h-[236px] overflow-hidden">
           {user?.profile?.coverUrl ? (
-            <img
+            <ProtectedMedia
               src={user.profile.coverUrl}
               alt=""
               className="h-full w-full scale-[1.02] object-cover object-center"
@@ -1056,12 +1057,13 @@ export default function Profile() {
             >
               <FiX size={22} />
             </button>
-            <img
-              src={user.profile.coverUrl}
-              alt="Portada"
-              className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <div data-protected-media="1" onClick={(e) => e.stopPropagation()}>
+              <ProtectedMedia
+                src={user.profile.coverUrl}
+                alt="Portada"
+                className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
+              />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

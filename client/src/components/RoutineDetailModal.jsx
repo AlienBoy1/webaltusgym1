@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiX, FiUsers, FiInfo, FiPlus } from 'react-icons/fi'
 import { Avatar } from '../utils/avatarUtils'
@@ -22,14 +23,14 @@ export default function RoutineDetailModal({
   const exercises = routine.exercises || []
   const creator = author || routine.user || routine.author
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[85] flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
+          className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
           onClick={onClose}
         >
           <motion.div
@@ -37,7 +38,7 @@ export default function RoutineDetailModal({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 30, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] sm:rounded-3xl"
+            className="app-bottom-sheet-panel flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] sm:rounded-3xl"
           >
             <div className="flex items-start justify-between gap-3 border-b border-[color:var(--border-subtle)] px-5 py-4">
               <div className="min-w-0">
@@ -143,7 +144,8 @@ export default function RoutineDetailModal({
           </AnimatePresence>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
 

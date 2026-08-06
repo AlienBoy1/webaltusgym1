@@ -11,6 +11,18 @@ export function getAppOrigin() {
   return ''
 }
 
+/** Deep link path to open a post in Comunidad (PostDetailSheet). */
+export function getPostPath(postId) {
+  if (!postId) return '/social'
+  return `/social?post=${encodeURIComponent(String(postId))}`
+}
+
+export function getPostUrl(postId) {
+  const origin = getAppOrigin()
+  const path = getPostPath(postId)
+  return origin ? `${origin}${path}` : path
+}
+
 /** Public landing / register URL with optional inviter ref */
 export function getInviteUrl(inviterId) {
   const origin = getAppOrigin()
@@ -30,13 +42,13 @@ export function buildInviteMessage({ inviterName, inviteUrl } = {}) {
   )
 }
 
-export function buildPostShareText({ authorName, snippet, inviteUrl } = {}) {
-  const url = inviteUrl || getInviteUrl()
+export function buildPostShareText({ authorName, snippet, postUrl, inviteUrl } = {}) {
   const who = authorName || 'Usuario'
   const what = snippet || 'Publicación de Qyntra Gym'
+  const link = postUrl || inviteUrl || getInviteUrl()
   return (
     `🏋️ Qyntra Gym\n` +
     `${who}: ${what}\n\n` +
-    `Únete a la comunidad en Qyntra Gym:\n${url}`
+    `Ver publicación:\n${link}`
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiX, FiShare2, FiCopy, FiCheck } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
@@ -124,11 +125,11 @@ export default function ShareProfileSheet({ open, onClose, user }) {
     }
   }
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[95] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="app-overlay-sheet fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -143,7 +144,7 @@ export default function ShareProfileSheet({ open, onClose, user }) {
             initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 40, opacity: 0 }}
-            className="relative w-full sm:max-w-md max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
+            className="app-bottom-sheet-panel relative w-full sm:max-w-md max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)]">
               <h3 className="font-display text-lg">Compartir perfil</h3>
@@ -228,6 +229,7 @@ export default function ShareProfileSheet({ open, onClose, user }) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

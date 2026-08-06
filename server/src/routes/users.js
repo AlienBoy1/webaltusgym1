@@ -109,6 +109,19 @@ router.put('/profile', authenticate, async (req, res) => {
   }
 })
 
+router.post('/complete-onboarding', authenticate, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ onboarding_completed: true, updated_at: new Date().toISOString() })
+      .eq('id', req.user.id)
+    if (error) throw error
+    res.json({ message: 'Onboarding completado', onboardingCompleted: true })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al completar onboarding', error: error.message })
+  }
+})
+
 /** Check username availability (public to authenticated users) */
 router.get('/username/check', authenticate, async (req, res) => {
   try {

@@ -7,9 +7,12 @@ import { Avatar } from '../utils/avatarUtils'
 import PostReactionButton from './PostReactionButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import { MentionText } from './MentionInput'
+import ProtectedMedia from './ProtectedMedia'
+import { countComments } from '../utils/commentTree'
 
 /**
  * Facebook-style profile posts feed with Qyntra native styling.
+ * Card click → PostDetailSheet (via onOpenPost). Comments / share / react fully enabled.
  */
 export default function ProfileFeed({
   posts = [],
@@ -20,7 +23,9 @@ export default function ProfileFeed({
   onDelete,
   onReact,
   onShare,
-  onShowReactors
+  onShowReactors,
+  onOpenPost,
+  onOpenImage
 }) {
   const [menuPostId, setMenuPostId] = useState(null)
 
@@ -58,25 +63,32 @@ export default function ProfileFeed({
         const author = typeof post.user === 'object' ? post.user : null
         const authorId = author?._id || author?.id
         const likes = Array.isArray(post.likes) ? post.likes.length : (post.likesCount || 0)
-        const comments = Array.isArray(post.comments) ? post.comments.length : (post.commentsCount || 0)
+        const comments = countComments(post.comments)
         const created = post.createdAt || post.created_at
         const workout = post.workoutData || post.workout_data
         const isOwner = currentUserId && (authorId === currentUserId || post.userId === currentUserId)
         const myReaction = post.myReaction || null
+        const pid = post._id || post.id
 
         return (
           <article
-            key={post._id || post.id}
-            className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] shadow-[0_8px_24px_var(--shadow-color)]"
+            key={pid}
+            className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] shadow-[0_8px_24px_var(--shadow-color)] cursor-pointer"
+            onClick={(e) => {
+              // Don't open detail when interacting with buttons/links inside
+              if (e.target.closest('button, a, [data-no-post-open]')) return
+              onOpenPost?.(post)
+            }}
           >
             <header className="flex items-center gap-3 px-4 pt-4 pb-2">
-              <Link to={authorId ? `/user/${authorId}` : '#'}>
+              <Link to={author?.username ? `/user/${author.username}` : authorId ? `/user/${authorId}` : '#'} data-no-post-open>
                 <Avatar avatar={author?.avatar} name={author?.name} size="md" />
               </Link>
               <div className="min-w-0 flex-1">
                 <Link
                   to={author?.username ? `/user/${author.username}` : authorId ? `/user/${authorId}` : '#'}
                   className="truncate font-semibold text-[color:var(--text-primary)] hover:text-[color:var(--color-primary)]"
+                  data-no-post-open
                 >
                   {author?.name || 'Usuario'}
                 </Link>
@@ -90,17 +102,17 @@ export default function ProfileFeed({
                 </p>
               </div>
               {isOwner && (
-                <div className="relative">
+                <div className="relative" data-no-post-open>
                   <button
                     type="button"
-                    onClick={() => setMenuPostId(menuPostId === (post._id || post.id) ? null : (post._id || post.id))}
+                    onClick={() => setMenuPostId(menuPostId === pid ? null : pid)}
                     className="rounded-lg p-2 text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]"
                     aria-label="Opciones"
                   >
                     <FiMoreVertical size={18} />
                   </button>
                   <AnimatePresence>
-                    {menuPostId === (post._id || post.id) && (
+                    {menuPostId === pid && (
                       <motion.div
                         initial={{ opacity: 0, y: -6 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -112,7 +124,7 @@ export default function ProfileFeed({
                           className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-400 hover:bg-[color:var(--bg-muted)]"
                           onClick={() => {
                             setMenuPostId(null)
-                            onDelete?.(post._id || post.id)
+                            onDelete?.(pid)
                           }}
                         >
                           <FiTrash2 /> Eliminar
@@ -133,6 +145,7 @@ export default function ProfileFeed({
             {workout && (
               <button
                 type="button"
+                data-no-post-open
                 onClick={() => onOpenRoutine?.(workout, author)}
                 className="mx-4 mb-3 block w-[calc(100%-2rem)] overflow-hidden rounded-2xl border border-[rgba(var(--color-primary-rgb),0.28)] bg-gradient-to-br from-[rgba(var(--color-primary-rgb),0.14)] to-[rgba(var(--color-accent-rgb),0.08)] p-4 text-left transition hover:border-[rgba(var(--color-primary-rgb),0.5)]"
               >
@@ -142,37 +155,50 @@ export default function ProfileFeed({
             )}
 
             {post.images?.length > 0 && (
-              <div className={`grid gap-0.5 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              <div
+                data-no-post-open
+                className={`grid gap-0.5 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}
+              >
                 {post.images.slice(0, 4).map((img, idx) => (
-                  <div
+                  <button
                     key={idx}
-                    className={`relative overflow-hidden bg-[color:var(--bg-muted)] ${
+                    type="button"
+                    data-protected-media="1"
+                    onClick={() => onOpenImage?.(post, idx)}
+                    className={`relative overflow-hidden bg-[color:var(--bg-muted)] text-left ${
                       post.images.length === 1 ? 'max-h-[420px]' : 'aspect-square'
                     }`}
                   >
-                    <img
+                    <ProtectedMedia
                       src={img}
                       alt=""
-                      className="h-full w-full object-cover protected-media"
-                      draggable={false}
-                      onContextMenu={(e) => e.preventDefault()}
+                      className="h-full w-full object-cover transition hover:scale-[1.02]"
                     />
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
 
-            <footer className="flex items-center justify-between border-t border-[color:var(--border-subtle)] px-2 py-1.5 text-[color:var(--text-secondary)]">
+            <footer
+              className="flex items-center justify-between border-t border-[color:var(--border-subtle)] px-2 py-1.5 text-[color:var(--text-secondary)]"
+              data-no-post-open
+              onClick={(e) => e.stopPropagation()}
+            >
               <PostReactionButton
                 myReaction={myReaction}
                 likesCount={likes}
                 reactionSummary={post.reactionSummary || []}
-                onReact={(emoji) => onReact?.(post._id || post.id, emoji)}
+                onReact={(emoji) => onReact?.(pid, emoji)}
                 onShowReactors={() => onShowReactors?.(post)}
               />
-              <span className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
+              <button
+                type="button"
+                onClick={() => onOpenPost?.(post)}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:text-primary-500 transition"
+                aria-label="Ver comentarios"
+              >
                 <FiMessageCircle size={17} /> {comments}
-              </span>
+              </button>
               <button
                 type="button"
                 onClick={() => onShare?.(post)}

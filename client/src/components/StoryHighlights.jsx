@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiStar, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
+import ProtectedMedia from './ProtectedMedia'
 
 export default function StoryHighlights({ userId }) {
   const [albums, setAlbums] = useState([])
@@ -73,12 +74,20 @@ export default function StoryHighlights({ userId }) {
             >
               <div className="rounded-full bg-gradient-to-tr from-primary-500 to-accent-cyan p-[2px]">
                 <div className="rounded-full bg-dark-500 p-[2px]">
-                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-dark-200 sm:h-16 sm:w-16">
+                  <div
+                    data-protected-media="1"
+                    className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-dark-200 sm:h-16 sm:w-16"
+                  >
                     {album.coverUrl ? (
                       album.coverType === 'video' ? (
-                        <video src={album.coverUrl} muted className="h-full w-full object-cover" />
+                        <ProtectedMedia
+                          as="video"
+                          src={album.coverUrl}
+                          muted
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
-                        <img src={album.coverUrl} alt="" className="h-full w-full object-cover" />
+                        <ProtectedMedia src={album.coverUrl} alt="" className="h-full w-full object-cover" />
                       )
                     ) : (
                       <FiStar className="text-accent-yellow" size={18} />
@@ -130,7 +139,8 @@ export default function StoryHighlights({ userId }) {
                   <FiChevronRight />
                 </button>
                 {item.mediaType === 'video' ? (
-                  <video
+                  <ProtectedMedia
+                    as="video"
                     key={item.id}
                     src={item.mediaUrl}
                     controls
@@ -138,7 +148,11 @@ export default function StoryHighlights({ userId }) {
                     className="max-h-full max-w-full object-contain"
                   />
                 ) : (
-                  <img src={item.mediaUrl} alt="" className="max-h-full max-w-full object-contain" />
+                  <ProtectedMedia
+                    src={item.mediaUrl}
+                    alt=""
+                    className="max-h-full max-w-full object-contain"
+                  />
                 )}
               </div>
 

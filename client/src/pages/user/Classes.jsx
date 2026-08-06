@@ -4,6 +4,7 @@ import { FiCalendar, FiClock, FiUsers, FiCheck, FiX, FiInfo } from 'react-icons/
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
+import ProtectedMedia from '../../components/ProtectedMedia'
 
 const DAYS = [
   { id: 1, label: 'Lunes' },
@@ -108,7 +109,13 @@ export default function Classes() {
   const getAvatarDisplay = (instructor) => {
     if (instructor?.avatar) {
       if (instructor.avatar.startsWith('data:') || instructor.avatar.startsWith('http')) {
-        return <img src={instructor.avatar} alt={instructor.name} className="w-full h-full object-cover rounded-full" />
+        return (
+          <ProtectedMedia
+            src={instructor.avatar}
+            alt={instructor.name}
+            className="w-full h-full object-cover rounded-full"
+          />
+        )
       }
       return instructor.avatar
     }

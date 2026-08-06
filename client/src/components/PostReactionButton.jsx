@@ -25,6 +25,7 @@ export default function PostReactionButton({
   const [pickerOpen, setPickerOpen] = useState(false)
   const longPressTimer = useRef(null)
   const longPressed = useRef(false)
+  const btnRef = useRef(null)
 
   const clearTimer = () => {
     if (longPressTimer.current) {
@@ -33,9 +34,8 @@ export default function PostReactionButton({
     }
   }
 
-  const startPress = (e) => {
+  const startPress = () => {
     if (disabled) return
-    e.preventDefault?.()
     longPressed.current = false
     clearTimer()
     longPressTimer.current = window.setTimeout(() => {
@@ -73,22 +73,22 @@ export default function PostReactionButton({
   return (
     <div className="relative flex items-center gap-1.5 min-w-0">
       <button
+        ref={btnRef}
         type="button"
         disabled={disabled}
         onMouseDown={startPress}
         onMouseUp={endPress}
         onMouseLeave={clearTimer}
         onTouchStart={startPress}
-        onTouchEnd={(e) => {
-          e.preventDefault()
-          endPress()
-        }}
+        onTouchEnd={endPress}
+        onTouchCancel={clearTimer}
         onContextMenu={(e) => e.preventDefault()}
-        className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm transition ${
+        className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm transition select-none touch-manipulation ${
           active
             ? 'text-[color:var(--color-primary)]'
             : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
         }`}
+        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
         title="Clic: Me gusta · Mantén: más reacciones"
       >
         <span className="text-lg leading-none">{display || '🤍'}</span>

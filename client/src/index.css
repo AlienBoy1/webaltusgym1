@@ -266,10 +266,40 @@ html.dark {
   }
 
   .protected-media {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none !important;
+    user-drag: none !important;
+  }
+
+  /* Wrapper receives clicks (open viewer); media resists long-press / drag save */
+  [data-protected-media='1'] {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
+    position: relative;
+  }
+
+  [data-protected-media='1'] img.protected-media,
+  [data-protected-media='1'] > img,
+  .story-viewer img {
     pointer-events: none;
+  }
+
+  .story-viewer video {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+  }
+
+  video.protected-media::-webkit-media-controls-download-button,
+  video.protected-media::-webkit-media-controls-enclosure {
+    overflow: hidden;
+  }
+
+  video.protected-media::-webkit-media-controls-panel {
+    width: calc(100% + 30px);
   }
 }
 
@@ -292,21 +322,29 @@ html.dark {
 
   /* Bottom sheets / modals above nav (z-50) with safe clearance */
   .app-overlay-sheet {
-    z-index: 90;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 120;
+    padding-bottom: 0;
   }
 
+  .app-bottom-sheet-panel,
   .app-modal-panel {
     max-height: min(92svh, 720px);
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Clear mobile tab bar + iOS home indicator when sheet sits edge-to-edge */
     padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
   }
 
   @media (max-width: 767px) {
+    .app-bottom-sheet-panel,
     .app-modal-panel {
-      max-height: calc(100svh - 5.75rem - env(safe-area-inset-bottom, 0px));
-      padding-bottom: max(5.5rem, calc(4.25rem + env(safe-area-inset-bottom, 0px)));
+      max-height: calc(100svh - env(safe-area-inset-bottom, 0px));
+      padding-bottom: max(5.75rem, calc(4.5rem + env(safe-area-inset-bottom, 0px)));
+    }
+
+    /* Optional scroll area that keeps last rows above the nav footprint */
+    .app-sheet-scroll {
+      padding-bottom: max(5.75rem, calc(4.5rem + env(safe-area-inset-bottom, 0px)));
     }
   }
 }

@@ -346,22 +346,49 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
   return y + innerH
 }
 
+/**
+ * Draw image letterboxed (object-fit: contain) inside a rounded rect.
+ * Never stretches; empty bands use a soft brand-tinted fill.
+ */
+function drawImageContained(ctx, img, dx, dy, dw, dh, radius = 16) {
+  const nw = img.naturalWidth || img.width || 1
+  const nh = img.naturalHeight || img.height || 1
+  ctx.save()
+  roundRect(ctx, dx, dy, dw, dh, radius)
+  ctx.clip()
+  // Elegant letterbox bands
+  const g = ctx.createLinearGradient(dx, dy, dx + dw, dy + dh)
+  g.addColorStop(0, P.surface || 'rgba(20,20,28,0.95)')
+  g.addColorStop(1, `rgba(${P.primaryRgb || '255,107,53'},0.08)`)
+  ctx.fillStyle = g
+  ctx.fillRect(dx, dy, dw, dh)
+
+  const scale = Math.min(dw / nw, dh / nh)
+  const iw = nw * scale
+  const ih = nh * scale
+  const ix = dx + (dw - iw) / 2
+  const iy = dy + (dh - ih) / 2
+  ctx.drawImage(img, ix, iy, iw, ih)
+  ctx.restore()
+}
+
 async function drawImages(ctx, images, x, y, maxW, maxBottom) {
   const list = images.slice(0, 4)
   if (!list.length) return y
   const gap = 12
-  const availH = Math.max(120, maxBottom - y - 8)
+  const availH = Math.max(140, maxBottom - y - 8)
 
   if (list.length === 1) {
     try {
       const img = await loadImage(list[0])
-      const ih = Math.min(360, availH)
-      ctx.save()
-      roundRect(ctx, x, y, maxW, ih, 22)
-      ctx.clip()
-      ctx.drawImage(img, x, y, maxW, ih)
-      ctx.restore()
-      return y + ih + 16
+      const nw = img.naturalWidth || img.width || 1
+      const nh = img.naturalHeight || img.height || 1
+      const aspect = nw / Math.max(1, nh)
+      // Frame height follows natural ratio, clamped to available space
+      let boxH = maxW / aspect
+      boxH = Math.min(availH, Math.max(180, Math.min(boxH, 520)))
+      drawImageContained(ctx, img, x, y, maxW, boxH, 22)
+      return y + boxH + 16
     } catch {
       return y
     }
@@ -370,7 +397,7 @@ async function drawImages(ctx, images, x, y, maxW, maxBottom) {
   const cols = 2
   const rows = Math.ceil(list.length / cols)
   const cellW = (maxW - gap) / cols
-  const cellH = Math.min(240, (availH - gap * (rows - 1)) / rows)
+  const cellH = Math.min(260, (availH - gap * (rows - 1)) / rows)
 
   for (let i = 0; i < list.length; i++) {
     const col = i % cols
@@ -379,11 +406,7 @@ async function drawImages(ctx, images, x, y, maxW, maxBottom) {
     const cy = y + row * (cellH + gap)
     try {
       const img = await loadImage(list[i])
-      ctx.save()
-      roundRect(ctx, cx, cy, cellW, cellH, 16)
-      ctx.clip()
-      ctx.drawImage(img, cx, cy, cellW, cellH)
-      ctx.restore()
+      drawImageContained(ctx, img, cx, cy, cellW, cellH, 16)
     } catch {
       ctx.fillStyle = P.surface
       roundRect(ctx, cx, cy, cellW, cellH, 16)

@@ -28,7 +28,6 @@ export default function MentionInput({
     const before = String(text || '').slice(0, caret)
     const m = before.match(/@([a-z0-9._]{0,20})$/i)
     if (!m) return null
-    // Don't trigger if char before @ is alphanumeric
     const atIdx = before.lastIndexOf('@')
     if (atIdx > 0) {
       const prev = before[atIdx - 1]
@@ -154,14 +153,16 @@ export default function MentionInput({
           ) : (
             suggestions.map((u, i) => (
               <button
-                key={u._id || u.id}
+                key={u._id || u.id || `mention-${i}`}
                 type="button"
                 onMouseDown={(e) => {
                   e.preventDefault()
                   insertMention(u)
                 }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition ${
-                  i === active ? 'bg-[rgba(var(--color-primary-rgb),0.12)]' : 'hover:bg-[color:var(--bg-muted)]'
+                  i === active
+                    ? 'bg-[rgba(var(--color-primary-rgb),0.12)]'
+                    : 'hover:bg-[color:var(--bg-muted)]'
                 }`}
               >
                 <Avatar avatar={u.avatar} name={u.name} size="sm" />
@@ -197,7 +198,7 @@ export function MentionText({ text, className = '' }) {
             </Link>
           )
         }
-        return <span key={i}>{part}</span>
+        return <span key={`t-${i}`}>{part}</span>
       })}
     </span>
   )

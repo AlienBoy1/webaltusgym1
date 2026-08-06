@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiCamera, FiEye, FiX } from 'react-icons/fi'
 import { Avatar } from '../utils/avatarUtils'
+import ProtectedMedia from './ProtectedMedia'
 
 /**
  * Profile avatar with optional story ring, Ver foto / Ver historia menu,
@@ -43,22 +45,23 @@ export default function ProfileAvatar({
         </span>
       </button>
 
-      <AnimatePresence>
-        {menuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-end justify-center bg-black/65 p-0 sm:items-center sm:p-4"
-            onClick={() => setMenuOpen(false)}
-          >
+      {createPortal(
+        <AnimatePresence>
+          {menuOpen && (
             <motion.div
-              initial={{ y: 40 }}
-              animate={{ y: 0 }}
-              exit={{ y: 30 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] sm:rounded-3xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center bg-black/65 p-0 sm:items-center sm:p-4"
+              onClick={() => setMenuOpen(false)}
             >
+              <motion.div
+                initial={{ y: 40 }}
+                animate={{ y: 0 }}
+                exit={{ y: 30 }}
+                onClick={(e) => e.stopPropagation()}
+                className="app-bottom-sheet-panel w-full max-w-sm overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] sm:rounded-3xl"
+              >
               <div className="border-b border-[color:var(--border-subtle)] px-5 py-4 text-center">
                 <p className="font-display text-xl tracking-wide">{name || 'Perfil'}</p>
               </div>
@@ -94,15 +97,18 @@ export default function ProfileAvatar({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
 
-      <AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
         {photoOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/90 p-4"
+            className="fixed inset-0 z-[130] flex items-center justify-center bg-black/90 p-4"
             onClick={() => setPhotoOpen(false)}
             onContextMenu={(e) => e.preventDefault()}
           >
@@ -116,15 +122,15 @@ export default function ProfileAvatar({
             </button>
             <div
               className="relative max-h-[80vh] max-w-lg select-none"
+              data-protected-media="1"
               onClick={(e) => e.stopPropagation()}
               onContextMenu={(e) => e.preventDefault()}
             >
               {avatar && (avatar.startsWith('data:') || avatar.startsWith('http')) ? (
-                <img
+                <ProtectedMedia
                   src={avatar}
                   alt=""
-                  draggable={false}
-                  className="max-h-[80vh] w-full rounded-2xl object-contain protected-media"
+                  className="max-h-[80vh] w-full rounded-2xl object-contain"
                   style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
                 />
               ) : (
@@ -141,7 +147,9 @@ export default function ProfileAvatar({
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   )
 }

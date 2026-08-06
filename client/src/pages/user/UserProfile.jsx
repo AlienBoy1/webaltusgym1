@@ -23,9 +23,12 @@ import ProfileAvatar from '../../components/ProfileAvatar'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import SharePostSheet from '../../components/SharePostSheet'
 import PostReactorsModal from '../../components/PostReactorsModal'
+import PostDetailSheet from '../../components/PostDetailSheet'
+import PostImageViewer from '../../components/PostImageViewer'
 import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import { useAppDialog } from '../../components/AppDialog'
+import ProtectedMedia from '../../components/ProtectedMedia'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -61,6 +64,8 @@ export default function UserProfile() {
   const [sharePostTarget, setSharePostTarget] = useState(null)
   const [sharingPost, setSharingPost] = useState(false)
   const [reactorsPost, setReactorsPost] = useState(null)
+  const [detailPost, setDetailPost] = useState(null)
+  const [imageViewer, setImageViewer] = useState(null)
   const [followStatusReady, setFollowStatusReady] = useState(false)
   const privateAlertFor = useRef(null)
 
@@ -324,8 +329,29 @@ export default function UserProfile() {
     }
   }
 
-  const handleMessage = () => {
-    navigate('/chat', { state: { startWith: { _id: id, name: user?.name, avatar: user?.avatar } } })
+  const handleMessage = async () => {
+    const allowMessages = user?.settings?.privacy?.allowMessages !== false
+    if (!allowMessages) {
+      await dialog.alert(
+        'Este usuario tiene desactivada la mensajería por ahora. Cuando la active podrás escribirle; inténtalo de nuevo más tarde.',
+        {
+          title: 'Mensajería no disponible',
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        }
+      )
+      return
+    }
+    navigate('/chat', {
+      state: {
+        startWith: {
+          _id: resolvedId || id,
+          name: user?.name,
+          username: user?.username,
+          avatar: user?.avatar
+        }
+      }
+    })
   }
 
   if (loading) {
@@ -362,9 +388,9 @@ export default function UserProfile() {
         animate={{ opacity: 1, y: 0 }}
         className="card text-center overflow-hidden p-0"
       >
-        <div className="relative h-[150px] sm:h-[236px] overflow-hidden">
+        <div data-protected-media="1" className="relative h-[150px] sm:h-[236px] overflow-hidden">
           {user.profile?.coverUrl ? (
-            <img
+            <ProtectedMedia
               src={user.profile.coverUrl}
               alt=""
               className="h-full w-full scale-[1.02] object-cover object-center"
@@ -754,9 +780,51 @@ export default function UserProfile() {
                       const uid = currentUser?._id
                       let likes = [...(p.likes || [])]
                       const has = likes.some((id) => (id?._id || id) === uid)
+                      const nextReaction = data.liked
+                        ? (data.myReaction || emoji || '❤️')
+                        : null
                       if (data.liked && !has) likes.push(uid)
                       if (!data.liked) likes = likes.filter((id) => (id?._id || id) !== uid)
-                      return { ...p, likes, myReaction: data.myReaction || null }
+
+                      let reactionSummary = [...(p.reactionSummary || [])]
+                      let reactors = [...(p.reactors || [])]
+                      const prevReaction = p.myReaction
+                      if (prevReaction) {
+                        reactionSummary = reactionSummary
+                          .map((r) => (r.emoji === prevReaction ? { ...r, count: r.count - 1 } : r))
+                          .filter((r) => r.count > 0)
+                        reactors = reactors.filter((r) => r.userId !== uid)
+                      }
+                      if (nextReaction) {
+                        const existing = reactionSummary.find((r) => r.emoji === nextReaction)
+                        if (existing) {
+                          reactionSummary = reactionSummary.map((r) =>
+                            r.emoji === nextReaction ? { ...r, count: r.count + 1 } : r
+                          )
+                        } else {
+                          reactionSummary = [...reactionSummary, { emoji: nextReaction, count: 1 }]
+                        }
+                        reactors = [
+                          ...reactors.filter((r) => r.userId !== uid),
+                          {
+                            userId: uid,
+                            emoji: nextReaction,
+                            name: currentUser?.name,
+                            username: currentUser?.username,
+                            avatar: currentUser?.avatar
+                          }
+                        ]
+                      }
+
+                      return {
+                        ...p,
+                        likes,
+                        myReaction: nextReaction,
+                        reactionSummary: Array.isArray(data.reactionSummary)
+                          ? data.reactionSummary
+                          : reactionSummary,
+                        reactors
+                      }
                     })
                   )
                 } catch {
@@ -765,6 +833,8 @@ export default function UserProfile() {
               }}
               onShare={(post) => setSharePostTarget(post)}
               onShowReactors={(post) => setReactorsPost(post)}
+              onOpenPost={(post) => setDetailPost(post)}
+              onOpenImage={(post, index) => setImageViewer({ post, index })}
             />
           )}
         </motion.div>
@@ -776,6 +846,59 @@ export default function UserProfile() {
         routine={selectedRoutine?.workout}
         author={selectedRoutine?.author || user}
         onAdopt={() => adoptRoutineFromPost(selectedRoutine?.workout)}
+      />
+
+      <PostDetailSheet
+        open={Boolean(detailPost)}
+        post={detailPost}
+        onClose={() => setDetailPost(null)}
+        onShare={(post) => {
+          setDetailPost(null)
+          setSharePostTarget(post)
+        }}
+        onOpenRoutine={(workout, author) => setSelectedRoutine({ workout, author })}
+        onPostUpdated={(updated) => {
+          if (!updated) return
+          setPosts((prev) =>
+            prev.map((p) =>
+              (p._id || p.id) === (updated._id || updated.id) ? { ...p, ...updated } : p
+            )
+          )
+          setDetailPost((curr) =>
+            curr && (curr._id || curr.id) === (updated._id || updated.id)
+              ? { ...curr, ...updated }
+              : curr
+          )
+          setImageViewer((curr) =>
+            curr?.post && (curr.post._id || curr.post.id) === (updated._id || updated.id)
+              ? { ...curr, post: { ...curr.post, ...updated } }
+              : curr
+          )
+        }}
+      />
+
+      <PostImageViewer
+        open={Boolean(imageViewer)}
+        post={imageViewer?.post}
+        initialIndex={imageViewer?.index || 0}
+        onClose={() => setImageViewer(null)}
+        onShare={(p) => {
+          setImageViewer(null)
+          setSharePostTarget(p)
+        }}
+        onPostUpdated={(updated) => {
+          if (!updated) return
+          setPosts((prev) =>
+            prev.map((p) =>
+              (p._id || p.id) === (updated._id || updated.id) ? { ...p, ...updated } : p
+            )
+          )
+          setImageViewer((curr) =>
+            curr?.post && (curr.post._id || curr.post.id) === (updated._id || updated.id)
+              ? { ...curr, post: { ...curr.post, ...updated } }
+              : curr
+          )
+        }}
       />
 
       <SharePostSheet
@@ -805,6 +928,7 @@ export default function UserProfile() {
       <PostReactorsModal
         open={Boolean(reactorsPost)}
         onClose={() => setReactorsPost(null)}
+        postId={reactorsPost?._id || reactorsPost?.id}
         reactors={reactorsPost?.reactors || []}
       />
 

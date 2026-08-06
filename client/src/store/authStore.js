@@ -265,20 +265,23 @@ export const useAuthStore = create((set, get) => ({
 
     try {
       await syncSupabaseSession(token, refreshToken)
-      const { data } = await api.get('/auth/me')
+      const timeoutMs = 12000
+      const { data } = await Promise.race([
+        api.get('/auth/me'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(Object.assign(new Error('Auth timeout'), { code: 'TIMEOUT' })), timeoutMs)
+        )
+      ])
       set({
         user: withIdAlias(data.user),
         isAuthenticated: true,
         token,
-        refreshToken,
-        initializing: false,
-        loading: false
+        refreshToken
       })
       return true
     } catch (error) {
-      if (refreshToken) {
+      if (refreshToken && error?.code !== 'TIMEOUT') {
         const refreshed = await get().refreshSession(refreshToken)
-        set({ initializing: false })
         return refreshed.success
       }
       clearAuthTokens()
@@ -286,11 +289,11 @@ export const useAuthStore = create((set, get) => ({
         user: null,
         token: null,
         refreshToken: null,
-        isAuthenticated: false,
-        initializing: false,
-        loading: false
+        isAuthenticated: false
       })
       return false
+    } finally {
+      set({ initializing: false, loading: false })
     }
   }
 }))
