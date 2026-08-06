@@ -356,7 +356,9 @@ export default function UserProfile() {
         </div>
 
         <h1 className="font-display text-2xl mb-1">{user.name}</h1>
-        <p className="text-gray-400 mb-4 break-all text-sm sm:text-base">{user.email}</p>
+        <p className="text-gray-400 mb-4 break-all text-sm sm:text-base">
+          {user.username ? `@${user.username}` : 'Sin username'}
+        </p>
 
         <div className="flex items-center justify-center gap-6 mb-4">
           <button
@@ -742,8 +744,8 @@ export default function UserProfile() {
                       <Avatar avatar={u.avatar} name={u.name} size="md" />
                       <div className="min-w-0">
                         <div className="font-medium truncate">{u.name}</div>
-                        {u.email && (
-                          <div className="text-sm text-gray-400 truncate">{u.email}</div>
+                        {u.username && (
+                          <div className="text-sm text-primary-500 truncate">@{u.username}</div>
                         )}
                       </div>
                     </Link>

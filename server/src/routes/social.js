@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { mapPost } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
+import { resolveMentions, notifyPostMentions } from '../utils/mentions.js'
 
 const router = express.Router()
 
@@ -12,7 +13,7 @@ function mapComment(row, userMap = {}) {
     _id: row.id,
     id: row.id,
     user: u
-      ? { _id: u.id, id: u.id, name: u.name, avatar: u.avatar }
+      ? { _id: u.id, id: u.id, name: u.name, username: u.username || null, avatar: u.avatar }
       : row.user_id,
     content: row.content,
     createdAt: row.created_at
@@ -24,7 +25,7 @@ async function getProfilesMap(ids) {
   if (!unique.length) return {}
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, avatar, stats, email')
+    .select('id, name, username, avatar, stats, email')
     .in('id', unique)
   return Object.fromEntries((data || []).map((p) => [p.id, p]))
 }
@@ -85,7 +86,7 @@ async function enrichPosts(posts, viewerId = null) {
   return posts.map((row) => {
     const author = userMap[row.user_id]
     const mappedAuthor = author
-      ? { _id: author.id, id: author.id, name: author.name, avatar: author.avatar, stats: author.stats }
+      ? { _id: author.id, id: author.id, name: author.name, username: author.username || null, avatar: author.avatar, stats: author.stats }
       : row.user_id
 
     let sharedFrom = null
@@ -105,7 +106,7 @@ async function enrichPosts(posts, viewerId = null) {
         _id: s.id,
         id: s.id,
         user: sAuthor
-          ? { _id: sAuthor.id, id: sAuthor.id, name: sAuthor.name, avatar: sAuthor.avatar, stats: sAuthor.stats }
+          ? { _id: sAuthor.id, id: sAuthor.id, name: sAuthor.name, username: sAuthor.username || null, avatar: sAuthor.avatar, stats: sAuthor.stats }
           : s.user_id,
         content: s.content,
         images: s.images || [],
@@ -321,15 +322,27 @@ router.post('/', authenticate, async (req, res) => {
     await bumpSocialInteractions(req.user.id)
     const [enriched] = await enrichPosts([post], req.user.id)
 
-    // Notify followers of new post (background)
+    // Notify mentions + followers of new post (background)
     process.nextTick(async () => {
       try {
+        const mentions = await resolveMentions(content, req.user.id)
+        if (mentions.length) {
+          await notifyPostMentions({
+            mentions,
+            actor: req.user,
+            postId: post.id,
+            kind: 'post',
+            snippet: content
+          })
+        }
+
         const { data: followers } = await supabaseAdmin
           .from('follows')
           .select('follower_id')
           .eq('following_id', req.user.id)
 
-        const ids = (followers || []).map((f) => f.follower_id)
+        const mentionIds = new Set(mentions.map((m) => m.id))
+        const ids = (followers || []).map((f) => f.follower_id).filter((id) => !mentionIds.has(id))
         const preview =
           (content && String(content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()) ||
           (isRoutineShare && workoutData?.name && `Compartió rutina: ${workoutData.name}`) ||
@@ -538,6 +551,23 @@ router.post('/:id/comment', authenticate, async (req, res) => {
 
     await bumpSocialInteractions(req.user.id)
 
+    process.nextTick(async () => {
+      try {
+        const mentions = await resolveMentions(content, req.user.id)
+        if (mentions.length) {
+          await notifyPostMentions({
+            mentions,
+            actor: req.user,
+            postId: post.id,
+            kind: 'comment',
+            snippet: content
+          })
+        }
+      } catch (err) {
+        console.error('Comment mention notify error:', err?.message || err)
+      }
+    })
+
     const { data: comments } = await supabaseAdmin
       .from('post_comments')
       .select('*')
@@ -607,6 +637,24 @@ router.post('/:id/share', authenticate, async (req, res) => {
 
     await bumpSocialInteractions(req.user.id)
     const [enriched] = await enrichPosts([sharedPost], req.user.id)
+
+    process.nextTick(async () => {
+      try {
+        const mentions = await resolveMentions(insertPayload.content, req.user.id)
+        if (mentions.length) {
+          await notifyPostMentions({
+            mentions,
+            actor: req.user,
+            postId: sharedPost.id,
+            kind: 'post',
+            snippet: insertPayload.content
+          })
+        }
+      } catch (err) {
+        console.error('Share mention notify error:', err?.message || err)
+      }
+    })
+
     res.status(201).json(enriched)
   } catch (error) {
     res.status(500).json({ message: 'Error al compartir publicación', error: error.message })
@@ -862,7 +910,7 @@ router.get('/following', authenticate, async (req, res) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, avatar, email, stats')
+      .select('id, name, avatar, username, email, stats')
       .in('id', ids)
 
     res.json(
@@ -870,8 +918,8 @@ router.get('/following', authenticate, async (req, res) => {
         _id: p.id,
         id: p.id,
         name: p.name,
+        username: p.username || null,
         avatar: p.avatar,
-        email: p.email,
         stats: p.stats
       }))
     )
@@ -895,7 +943,7 @@ router.get('/followers', authenticate, async (req, res) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, avatar, email, stats')
+      .select('id, name, avatar, username, email, stats')
       .in('id', ids)
 
     res.json(
@@ -903,8 +951,8 @@ router.get('/followers', authenticate, async (req, res) => {
         _id: p.id,
         id: p.id,
         name: p.name,
+        username: p.username || null,
         avatar: p.avatar,
-        email: p.email,
         stats: p.stats
       }))
     )

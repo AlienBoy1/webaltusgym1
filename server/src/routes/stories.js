@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { mapStory } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
+import { resolveMentions, notifyStoryMentions } from '../utils/mentions.js'
 
 const router = express.Router()
 
@@ -32,7 +33,7 @@ async function getProfilesMap(ids) {
   if (!unique.length) return {}
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, avatar')
+    .select('id, name, username, avatar')
     .in('id', unique)
   return Object.fromEntries((data || []).map((p) => [p.id, p]))
 }
@@ -79,7 +80,13 @@ async function enrichStories(rows, viewerId) {
     }
     return mapStory(row, {
       user: author
-        ? { _id: author.id, id: author.id, name: author.name, avatar: author.avatar }
+        ? {
+            _id: author.id,
+            id: author.id,
+            name: author.name,
+            username: author.username || null,
+            avatar: author.avatar
+          }
         : row.user_id,
       reactions: storyReactions,
       reactionCounts: counts,
@@ -385,23 +392,36 @@ router.post('/', authenticate, async (req, res) => {
 
     process.nextTick(async () => {
       try {
+        const mentions = await resolveMentions(caption, req.user.id)
+        if (mentions.length) {
+          await notifyStoryMentions({
+            mentions,
+            actor: req.user,
+            story: data,
+            caption
+          })
+        }
+
+        const mentionIds = new Set(mentions.map((m) => m.id))
         const { data: followers } = await supabaseAdmin
           .from('follows')
           .select('follower_id')
           .eq('following_id', req.user.id)
         await Promise.all(
-          (followers || []).map((f) =>
-            notifyUser({
-              userId: f.follower_id,
-              type: 'social',
-              title: `${req.user.name} subió una historia`,
-              body: caption?.trim() || (mediaType === 'video' ? 'Nuevo video' : 'Nueva foto'),
-              icon: '📖',
-              relatedUserId: req.user.id,
-              relatedData: { storyId: data.id },
-              priority: 'normal'
-            })
-          )
+          (followers || [])
+            .filter((f) => !mentionIds.has(f.follower_id))
+            .map((f) =>
+              notifyUser({
+                userId: f.follower_id,
+                type: 'social',
+                title: `${req.user.name} subió una historia`,
+                body: caption?.trim() || (mediaType === 'video' ? 'Nuevo video' : 'Nueva foto'),
+                icon: '📖',
+                relatedUserId: req.user.id,
+                relatedData: { storyId: data.id },
+                priority: 'normal'
+              })
+            )
         )
       } catch (err) {
         console.error('Story notify error:', err?.message || err)

@@ -23,6 +23,7 @@ import { useAuthStore } from '../store/authStore'
 import { Avatar } from '../utils/avatarUtils'
 import { getStorageAccessGranted } from '../utils/storageAccess'
 import { useAppDialog } from './AppDialog'
+import MentionInput, { MentionText } from './MentionInput'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -503,7 +504,7 @@ export default function StoriesRail({
     return contacts.filter(
       (c) =>
         c.name?.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q)
+        c.username?.toLowerCase().includes(q)
     )
   }, [contacts, shareQuery])
 
@@ -862,25 +863,29 @@ export default function StoriesRail({
                       textShadow: '0 1px 2px rgba(0,0,0,0.75)'
                     }}
                   >
-                    {caption}
+                    <MentionText text={caption} />
                   </p>
                 )}
-                <input
+                <MentionInput
+                  as="input"
                   value={caption}
-                  onChange={(e) => setCaption(e.target.value.slice(0, 280))}
-                  placeholder="Escribe una descripción…"
-                  autoFocus
+                  onChange={(v) => setCaption(String(v).slice(0, 280))}
+                  placeholder="Descripción… usa @ para mencionar"
+                  maxLength={280}
                   aria-label="Descripción de la historia"
                   className="w-full rounded-2xl px-4 py-3.5 text-sm outline-none backdrop-blur-md focus:ring-2 focus:ring-primary-500/60"
-                  style={{
-                    color: '#ffffff',
-                    caretColor: '#ffffff',
-                    WebkitTextFillColor: '#ffffff',
-                    background: 'rgba(0,0,0,0.72)',
-                    border: '1px solid rgba(255,255,255,0.28)',
-                    boxShadow: '0 8px 28px rgba(0,0,0,0.45)'
-                  }}
+                  // style applied via class enough; force dark fields:
                 />
+                <style>{`
+                  .story-composer .relative > input {
+                    color: #fff !important;
+                    caret-color: #fff;
+                    -webkit-text-fill-color: #fff;
+                    background: rgba(0,0,0,0.72) !important;
+                    border: 1px solid rgba(255,255,255,0.28) !important;
+                    box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+                  }
+                `}</style>
                 <p className="text-center text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
                   {caption.length}/280
                 </p>
@@ -1040,7 +1045,7 @@ export default function StoriesRail({
                     textShadow: '0 1px 2px rgba(0,0,0,0.8)'
                   }}
                 >
-                  {currentStory.caption}
+                  <MentionText text={currentStory.caption} />
                 </p>
               )}
 

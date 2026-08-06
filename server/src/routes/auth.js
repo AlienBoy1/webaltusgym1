@@ -2,8 +2,34 @@ import express from 'express'
 import crypto from 'crypto'
 import { supabaseAdmin, createAuthClient } from '../lib/supabase.js'
 import { mapProfile, attachSocial } from '../lib/mappers.js'
+import { validateUsernameFormat } from '../utils/username.js'
 
 const router = express.Router()
+
+async function assertUsernameAvailable(username, excludeUserId = null) {
+  const check = validateUsernameFormat(username)
+  if (!check.ok) {
+    const err = new Error(check.message)
+    err.status = 400
+    err.code = 'USERNAME_INVALID'
+    throw err
+  }
+  let query = supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('username', check.username)
+    .limit(1)
+  if (excludeUserId) query = query.neq('id', excludeUserId)
+  const { data, error } = await query.maybeSingle()
+  if (error) throw error
+  if (data) {
+    const err = new Error('Este username ya está en uso')
+    err.status = 409
+    err.code = 'USERNAME_TAKEN'
+    throw err
+  }
+  return check.username
+}
 
 async function countProfiles() {
   const { count, error } = await supabaseAdmin
@@ -23,21 +49,34 @@ async function getProfileByEmail(email) {
   return data
 }
 
-async function upsertProfileRow({ userId, email, name, role, phone, profile, membership, stats }) {
+async function upsertProfileRow({
+  userId,
+  email,
+  name,
+  role,
+  phone,
+  profile,
+  membership,
+  stats,
+  username
+}) {
+  const payload = {
+    id: userId,
+    name: name || 'Usuario',
+    email: email.toLowerCase(),
+    phone: phone || null,
+    role,
+    membership: membership || { plan: 'basic', status: 'active', startDate: new Date().toISOString() },
+    stats: stats || { totalWorkouts: 0, currentStreak: 0, longestStreak: 0, level: 1, xp: 0 },
+    profile: profile || {},
+    onboarding_completed: false,
+    updated_at: new Date().toISOString()
+  }
+  if (username) payload.username = username
+
   const { data: upserted, error: upsertError } = await supabaseAdmin
     .from('profiles')
-    .upsert({
-      id: userId,
-      name: name || 'Usuario',
-      email: email.toLowerCase(),
-      phone: phone || null,
-      role,
-      membership: membership || { plan: 'basic', status: 'active', startDate: new Date().toISOString() },
-      stats: stats || { totalWorkouts: 0, currentStreak: 0, longestStreak: 0, level: 1, xp: 0 },
-      profile: profile || {},
-      onboarding_completed: false,
-      updated_at: new Date().toISOString()
-    })
+    .upsert(payload)
     .select('*')
     .single()
 
@@ -45,7 +84,17 @@ async function upsertProfileRow({ userId, email, name, role, phone, profile, mem
   return upserted
 }
 
-async function createAuthAndProfile({ email, password, name, role, phone, profile, membership, stats }) {
+async function createAuthAndProfile({
+  email,
+  password,
+  name,
+  role,
+  phone,
+  profile,
+  membership,
+  stats,
+  username
+}) {
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email: email.toLowerCase(),
     password,
@@ -64,7 +113,8 @@ async function createAuthAndProfile({ email, password, name, role, phone, profil
     phone,
     profile,
     membership,
-    stats
+    stats,
+    username
   })
 }
 
@@ -78,7 +128,8 @@ async function createProfileForExistingAuthUser({
   phone,
   profile,
   membership,
-  stats
+  stats,
+  username
 }) {
   const updates = {
     email_confirm: true,
@@ -98,7 +149,8 @@ async function createProfileForExistingAuthUser({
     phone,
     profile,
     membership,
-    stats
+    stats,
+    username
   })
 }
 
@@ -107,6 +159,7 @@ function mapAuthUserPayload(mapped) {
     _id: mapped._id,
     id: mapped.id,
     name: mapped.name,
+    username: mapped.username || null,
     email: mapped.email,
     role: mapped.role,
     avatar: mapped.avatar,
@@ -323,15 +376,7 @@ router.post('/complete-registration', async (req, res) => {
       message: 'Registro completado exitosamente',
       token: session.session.access_token,
       refreshToken: session.session.refresh_token,
-      user: {
-        _id: mapped._id,
-        id: mapped.id,
-        name: mapped.name,
-        email: mapped.email,
-        role: mapped.role,
-        membership: mapped.membership,
-        stats: mapped.stats
-      }
+      user: mapAuthUserPayload(mapped)
     })
   } catch (error) {
     console.error('Complete registration error:', error)
@@ -405,11 +450,46 @@ router.post('/verify-code', async (req, res) => {
   }
 })
 
+router.get('/username-check', async (req, res) => {
+  try {
+    const raw = req.query.u || req.query.username || ''
+    const format = validateUsernameFormat(raw)
+    if (!format.ok) {
+      return res.json({ available: false, username: format.username, message: format.message })
+    }
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('username', format.username)
+      .maybeSingle()
+    if (data) {
+      return res.json({
+        available: false,
+        username: format.username,
+        message: 'Este username ya está en uso'
+      })
+    }
+    res.json({ available: true, username: format.username, message: 'Username disponible' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al validar username', error: error.message })
+  }
+})
+
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body
+    const { name, email, password, username } = req.body
     if (await getProfileByEmail(email)) {
       return res.status(400).json({ message: 'El email ya está registrado' })
+    }
+
+    let normalizedUsername
+    try {
+      normalizedUsername = await assertUsernameAvailable(username)
+    } catch (err) {
+      return res.status(err.status || 400).json({
+        message: err.message,
+        code: err.code
+      })
     }
 
     const userCount = await countProfiles()
@@ -432,14 +512,16 @@ router.post('/register', async (req, res) => {
           password,
           name: name || existingAuthUser.user_metadata?.full_name || 'Usuario',
           role,
-          membership
+          membership,
+          username: normalizedUsername
         })
       : await createAuthAndProfile({
           email,
           password,
           name,
           role,
-          membership
+          membership,
+          username: normalizedUsername
         })
 
     await supabaseAdmin.from('notifications').insert({
@@ -460,19 +542,15 @@ router.post('/register', async (req, res) => {
       message: 'Usuario registrado exitosamente',
       token: session.session.access_token,
       refreshToken: session.session.refresh_token,
-      user: {
-        _id: mapped._id,
-        id: mapped.id,
-        name: mapped.name,
-        email: mapped.email,
-        role: mapped.role,
-        membership: mapped.membership,
-        stats: mapped.stats
-      },
+      user: mapAuthUserPayload(mapped),
       isFirstUser
     })
   } catch (error) {
     console.error('Register error:', error)
+    const msg = String(error.message || '')
+    if (msg.includes('profiles_username') || msg.toLowerCase().includes('duplicate')) {
+      return res.status(409).json({ message: 'Este username ya está en uso', code: 'USERNAME_TAKEN' })
+    }
     res.status(500).json({ message: 'Error al registrar usuario', error: error.message })
   }
 })
@@ -513,7 +591,7 @@ router.post('/google', async (req, res) => {
       return res.status(403).json({
         code: 'NEEDS_REGISTRATION',
         message:
-          'Esta cuenta de Google aún no está registrada en Qyntra. Completa tu registro (nombre, contraseña y código de acceso si aplica).',
+          'Esta cuenta de Google aún no está registrada en Qyntra. Completa tu registro (username, nombre y contraseña).',
         email,
         name:
           authUser.user_metadata?.full_name ||
@@ -620,17 +698,7 @@ router.post('/refresh', async (req, res) => {
       message: 'Sesión renovada',
       token: session.access_token,
       refreshToken: session.refresh_token,
-      user: {
-        _id: mapped._id,
-        id: mapped.id,
-        name: mapped.name,
-        email: mapped.email,
-        role: mapped.role,
-        avatar: mapped.avatar,
-        membership: mapped.membership,
-        stats: mapped.stats,
-        mustResetPassword: mapped.mustResetPassword
-      }
+      user: mapAuthUserPayload(mapped)
     })
   } catch (error) {
     console.error('Refresh token error:', error)

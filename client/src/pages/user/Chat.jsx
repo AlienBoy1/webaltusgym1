@@ -782,7 +782,9 @@ export default function Chat() {
                       <Avatar avatar={u.avatar} name={u.name} size="sm" className="flex-shrink-0" />
                       <div className="text-left flex-1 min-w-0">
                         <div className="font-medium truncate">{u.name}</div>
-                        <div className="text-gray-400 text-sm truncate">{u.email}</div>
+                        <div className="text-gray-400 text-sm truncate">
+                          {u.username ? `@${u.username}` : u.name}
+                        </div>
                       </div>
                     </button>
                   ))

@@ -6,6 +6,7 @@ export function mapProfile(row) {
     _id: row.id,
     id: row.id,
     name: row.name,
+    username: row.username || null,
     email: row.email,
     phone: row.phone,
     role: row.role,

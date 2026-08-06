@@ -19,6 +19,7 @@ import { useAppDialog } from '../../components/AppDialog'
 import PostReactorsModal from '../../components/PostReactorsModal'
 import PeopleYouMayKnow from '../../components/PeopleYouMayKnow'
 import SharePostSheet from '../../components/SharePostSheet'
+import MentionInput, { MentionText } from '../../components/MentionInput'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
@@ -411,14 +412,15 @@ export default function Social() {
 
             {/* Text Input */}
             {(postType === 'text' || postType === 'image' || postType === 'mixed') && (
-              <textarea
+              <MentionInput
                 value={newPost}
-                onChange={(e) => {
-                  setNewPost(e.target.value)
+                onChange={(v) => {
+                  setNewPost(v)
                   if (selectedImages.length > 0) setPostType('mixed')
                 }}
-                placeholder="¿Qué lograste hoy? Comparte tu progreso..."
+                placeholder="¿Qué lograste hoy? Usa @ para mencionar……"
                 className="w-full bg-transparent border-none resize-none text-white placeholder:text-gray-500 focus:outline-none min-h-[100px] mb-4"
+                rows={4}
               />
             )}
 
@@ -613,10 +615,13 @@ export default function Social() {
                   </Link>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <Link to={`/user/${post.user?._id}`} className="min-w-0">
+                      <Link to={`/user/${post.user?.username || post.user?._id}`} className="min-w-0">
                         <div className="font-semibold hover:text-primary-500 transition-colors truncate text-sm sm:text-base">
                           {post.user?.name || 'Usuario'}
                         </div>
+                        {post.user?.username && (
+                          <div className="text-xs text-primary-500 truncate">@{post.user.username}</div>
+                        )}
                       </Link>
                       {isOwner && (
                         <button
@@ -761,11 +766,15 @@ export default function Social() {
 
                 {/* Post Content */}
                 {post.content && !String(post.content).includes('[workout]') && (
-                  <p className="text-app mb-4 leading-relaxed break-words">{post.content}</p>
+                  <p className="text-app mb-4 leading-relaxed break-words">
+                    <MentionText text={post.content} />
+                  </p>
                 )}
                 {post.content && String(post.content).includes('[workout]') && (
                   <p className="text-app mb-4 leading-relaxed break-words">
-                    {String(post.content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()}
+                    <MentionText
+                      text={String(post.content).replace(/\[workout\][\s\S]*?\[\/workout\]/g, '').trim()}
+                    />
                   </p>
                 )}
 
@@ -898,12 +907,17 @@ export default function Social() {
                                 <Avatar avatar={comment.user?.avatar} name={comment.user?.name} size="sm" />
                               </Link>
                               <div className="flex-1 min-w-0">
-                                <Link to={`/user/${comment.user?._id}`}>
+                                <Link to={`/user/${comment.user?.username || comment.user?._id}`}>
                                   <div className="font-semibold text-sm hover:text-primary-500 transition-colors">
                                     {comment.user?.name || 'Usuario'}
                                   </div>
+                                  {comment.user?.username && (
+                                    <div className="text-[11px] text-primary-500">@{comment.user.username}</div>
+                                  )}
                                 </Link>
-                                <p className="text-gray-300 text-sm">{comment.content}</p>
+                                <p className="text-gray-300 text-sm">
+                                  <MentionText text={comment.content} />
+                                </p>
                                 <div className="text-xs text-gray-500 mt-1">
                                   {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: es })}
                                 </div>
@@ -917,14 +931,15 @@ export default function Social() {
                       <div className="flex gap-2">
                         <Avatar avatar={user?.avatar} name={user?.name} size="sm" />
                         <div className="flex-1 flex gap-2">
-                          <input
-                            type="text"
+                          <MentionInput
+                            as="input"
                             value={commentTexts[post._id] || ''}
-                            onChange={(e) => setCommentTexts({ ...commentTexts, [post._id]: e.target.value })}
-                            placeholder="Escribe un comentario..."
+                            onChange={(v) => setCommentTexts({ ...commentTexts, [post._id]: v })}
+                            placeholder="Comenta… usa @ para mencionar"
                             className="input-field flex-1 text-sm"
-                            onKeyPress={(e) => {
+                            onKeyDown={(e) => {
                               if (e.key === 'Enter') {
+                                e.preventDefault()
                                 handleComment(post._id)
                               }
                             }}

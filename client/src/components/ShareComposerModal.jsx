@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiX, FiShare2, FiBarChart2, FiSmile } from 'react-icons/fi'
+import MentionInput from './MentionInput'
 
 const DEFAULT_MOODS = [
   { id: 'motivated', label: 'Motivado', emoji: '🔥' },
@@ -121,12 +122,12 @@ export default function ShareComposerModal({
                 <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                   Descripción
                 </label>
-                <textarea
-                  className="input-field min-h-[110px] resize-y"
-                  placeholder="Escribe algo sobre lo que compartes…"
+                <MentionInput
+                  className="input-field min-h-[110px] resize-y w-full"
+                  placeholder="Escribe algo… usa @ para mencionar"
                   value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  autoFocus
+                  onChange={setContent}
+                  rows={4}
                 />
               </div>
 

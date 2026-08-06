@@ -2,8 +2,30 @@ import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapProfile, mapWorkout, attachSocial } from '../lib/mappers.js'
 import { authenticate, isAdmin } from '../middleware/auth.js'
+import { normalizeUsername, validateUsernameFormat } from '../utils/username.js'
 
 const router = express.Router()
+
+async function assertUsernameAvailable(username, excludeUserId = null) {
+  const check = validateUsernameFormat(username)
+  if (!check.ok) {
+    const err = new Error(check.message)
+    err.status = 400
+    err.code = 'USERNAME_INVALID'
+    throw err
+  }
+  let query = supabaseAdmin.from('profiles').select('id').eq('username', check.username)
+  if (excludeUserId) query = query.neq('id', excludeUserId)
+  const { data, error } = await query.maybeSingle()
+  if (error) throw error
+  if (data) {
+    const err = new Error('Este username ya está en uso')
+    err.status = 409
+    err.code = 'USERNAME_TAKEN'
+    throw err
+  }
+  return check.username
+}
 
 router.get('/stats', authenticate, async (req, res) => {
   try {
@@ -41,7 +63,7 @@ router.get('/profile', authenticate, async (req, res) => {
 
 router.put('/profile', authenticate, async (req, res) => {
   try {
-    const { name, avatar, phone, settings, goal, profile } = req.body
+    const { name, avatar, phone, settings, goal, profile, username } = req.body
     const updateData = { updated_at: new Date().toISOString() }
     if (name) updateData.name = name
     if (avatar !== undefined) updateData.avatar = avatar
@@ -60,6 +82,14 @@ router.put('/profile', authenticate, async (req, res) => {
       }
     }
 
+    if (username !== undefined) {
+      try {
+        updateData.username = await assertUsernameAvailable(username, req.user.id)
+      } catch (err) {
+        return res.status(err.status || 400).json({ message: err.message, code: err.code })
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
       .update(updateData)
@@ -67,10 +97,78 @@ router.put('/profile', authenticate, async (req, res) => {
       .select('*')
       .single()
 
-    if (error) throw error
+    if (error) {
+      if (String(error.message || '').toLowerCase().includes('duplicate')) {
+        return res.status(409).json({ message: 'Este username ya está en uso', code: 'USERNAME_TAKEN' })
+      }
+      throw error
+    }
     res.json({ message: 'Perfil actualizado', user: mapProfile(data) })
   } catch (error) {
     res.status(500).json({ message: 'Error al actualizar perfil', error: error.message })
+  }
+})
+
+/** Check username availability (public to authenticated users) */
+router.get('/username/check', authenticate, async (req, res) => {
+  try {
+    const raw = req.query.u || req.query.username || ''
+    const format = validateUsernameFormat(raw)
+    if (!format.ok) {
+      return res.json({ available: false, username: format.username, message: format.message })
+    }
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('username', format.username)
+      .neq('id', req.user.id)
+      .maybeSingle()
+    if (data) {
+      return res.json({
+        available: false,
+        username: format.username,
+        message: 'Este username ya está en uso'
+      })
+    }
+    res.json({ available: true, username: format.username, message: 'Username disponible' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al validar username', error: error.message })
+  }
+})
+
+/** Claim / set username once for existing users */
+router.post('/username', authenticate, async (req, res) => {
+  try {
+    if (req.user.username) {
+      return res.status(400).json({
+        message: 'Ya tienes un username registrado',
+        code: 'USERNAME_EXISTS',
+        username: req.user.username
+      })
+    }
+    let username
+    try {
+      username = await assertUsernameAvailable(req.body.username, req.user.id)
+    } catch (err) {
+      return res.status(err.status || 400).json({ message: err.message, code: err.code })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ username, updated_at: new Date().toISOString() })
+      .eq('id', req.user.id)
+      .select('*')
+      .single()
+
+    if (error) {
+      if (String(error.message || '').toLowerCase().includes('duplicate')) {
+        return res.status(409).json({ message: 'Este username ya está en uso', code: 'USERNAME_TAKEN' })
+      }
+      throw error
+    }
+    res.json({ message: 'Username registrado', user: mapProfile(data) })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al registrar username', error: error.message })
   }
 })
 
@@ -172,12 +270,16 @@ router.get('/search', authenticate, async (req, res) => {
     const { q, filter } = req.query
     let query = supabaseAdmin
       .from('profiles')
-      .select('id, name, email, avatar, stats, membership, role')
+      .select('id, name, username, email, avatar, stats, membership, role')
       .neq('id', req.user.id)
       .limit(50)
 
     if (q?.trim()) {
-      query = query.or(`name.ilike.%${q.trim()}%,email.ilike.%${q.trim()}%`).limit(20)
+      const term = q.trim().replace(/^@+/, '')
+      const safe = term.replace(/[%_,]/g, '')
+      query = query
+        .or(`name.ilike.%${safe}%,username.ilike.%${safe}%,email.ilike.%${safe}%`)
+        .limit(20)
     }
 
     if (filter === 'following') {
@@ -231,7 +333,7 @@ router.get('/search', authenticate, async (req, res) => {
       _id: u.id,
       id: u.id,
       name: u.name,
-      email: u.email,
+      username: u.username || null,
       avatar: u.avatar || null,
       stats: u.stats || null,
       membership: u.membership || null,
@@ -239,6 +341,20 @@ router.get('/search', authenticate, async (req, res) => {
       isFollowing: followingSet.has(u.id),
       hasPendingRequest: pendingSet.has(u.id)
     }))
+
+    // Mentions: prioritize username prefix matches
+    if (filter === 'mentions' && q?.trim()) {
+      const term = normalizeUsername(q)
+      users = users
+        .filter((u) => u.username)
+        .sort((a, b) => {
+          const aStarts = a.username.startsWith(term) ? 0 : 1
+          const bStarts = b.username.startsWith(term) ? 0 : 1
+          if (aStarts !== bStarts) return aStarts - bStarts
+          return a.username.localeCompare(b.username)
+        })
+        .slice(0, 8)
+    }
 
     // Suggestions: prioritize people you don't follow yet, then people you already follow
     if (filter === 'suggestions') {
@@ -261,11 +377,16 @@ router.get('/:id', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'ID de usuario inválido' })
     }
 
-    const { data: profile, error } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    let query = supabaseAdmin.from('profiles').select('*')
+    if (isUuid) {
+      query = query.eq('id', id)
+    } else {
+      const handle = String(id).replace(/^@+/, '').toLowerCase()
+      query = query.eq('username', handle)
+    }
+
+    const { data: profile, error } = await query.maybeSingle()
 
     if (error || !profile) return res.status(404).json({ message: 'Usuario no encontrado' })
     const withSocial = await attachSocial(supabaseAdmin, profile)

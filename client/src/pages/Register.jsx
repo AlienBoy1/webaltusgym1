@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FiUser, FiMail, FiLock, FiUserPlus, FiCheck, FiKey } from 'react-icons/fi'
+import { FiUser, FiMail, FiLock, FiUserPlus, FiCheck, FiKey, FiAtSign } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import confetti from 'canvas-confetti'
@@ -12,6 +12,8 @@ import {
   readPendingGoogleRegistration,
   clearPendingGoogleRegistration
 } from '../utils/googleAuth'
+import api from '../utils/api'
+import { normalizeUsername, validateUsernameFormat } from '../utils/username'
 
 export default function Register() {
   const [searchParams] = useSearchParams()
@@ -29,6 +31,9 @@ export default function Register() {
   }, [inviteRef])
 
   const [name, setName] = useState(pending?.name || '')
+  const [username, setUsername] = useState('')
+  const [usernameOk, setUsernameOk] = useState(false)
+  const [usernameMsg, setUsernameMsg] = useState('')
   const [email, setEmail] = useState(pending?.email || '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -37,6 +42,36 @@ export default function Register() {
   const [emailLocked, setEmailLocked] = useState(Boolean(pending?.email && fromGoogle))
   const { register, loading, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const format = validateUsernameFormat(username)
+    if (!format.ok) {
+      setUsernameOk(false)
+      setUsernameMsg(username ? format.message : '')
+      return
+    }
+    let cancelled = false
+    const t = window.setTimeout(async () => {
+      try {
+        // Unauthenticated check via register path: use a soft public attempt through register only on submit.
+        // For live feedback before login, hit API when possible; if 401, only format-validate.
+        const { data } = await api.get(
+          `/auth/username-check?u=${encodeURIComponent(format.username)}`
+        )
+        if (cancelled) return
+        setUsernameOk(Boolean(data.available))
+        setUsernameMsg(data.message || '')
+      } catch {
+        if (cancelled) return
+        setUsernameOk(false)
+        setUsernameMsg('No se pudo validar el username')
+      }
+    }, 350)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [username])
 
   useEffect(() => {
     if (isAuthenticated && !isFirstUser) {
@@ -55,8 +90,14 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name || !email || !password || !confirmPassword || !username) {
       toast.error('Completa todos los campos')
+      return
+    }
+
+    const format = validateUsernameFormat(username)
+    if (!format.ok || !usernameOk) {
+      toast.error(format.message || usernameMsg || 'Elige un username válido')
       return
     }
 
@@ -70,7 +111,7 @@ export default function Register() {
       return
     }
 
-    const result = await register(name, email, password)
+    const result = await register(name, email, password, format.username)
 
     if (result.success) {
       clearPendingGoogleRegistration()
@@ -105,7 +146,7 @@ export default function Register() {
         isFirstUser
           ? 'Tu acceso de administrador está listo.'
           : fromGoogle || emailLocked
-            ? 'Tu Google ya está verificado. Completa nombre y contraseña (y usa tu código si te lo dieron).'
+            ? 'Tu Google ya está verificado. Completa username, nombre y contraseña.'
             : 'Únete a la comunidad y empieza a medir tu progreso.'
       }
       panelHeadline="ÚNETE AL SISTEMA"
@@ -204,6 +245,39 @@ export default function Register() {
               </div>
 
               <div>
+                <AuthLabel>Username</AuthLabel>
+                <div className="relative">
+                  <FiAtSign
+                    className="absolute left-4 top-1/2 -translate-y-1/2"
+                    style={{ color: 'var(--text-muted)' }}
+                  />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(normalizeUsername(e.target.value))}
+                    className="input-field pl-12"
+                    placeholder="tunombre"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    maxLength={20}
+                  />
+                </div>
+                {usernameMsg ? (
+                  <p
+                    className={`mt-1 text-xs ${usernameOk ? 'text-green-500' : ''}`}
+                    style={!usernameOk ? { color: 'var(--text-muted)' } : undefined}
+                  >
+                    {usernameMsg}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                    3–20 caracteres · letras, números, . y _
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <AuthLabel>Email</AuthLabel>
                 <div className="relative">
                   <FiMail
@@ -263,8 +337,8 @@ export default function Register() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="btn-primary flex w-full items-center justify-center gap-2"
+                disabled={loading || !usernameOk}
+                className="btn-primary flex w-full items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? (
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/20 border-t-black/80" />

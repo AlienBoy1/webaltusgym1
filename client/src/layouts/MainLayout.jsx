@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
 import InviteFriendsModal from '../components/InviteFriendsModal'
+import UsernameSetupModal from '../components/UsernameSetupModal'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -208,7 +209,7 @@ export default function MainLayout() {
               {planLabel(result)}
             </span>
           )}
-          <span className="truncate">{result.email}</span>
+          <span className="truncate">{result.username ? `@${result.username}` : result.name}</span>
         </div>
       </div>
     </Link>
@@ -243,7 +244,7 @@ export default function MainLayout() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setShowSearch(true)}
-                  placeholder="Buscar usuarios..."
+                  placeholder="Buscar por nombre o @username…"
                   className="w-full pl-10 pr-4 py-2 bg-dark-200 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
                 {searchQuery && (
@@ -353,7 +354,9 @@ export default function MainLayout() {
                   >
                     <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
                       <p className="font-semibold text-sm truncate">{user?.name}</p>
-                      <p className="text-xs text-[color:var(--text-muted)] truncate">{user?.email}</p>
+                      <p className="text-xs text-[color:var(--text-muted)] truncate">
+                        {user?.username ? `@${user.username}` : user?.email}
+                      </p>
                     </div>
                     <div className="p-1.5">
                       <button
@@ -470,7 +473,7 @@ export default function MainLayout() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar usuarios..."
+                  placeholder="Buscar por nombre o @username…"
                   className="w-full pl-10 pr-10 py-2 bg-dark-200 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
                 {searchQuery && (
@@ -543,6 +546,7 @@ export default function MainLayout() {
       {/* Notification Prompt */}
       <NotificationPrompt />
       <InviteFriendsModal open={inviteOpen} onClose={() => setInviteOpen(false)} user={user} />
+      <UsernameSetupModal open={Boolean(user && !user.username)} />
     </div>
     </StoryViewerProvider>
   )

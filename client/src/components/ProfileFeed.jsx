@@ -6,6 +6,7 @@ import { FiMessageCircle, FiShare2, FiMoreVertical, FiTrash2 } from 'react-icons
 import { Avatar } from '../utils/avatarUtils'
 import PostReactionButton from './PostReactionButton'
 import { AnimatePresence, motion } from 'framer-motion'
+import { MentionText } from './MentionInput'
 
 /**
  * Facebook-style profile posts feed with Qyntra native styling.
@@ -74,11 +75,14 @@ export default function ProfileFeed({
               </Link>
               <div className="min-w-0 flex-1">
                 <Link
-                  to={authorId ? `/user/${authorId}` : '#'}
+                  to={author?.username ? `/user/${author.username}` : authorId ? `/user/${authorId}` : '#'}
                   className="truncate font-semibold text-[color:var(--text-primary)] hover:text-[color:var(--color-primary)]"
                 >
                   {author?.name || 'Usuario'}
                 </Link>
+                {author?.username && (
+                  <p className="text-xs text-primary-500 truncate">@{author.username}</p>
+                )}
                 <p className="text-xs text-[color:var(--text-muted)]">
                   {created
                     ? formatDistanceToNow(new Date(created), { addSuffix: true, locale: es })
@@ -122,7 +126,7 @@ export default function ProfileFeed({
 
             {post.content && !String(post.content).includes('[workout]') && (
               <p className="px-4 pb-3 text-[15px] leading-relaxed text-[color:var(--text-primary)] whitespace-pre-wrap break-words">
-                {post.content}
+                <MentionText text={post.content} />
               </p>
             )}
 

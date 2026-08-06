@@ -753,7 +753,7 @@ export default function Profile() {
             <div className="pointer-events-auto">
               <h1 className="font-display mb-1 text-2xl sm:text-3xl">{user?.name || 'Usuario'}</h1>
               <p className="mb-3 break-all text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
-                {user?.email}
+                {user?.username ? `@${user.username}` : 'Sin username'}
               </p>
               {user?._id && (
                 <Link

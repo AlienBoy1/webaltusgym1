@@ -131,9 +131,11 @@ export default function PeopleYouMayKnow() {
               >
                 <Avatar avatar={person.avatar} name={person.name} size="lg" />
                 <p className="mt-2.5 font-semibold text-sm truncate w-full">{person.name}</p>
-                {person.stats?.level != null && (
+                {person.username ? (
+                  <p className="text-[11px] text-primary-500 mt-0.5 truncate w-full">@{person.username}</p>
+                ) : person.stats?.level != null ? (
                   <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">Nv. {person.stats.level}</p>
-                )}
+                ) : null}
                 <div className="mt-auto w-full pt-3 space-y-1.5">
                   {actionButton(person, pid)}
                   <Link

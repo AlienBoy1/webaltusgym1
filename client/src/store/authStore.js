@@ -122,7 +122,7 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  register: async (name, email, password) => {
+  register: async (name, email, password, username) => {
     set({ loading: true, authIntent: 'login' })
     try {
       const headers = {}
@@ -137,7 +137,11 @@ export const useAuthStore = create((set, get) => ({
         /* ignore */
       }
 
-      const { data } = await api.post('/auth/register', { name, email, password }, { headers })
+      const { data } = await api.post(
+        '/auth/register',
+        { name, email, password, username },
+        { headers }
+      )
       setAuthTokens(data.token, data.refreshToken, true)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
@@ -155,7 +159,8 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false, authIntent: null })
       return {
         success: false,
-        message: error.response?.data?.message || 'Error al registrarse'
+        message: error.response?.data?.message || 'Error al registrarse',
+        code: error.response?.data?.code
       }
     }
   },
