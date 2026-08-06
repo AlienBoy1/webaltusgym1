@@ -208,6 +208,7 @@ export default function Classes() {
                 </div>
 
                 <button
+                  data-tour={i === 0 ? 'tour-class-enroll' : undefined}
                   onClick={(e) => {
                     e.stopPropagation()
                     handleEnroll(classItem)

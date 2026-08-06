@@ -1,7 +1,14 @@
 /**
  * Catalog of app tutorials. Each tutorial has ordered spotlight steps.
- * target = data-tour attribute; null = centered tip after navigation.
+ * target = data-tour attribute
+ * demo = fallback premium panel id when real UI target is missing
  */
+
+import {
+  readLocalCompletion,
+  userIdOf,
+  clearLegacyGlobalCompletion
+} from './completion'
 
 export const TUTORIAL_IDS = {
   QUICK_START: 'quick_start',
@@ -37,9 +44,9 @@ export const TUTORIAL_CATALOG = [
   {
     id: TUTORIAL_IDS.WORKOUTS,
     title: 'Entrenamientos',
-    short: 'Crear e iniciar rutinas',
+    short: 'Crear, iniciar y completar',
     icon: '💪',
-    description: 'Crea rutinas, inicia una sesión y registra series.',
+    description: 'Crea rutinas, inicia una sesión, completa ejercicios y controla descansos.',
     completionKey: 'qyntra_tutorial_workouts_done',
     settingsKey: 'tutorialWorkoutsCompleted'
   },
@@ -57,7 +64,7 @@ export const TUTORIAL_CATALOG = [
     title: 'Retos',
     short: 'Crear, unirse y completar',
     icon: '🏆',
-    description: 'Crea o únete a un reto e inicia tu progreso.',
+    description: 'Crea o únete a un reto, inicia, marca progreso y finalízalo.',
     completionKey: 'qyntra_tutorial_challenges_done',
     settingsKey: 'tutorialChallengesCompleted'
   },
@@ -110,7 +117,7 @@ const QUICK_START_STEPS = [
     path: '/workouts',
     target: 'nav-workouts',
     title: 'Entrenos a tu medida',
-    body: 'Rutinas, sesiones y seguimiento de series: construye consistencia con un flujo claro.'
+    body: 'Rutinas, sesiones y seguimiento: construye consistencia con un flujo claro.'
   },
   {
     id: 'progress',
@@ -131,7 +138,7 @@ const QUICK_START_STEPS = [
     path: '/classes',
     target: 'nav-classes',
     title: 'Clases del gimnasio',
-    body: 'Consulta horarios, reserva cupo y organízate con las clases disponibles desde este acceso rápido.'
+    body: 'Consulta horarios, reserva cupo y organízate con las clases desde este acceso.'
   },
   {
     id: 'challenges',
@@ -159,8 +166,7 @@ const QUICK_START_STEPS = [
     path: '/dashboard',
     target: 'nav-avatar',
     title: 'Menú de tu cuenta',
-    body: 'Al tocar tu foto abrés accesos rápidos: perfil, ajustes, invitaciones, tema y cierre de sesión.',
-    openAvatarMenu: false
+    body: 'Al tocar tu foto abres accesos rápidos: perfil, ajustes, invitaciones, tema y cierre de sesión.'
   },
   {
     id: 'menu-profile',
@@ -183,7 +189,7 @@ const QUICK_START_STEPS = [
     path: '/dashboard',
     target: 'menu-invite',
     title: 'Invitar a amigos',
-    body: 'Comparte Qyntra con tu equipo. Las invitaciones ayudan a crecer tu comunidad de entrenamiento.',
+    body: 'Comparte Qyntra con tu equipo. Las invitaciones ayudan a crecer tu comunidad.',
     openAvatarMenu: true
   },
   {
@@ -210,7 +216,7 @@ const PROFILE_STEPS = [
     path: '/profile',
     target: 'tour-profile-cover',
     title: 'Tu portada',
-    body: 'La imagen de fondo es tu portada. Toca editar para subir una foto que represente tu estilo en Qyntra.'
+    body: 'La imagen de fondo es tu portada. Toca editar para subir una foto que represente tu estilo.'
   },
   {
     id: 'profile-avatar',
@@ -252,7 +258,7 @@ const PROFILE_STEPS = [
     path: '/settings',
     target: 'tour-settings-panel',
     title: 'Configuración de la app',
-    body: 'Desde Configuración controlas privacidad, tema, notificaciones y preferencias. También puedes abrirla desde el menú de tu avatar.'
+    body: 'Controla privacidad, tema, notificaciones y preferencias. También desde el menú de tu avatar.'
   }
 ]
 
@@ -265,25 +271,49 @@ const WORKOUT_STEPS = [
     body: 'Aquí gestionas rutinas y sesiones. Es el corazón del entrenamiento en Qyntra.'
   },
   {
-    id: 'wo-intro',
+    id: 'wo-create',
     path: '/workouts',
     target: 'tour-workouts-create',
-    title: 'Crear entrenamiento',
-    body: 'Usa el botón de crear para armar una rutina con ejercicios, series y repeticiones a tu medida.'
+    title: 'Crear una rutina',
+    body: 'Arma tu rutina con ejercicios, series y repeticiones a tu medida.'
+  },
+  {
+    id: 'wo-list',
+    path: '/workouts',
+    target: 'tour-workouts-list',
+    title: 'Tus rutinas',
+    body: 'Aquí aparecen tus rutinas guardadas. Elige una para iniciar cuando estés listo.'
   },
   {
     id: 'wo-start',
     path: '/workouts',
-    target: 'tour-workouts-list',
-    title: 'Iniciar una sesión',
-    body: 'Elige una rutina guardada y toca iniciar. El cronómetro y el registro de series te acompañan en vivo.'
+    target: 'tour-workout-start',
+    demo: 'workout-start',
+    title: 'Iniciar una rutina',
+    body: 'Pulsa Iniciar en la tarjeta de la rutina. Arranca el cronómetro y entras al modo sesión.'
+  },
+  {
+    id: 'wo-complete',
+    path: '/workouts',
+    target: 'tour-workout-complete-exercise',
+    demo: 'workout-complete',
+    title: 'Marcar ejercicio completado',
+    body: 'En la sesión, Completar marca el ejercicio actual. Así avanzas al siguiente y lleva el control real de tu train.'
+  },
+  {
+    id: 'wo-rest',
+    path: '/workouts',
+    target: 'tour-workout-rest-timer',
+    demo: 'workout-rest',
+    title: 'Descansos entre series',
+    body: 'Tras completar un ejercicio se abre el temporizador de descanso. Puedes esperar o saltarlo si estás listo.'
   },
   {
     id: 'wo-history',
     path: '/my-workouts',
     target: 'tour-my-workouts',
     title: 'Historial de entrenamientos',
-    body: 'Revisa el historial de sesiones completadas y vuelve a compartir tus avances con la comunidad.'
+    body: 'Revisa sesiones completadas y comparte tus avances con la comunidad.'
   }
 ]
 
@@ -300,7 +330,7 @@ const COMMUNITY_STEPS = [
     path: '/social',
     target: 'tour-stories-rail',
     title: 'Historias',
-    body: 'Desliza la fila superior para ver estados. El + crea una historia con foto o video.'
+    body: 'La fila superior muestra estados. El + crea una historia con foto o video.'
   },
   {
     id: 'co-compose',
@@ -310,11 +340,20 @@ const COMMUNITY_STEPS = [
     body: 'Escribe, añade fotos, encuesta o estado de ánimo y comparte con quienes te siguen.'
   },
   {
-    id: 'co-react',
+    id: 'co-post',
     path: '/social',
-    target: 'tour-social-feed',
-    title: 'Reaccionar y comentar',
-    body: 'Mantén pulsado el corazón para más reacciones. Comenta, responde y comparte publicaciones.'
+    target: 'tour-social-demo-post',
+    demo: 'community-post',
+    title: 'Así se ve una publicación',
+    body: 'Cada post muestra autor, contenido e imagen. Este es el formato que usa tu comunidad.'
+  },
+  {
+    id: 'co-actions',
+    path: '/social',
+    target: 'tour-social-post-actions',
+    demo: 'community-actions',
+    title: 'Reaccionar, comentar y compartir',
+    body: 'Mantén pulsado el corazón para más reacciones. Comenta respuestas y comparte fuera de la app.'
   }
 ]
 
@@ -334,18 +373,43 @@ const CHALLENGE_STEPS = [
     body: 'Define título, tipo, objetivo y fechas. Cada tipo otorga XP distinto.'
   },
   {
-    id: 'ch-join',
+    id: 'ch-tabs',
     path: '/challenges',
     target: 'tour-challenges-list',
-    title: 'Unirte a un reto',
-    body: 'Explora retos abiertos, únete y prepárate para iniciar la sesión del reto.'
+    title: 'Mis retos y disponibles',
+    body: 'Cambia entre Mis Retos y Disponibles para ver los tuyos o unirte a nuevos.'
   },
   {
-    id: 'ch-session',
+    id: 'ch-join',
     path: '/challenges',
-    target: 'tour-challenges-list',
-    title: 'Completar un reto',
-    body: 'Inicia el reto, registra progreso (o pausa si descansas) y al alcanzar el objetivo celebra y comparte.'
+    target: 'tour-challenge-join',
+    demo: 'challenge-join',
+    title: 'Inscribirte a un reto',
+    body: 'En Disponibles, Unirse al Reto te suma como participante. Luego podrás iniciarlo.'
+  },
+  {
+    id: 'ch-start',
+    path: '/challenges',
+    target: 'tour-challenge-start',
+    demo: 'challenge-start',
+    title: 'Iniciar el reto',
+    body: 'Dentro del detalle, Iniciar Reto arranca tu sesión y empieza a contar tu progreso.'
+  },
+  {
+    id: 'ch-progress',
+    path: '/challenges',
+    target: 'tour-challenge-progress',
+    demo: 'challenge-progress',
+    title: 'Marcar progreso',
+    body: 'Actualiza tu avance (km, reps, días…) y confirma. Así el reto refleja tu ritmo real.'
+  },
+  {
+    id: 'ch-complete',
+    path: '/challenges',
+    target: 'tour-challenge-complete',
+    demo: 'challenge-complete',
+    title: 'Finalizar y ganar XP',
+    body: 'Al alcanzar el objetivo, Completar y Obtener XP cierra el reto y suma recompensa.'
   }
 ]
 
@@ -361,15 +425,16 @@ const CLASS_STEPS = [
     id: 'cl-list',
     path: '/classes',
     target: 'tour-classes-list',
-    title: 'Ver clases',
+    title: 'Ver clases del día',
     body: 'Filtra por día y revisa detalles antes de inscribirte.'
   },
   {
     id: 'cl-enroll',
     path: '/classes',
-    target: 'tour-classes-list',
-    title: 'Inscribirte',
-    body: 'Toca una clase y confirma tu lugar. Si está llena, puedes entrar en lista de espera.'
+    target: 'tour-class-enroll',
+    demo: 'class-enroll',
+    title: 'Inscribirte a una clase',
+    body: 'Toca Inscribirse para reservar tu lugar. Si está llena, puedes entrar en lista de espera.'
   }
 ]
 
@@ -392,9 +457,10 @@ const INVITE_STEPS = [
   {
     id: 'inv-share-post',
     path: '/social',
-    target: 'tour-social-feed',
-    title: 'Promocionar avances',
-    body: 'Al compartir una publicación fuera de la app (WhatsApp/historias) promocionas tus logros con diseño Qyntra.'
+    target: 'tour-social-share',
+    demo: 'invite-share',
+    title: 'Promocionar tus avances',
+    body: 'Al compartir una publicación (WhatsApp / historias) promocionas logros con diseño Qyntra.'
   }
 ]
 
@@ -448,15 +514,19 @@ export function getTutorialSteps(id) {
   return TUTORIAL_STEPS[id] || QUICK_START_STEPS
 }
 
+/**
+ * Completion is ALWAYS scoped to the signed-in user (settings + per-user local cache).
+ * Legacy global localStorage keys are ignored (and cleared when detected).
+ */
 export function hasCompletedTutorial(user, tutorialId) {
   const meta = getTutorialMeta(tutorialId)
-  try {
-    if (localStorage.getItem(meta.completionKey) === '1') return true
-  } catch {
-    /* ignore */
-  }
+  // Clear legacy shared keys so Account A cannot mark Account B as "visto"
+  clearLegacyGlobalCompletion(meta.completionKey)
+
   if (user?.settings?.[meta.settingsKey] === true) return true
-  // legacy field for quick start
   if (tutorialId === TUTORIAL_IDS.QUICK_START && user?.tutorialCompleted === true) return true
+
+  const uid = userIdOf(user)
+  if (uid && readLocalCompletion(meta.completionKey, uid)) return true
   return false
 }

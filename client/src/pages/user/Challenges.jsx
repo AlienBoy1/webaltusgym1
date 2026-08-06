@@ -638,6 +638,7 @@ export default function Challenges() {
                   </div>
 
                   <button
+                    data-tour={i === 0 ? 'tour-challenge-join' : undefined}
                     onClick={(e) => {
                       e.stopPropagation()
                       handleJoinChallenge(challenge._id)
@@ -718,6 +719,7 @@ export default function Challenges() {
                         <div className="flex gap-2">
                           {isJoined && (
                             <button
+                              data-tour="tour-challenge-start"
                               onClick={() => handleStartChallenge(selectedChallenge._id)}
                               disabled={sessionLoading}
                               className="btn-primary flex-1 flex items-center justify-center gap-2"
@@ -770,7 +772,7 @@ export default function Challenges() {
 
                         {/* Update Progress */}
                         {!completed && (
-                          <div className="space-y-2">
+                          <div data-tour="tour-challenge-progress" className="space-y-2">
                             <label className="block text-sm font-medium text-gray-400">
                               Actualizar Progreso
                             </label>
@@ -831,6 +833,7 @@ export default function Challenges() {
                           )}
                           {progress >= selectedChallenge.goal && !completed && (
                             <button
+                              data-tour="tour-challenge-complete"
                               onClick={handleComplete}
                               className="btn-primary flex-1 flex items-center justify-center gap-2"
                             >

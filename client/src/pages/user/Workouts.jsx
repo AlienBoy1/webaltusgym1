@@ -862,6 +862,7 @@ export default function Workouts() {
           {restActive ? (
             <motion.section
               key="rest"
+              data-tour="tour-workout-rest-timer"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
@@ -920,6 +921,7 @@ export default function Workouts() {
               {currentExercise && !completedExercises.includes(currentExercise.id) && (
                 <motion.button
                   type="button"
+                  data-tour="tour-workout-complete-exercise"
                   whileTap={{ scale: 0.97 }}
                   onClick={() => toggleExercise(currentExercise.id)}
                   className="btn-primary relative mt-8 inline-flex w-full items-center justify-center gap-2 py-4 text-base shadow-[0_0_24px_rgba(var(--color-primary-rgb),0.28)] sm:mt-10 sm:w-auto sm:min-w-[240px]"
@@ -1343,6 +1345,7 @@ export default function Workouts() {
                 </div>
                 <button
                   type="button"
+                  data-tour={i === 0 ? 'tour-workout-start' : undefined}
                   onClick={() => startWorkout(template)}
                   className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3"
                 >

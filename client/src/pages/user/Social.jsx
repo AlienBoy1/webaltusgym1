@@ -751,6 +751,7 @@ export default function Social() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i * 0.05, 0.25) }}
                 className="card p-4 sm:p-5 cursor-pointer"
+                data-tour={i === 0 ? 'tour-social-demo-post' : undefined}
                 onClick={(e) => {
                   if (e.target.closest('button, a, [data-no-post-open]')) return
                   setDetailPost(post)
@@ -1031,6 +1032,7 @@ export default function Social() {
                 <div
                   className="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4 border-t border-app"
                   data-no-post-open
+                  data-tour={i === 0 ? 'tour-social-post-actions' : undefined}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <PostReactionButton
@@ -1050,6 +1052,7 @@ export default function Social() {
                   </button>
 
                   <button
+                    data-tour={i === 0 ? 'tour-social-share' : undefined}
                     onClick={() => setSharePostTarget(post)}
                     className="flex items-center gap-2 text-app-secondary hover:text-accent-cyan transition-colors min-h-[40px] ml-auto"
                     aria-label="Compartir publicación"
