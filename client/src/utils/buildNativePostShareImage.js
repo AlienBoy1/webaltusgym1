@@ -1,8 +1,10 @@
 /**
  * Builds a 9:16 share image that mirrors ANY Social post type
  * (text, mood, poll, images, badge, workout, routine, challenge, reshare).
- * Used for in-app stories and external shares (WhatsApp).
+ * Uses the live app theme (light/dark + brand colors).
  */
+
+import { getShareThemePalette } from './shareThemePalette'
 
 const MOODS = {
   happy: { label: 'Feliz', emoji: '😊' },
@@ -14,6 +16,9 @@ const MOODS = {
   grateful: { label: 'Agradecido', emoji: '🙏' },
   determined: { label: 'Determinado', emoji: '🔥' }
 }
+
+/** @type {ReturnType<typeof getShareThemePalette>} */
+let P = getShareThemePalette('dark')
 
 function authorName(userOrPost) {
   if (!userOrPost) return 'Usuario'
@@ -114,9 +119,9 @@ async function drawAvatar(ctx, user, x, y, size) {
       /* fallback */
     }
   }
-  ctx.fillStyle = '#2A2A35'
+  ctx.fillStyle = P.avatarFallback
   ctx.fillRect(x, y, size, size)
-  ctx.fillStyle = '#FF6B35'
+  ctx.fillStyle = P.primary
   ctx.font = `bold ${Math.round(size * 0.42)}px Outfit, system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -191,6 +196,12 @@ function estimatePayloadHeight(p) {
   return h
 }
 
+function featureAccent(kind) {
+  if (kind === 'routine') return P.accent
+  if (kind === 'challenge') return '#FACC15'
+  return P.primary
+}
+
 async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
   const exercises = (wd.exercises || []).slice(0, 5)
   const statsRow = kind === 'workout'
@@ -201,28 +212,30 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     (exercises.length ? exercises.length * 42 + 36 : 0) +
     50
 
+  const light = P.mode === 'light'
   const ig = ctx.createLinearGradient(x, y, x + w, y + innerH)
   if (kind === 'routine') {
-    ig.addColorStop(0, 'rgba(0,245,255,0.18)')
-    ig.addColorStop(1, 'rgba(255,107,53,0.12)')
+    ig.addColorStop(0, `rgba(${P.accentRgb},${light ? 0.16 : 0.18})`)
+    ig.addColorStop(1, `rgba(${P.primaryRgb},${light ? 0.1 : 0.12})`)
   } else if (kind === 'challenge') {
-    ig.addColorStop(0, 'rgba(250,204,21,0.16)')
-    ig.addColorStop(1, 'rgba(255,107,53,0.14)')
+    ig.addColorStop(0, light ? 'rgba(250,204,21,0.22)' : 'rgba(250,204,21,0.16)')
+    ig.addColorStop(1, `rgba(${P.primaryRgb},${light ? 0.12 : 0.14})`)
   } else {
-    ig.addColorStop(0, 'rgba(255,107,53,0.22)')
-    ig.addColorStop(0.55, 'rgba(124,58,237,0.12)')
-    ig.addColorStop(1, 'rgba(0,245,255,0.14)')
+    ig.addColorStop(0, `rgba(${P.primaryRgb},${light ? 0.18 : 0.22})`)
+    ig.addColorStop(0.55, light ? 'rgba(168,85,247,0.1)' : 'rgba(124,58,237,0.12)')
+    ig.addColorStop(1, `rgba(${P.accentRgb},${light ? 0.12 : 0.14})`)
   }
   ctx.fillStyle = ig
   roundRect(ctx, x, y, w, innerH, 28)
   ctx.fill()
-  const accent = kind === 'routine' ? '#22D3EE' : kind === 'challenge' ? '#FACC15' : '#FF6B35'
+
+  const accent = featureAccent(kind)
   ctx.strokeStyle =
     kind === 'routine'
-      ? 'rgba(0,245,255,0.35)'
+      ? `rgba(${P.accentRgb},0.35)`
       : kind === 'challenge'
         ? 'rgba(250,204,21,0.35)'
-        : 'rgba(255,107,53,0.35)'
+        : `rgba(${P.primaryRgb},0.35)`
   ctx.lineWidth = 2
   roundRect(ctx, x, y, w, innerH, 28)
   ctx.stroke()
@@ -238,7 +251,7 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
   ctx.fillText(eyebrow, x + 28, y + 42)
 
   const title = String(wd.name || wd.challengeTitle || 'Entrenamiento').toUpperCase()
-  ctx.fillStyle = '#FFFFFF'
+  ctx.fillStyle = P.featureTitle
   ctx.font = 'bold 48px Bebas Neue, Outfit, system-ui, sans-serif'
   const titleEnd = wrapText(ctx, title, x + 28, y + 100, w - 56, 52, 2)
   let iy = Math.max(titleEnd + 16, y + 130)
@@ -258,21 +271,21 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
       }
     ].forEach((m, i) => {
       const bx = x + 28 + i * (boxW + 12)
-      ctx.fillStyle = 'rgba(10,10,15,0.55)'
+      ctx.fillStyle = P.featureInset
       roundRect(ctx, bx, iy, boxW, boxH, 18)
       ctx.fill()
-      ctx.fillStyle = '#FFFFFF'
+      ctx.fillStyle = P.featureInsetText
       ctx.font = 'bold 30px Outfit, system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText(m.value, bx + boxW / 2, iy + 42)
-      ctx.fillStyle = 'rgba(255,255,255,0.55)'
+      ctx.fillStyle = P.featureInsetMuted
       ctx.font = '16px Outfit, system-ui, sans-serif'
       ctx.fillText(m.label, bx + boxW / 2, iy + 72)
       ctx.textAlign = 'left'
     })
     iy += boxH + 28
   } else if (kind === 'challenge') {
-    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    ctx.fillStyle = P.featureMeta
     ctx.font = '24px Outfit, system-ui, sans-serif'
     ;[
       wd.challengeGoal != null
@@ -290,7 +303,7 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
       })
     iy += 100
   } else {
-    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.fillStyle = P.featureMeta
     ctx.font = '24px Outfit, system-ui, sans-serif'
     ctx.fillText(
       `${wd.totalExercises || wd.exercises?.length || 0} ejercicios${
@@ -303,17 +316,17 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
   }
 
   if (exercises.length) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+    ctx.strokeStyle = P.featureRule
     ctx.beginPath()
     ctx.moveTo(x + 28, iy)
     ctx.lineTo(x + w - 28, iy)
     ctx.stroke()
     iy += 28
     exercises.forEach((ex) => {
-      ctx.fillStyle = 'rgba(255,255,255,0.78)'
+      ctx.fillStyle = P.textSoft
       ctx.font = '22px Outfit, system-ui, sans-serif'
       ctx.fillText(String(ex.name || 'Ejercicio').slice(0, 28), x + 28, iy)
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'
+      ctx.fillStyle = P.textFaint
       ctx.textAlign = 'right'
       const sets = ex.setsCompleted ?? ex.sets
       ctx.fillText(sets != null ? `${sets}×${ex.reps ?? '—'}` : '', x + w - 28, iy)
@@ -372,7 +385,7 @@ async function drawImages(ctx, images, x, y, maxW, maxBottom) {
       ctx.drawImage(img, cx, cy, cellW, cellH)
       ctx.restore()
     } catch {
-      ctx.fillStyle = 'rgba(255,255,255,0.06)'
+      ctx.fillStyle = P.surface
       roundRect(ctx, cx, cy, cellW, cellH, 16)
       ctx.fill()
     }
@@ -386,12 +399,12 @@ async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
 
   if (c.mood && MOODS[c.mood]) {
     const m = MOODS[c.mood]
-    ctx.fillStyle = 'rgba(255,255,255,0.06)'
+    ctx.fillStyle = P.surface
     roundRect(ctx, x, cy, maxW, 72, 20)
     ctx.fill()
     ctx.font = '36px system-ui, sans-serif'
     ctx.fillText(m.emoji, x + 22, cy + 48)
-    ctx.fillStyle = '#FFFFFF'
+    ctx.fillStyle = P.text
     ctx.font = 'bold 26px Outfit, system-ui, sans-serif'
     ctx.fillText(`Estado: ${m.label}`, x + 80, cy + 46)
     cy += 90
@@ -408,26 +421,26 @@ async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
   const badgeName = c.badge?.badgeName || c.badge?.name
   const badgeIcon = c.badge?.badgeIcon || c.badge?.icon || '🏅'
   if (badgeName && cy < maxBottom - 80) {
-    ctx.fillStyle = 'rgba(234,179,8,0.16)'
+    ctx.fillStyle = P.badgeBg
     roundRect(ctx, x, cy, maxW, 120, 22)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(250,204,21,0.35)'
+    ctx.strokeStyle = P.badgeBorder
     ctx.lineWidth = 2
     roundRect(ctx, x, cy, maxW, 120, 22)
     ctx.stroke()
     ctx.font = '48px system-ui, sans-serif'
     ctx.fillText(badgeIcon, x + 28, cy + 72)
-    ctx.fillStyle = '#FACC15'
+    ctx.fillStyle = P.badgeText
     ctx.font = 'bold 30px Outfit, system-ui, sans-serif'
     ctx.fillText(String(badgeName).slice(0, 28), x + 100, cy + 55)
-    ctx.fillStyle = 'rgba(255,255,255,0.65)'
+    ctx.fillStyle = P.textSoft
     ctx.font = '20px Outfit, system-ui, sans-serif'
     ctx.fillText('Insignia desbloqueada', x + 100, cy + 88)
     cy += 140
   }
 
   if (c.caption && cy < maxBottom - 40) {
-    ctx.fillStyle = 'rgba(255,255,255,0.92)'
+    ctx.fillStyle = P.text
     ctx.font = '28px Outfit, system-ui, sans-serif'
     cy = wrapText(ctx, c.caption, x, cy + 8, maxW, 38, 5) + 12
   }
@@ -437,24 +450,24 @@ async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
   }
 
   if (c.poll?.question && cy < maxBottom - 80) {
-    ctx.fillStyle = 'rgba(255,255,255,0.06)'
+    ctx.fillStyle = P.surface
     const opts = (c.poll.options || []).slice(0, 5)
     const ph = 70 + opts.length * 58 + 16
     roundRect(ctx, x, cy, maxW, ph, 22)
     ctx.fill()
-    ctx.fillStyle = '#FFFFFF'
+    ctx.fillStyle = P.text
     ctx.font = 'bold 26px Outfit, system-ui, sans-serif'
     let py = wrapText(ctx, c.poll.question, x + 24, cy + 40, maxW - 48, 32, 2) + 12
     opts.forEach((opt) => {
       const label = typeof opt === 'string' ? opt : opt?.text || 'Opción'
       const votes = Array.isArray(opt?.votes) ? opt.votes.length : 0
-      ctx.fillStyle = 'rgba(10,10,15,0.45)'
+      ctx.fillStyle = P.inset
       roundRect(ctx, x + 20, py, maxW - 40, 46, 14)
       ctx.fill()
-      ctx.fillStyle = 'rgba(255,255,255,0.88)'
+      ctx.fillStyle = P.textSoft
       ctx.font = '22px Outfit, system-ui, sans-serif'
       ctx.fillText(String(label).slice(0, 36), x + 36, py + 30)
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'
+      ctx.fillStyle = P.textFaint
       ctx.textAlign = 'right'
       ctx.fillText(String(votes), x + maxW - 36, py + 30)
       ctx.textAlign = 'left'
@@ -463,12 +476,11 @@ async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
     cy = cy + ph + 16
   }
 
-  // Guarantee something visible for empty/unknown posts
   if (cy <= y + 8) {
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    ctx.fillStyle = P.surface
     roundRect(ctx, x, cy, maxW, 120, 20)
     ctx.fill()
-    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.fillStyle = P.textSoft
     ctx.font = '26px Outfit, system-ui, sans-serif'
     wrapText(
       ctx,
@@ -488,20 +500,20 @@ async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
 async function drawHeader(ctx, user, x, y, subtitle = null) {
   await drawAvatar(ctx, user, x, y, 72)
   const name = authorName(user)
-  ctx.fillStyle = '#FFFFFF'
+  ctx.fillStyle = P.text
   ctx.font = 'bold 32px Outfit, system-ui, sans-serif'
   ctx.fillText(name.slice(0, 26), x + 90, y + 32)
   const badge = planOrElite(typeof user === 'object' ? user : null)
   if (badge) {
     ctx.font = '600 18px Outfit, system-ui, sans-serif'
     const bw = ctx.measureText(badge).width + 28
-    ctx.fillStyle = 'rgba(168,85,247,0.22)'
+    ctx.fillStyle = P.eliteBg
     roundRect(ctx, x + 90, y + 44, bw, 32, 16)
     ctx.fill()
-    ctx.fillStyle = '#C4B5FD'
+    ctx.fillStyle = P.eliteText
     ctx.fillText(badge, x + 104, y + 66)
   } else if (subtitle) {
-    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.fillStyle = P.textFaint
     ctx.font = '18px Outfit, system-ui, sans-serif'
     ctx.fillText(subtitle, x + 90, y + 62)
   }
@@ -510,9 +522,12 @@ async function drawHeader(ctx, user, x, y, subtitle = null) {
 
 /**
  * Story / WhatsApp native post share image (9:16) for ANY post type.
+ * @param {object} post
+ * @param {{ theme?: 'light'|'dark' }} [options]
  */
-export async function buildNativePostShareImage(post) {
+export async function buildNativePostShareImage(post, options = {}) {
   if (!post) return null
+  P = getShareThemePalette(options.theme)
 
   const w = 1080
   const h = 1920
@@ -523,25 +538,25 @@ export async function buildNativePostShareImage(post) {
   if (!ctx) return null
 
   const bg = ctx.createLinearGradient(0, 0, w, h)
-  bg.addColorStop(0, '#0A0A0F')
-  bg.addColorStop(0.55, '#12121A')
-  bg.addColorStop(1, '#1A120C')
+  bg.addColorStop(0, P.bg0)
+  bg.addColorStop(0.55, P.bg1)
+  bg.addColorStop(1, P.bg2)
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, w, h)
 
-  ctx.fillStyle = 'rgba(255,107,53,0.14)'
+  ctx.fillStyle = P.brandOrb
   ctx.beginPath()
   ctx.arc(w * 0.85, h * 0.12, 220, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = 'rgba(0,245,255,0.08)'
+  ctx.fillStyle = P.accentOrb
   ctx.beginPath()
   ctx.arc(w * 0.12, h * 0.78, 260, 0, Math.PI * 2)
   ctx.fill()
 
-  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.fillStyle = P.text
   ctx.font = 'bold 42px Bebas Neue, Outfit, system-ui, sans-serif'
   ctx.fillText('QYNTRA GYM', 64, 110)
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'
+  ctx.fillStyle = P.textFaint
   ctx.font = '22px Outfit, system-ui, sans-serif'
   ctx.fillText('Publicación de la comunidad', 64, 148)
 
@@ -558,10 +573,10 @@ export async function buildNativePostShareImage(post) {
     120
   const cardH = Math.min(Math.max(bodyEstimate + cardPad * 2, 420), maxCardBottom - cardY)
 
-  ctx.fillStyle = 'rgba(20,20,28,0.96)'
+  ctx.fillStyle = P.cardFill
   roundRect(ctx, cardX, cardY, cardW, cardH, 36)
   ctx.fill()
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+  ctx.strokeStyle = P.border
   ctx.lineWidth = 2
   roundRect(ctx, cardX, cardY, cardW, cardH, 36)
   ctx.stroke()
@@ -574,25 +589,20 @@ export async function buildNativePostShareImage(post) {
   const headerUser = typeof post.user === 'object' ? post.user : { name: 'Usuario' }
   y = await drawHeader(ctx, headerUser, contentX, y)
 
-  // Sharer caption when resharing (content of the reshare itself)
   if (shared) {
     const shareCaption = cleanCaption(post.content)
     if (shareCaption) {
-      ctx.fillStyle = 'rgba(255,255,255,0.92)'
+      ctx.fillStyle = P.text
       ctx.font = '28px Outfit, system-ui, sans-serif'
       y = wrapText(ctx, shareCaption, contentX, y + 8, contentW, 38, 4) + 16
     }
 
-    // Embedded original
     const embedPad = 20
-    const embedH = Math.min(
-      contentBottom - y - 8,
-      estimatePayloadHeight(shared) + 90
-    )
-    ctx.fillStyle = 'rgba(255,255,255,0.04)'
+    const embedH = Math.min(contentBottom - y - 8, estimatePayloadHeight(shared) + 90)
+    ctx.fillStyle = P.embedBg
     roundRect(ctx, contentX, y, contentW, embedH, 22)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+    ctx.strokeStyle = P.embedBorder
     ctx.lineWidth = 1.5
     roundRect(ctx, contentX, y, contentW, embedH, 22)
     ctx.stroke()
@@ -613,7 +623,7 @@ export async function buildNativePostShareImage(post) {
     y = await drawPayloadBody(ctx, post, contentX, y, contentW, contentBottom)
   }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.45)'
+  ctx.fillStyle = P.textFaint
   ctx.font = '22px Outfit, system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.fillText('Comparte tu progreso en Qyntra Gym', w / 2, h - 80)
@@ -622,6 +632,6 @@ export async function buildNativePostShareImage(post) {
   return canvas.toDataURL('image/png')
 }
 
-export async function buildWhatsAppCard(post) {
-  return buildNativePostShareImage(post)
+export async function buildWhatsAppCard(post, options) {
+  return buildNativePostShareImage(post, options)
 }

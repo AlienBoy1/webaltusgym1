@@ -1,6 +1,9 @@
 /**
  * Share card mirroring the in-app profile hero (cover, avatar, stats, level).
+ * Respects live light/dark theme + brand colors.
  */
+
+import { getShareThemePalette } from './shareThemePalette'
 
 function roundRect(ctx, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2)
@@ -23,7 +26,7 @@ function loadImage(src) {
   })
 }
 
-async function drawCover(ctx, coverUrl, x, y, w, h) {
+async function drawCover(ctx, coverUrl, x, y, w, h, P) {
   if (coverUrl && (String(coverUrl).startsWith('data:') || String(coverUrl).startsWith('http'))) {
     try {
       const img = await loadImage(coverUrl)
@@ -43,20 +46,20 @@ async function drawCover(ctx, coverUrl, x, y, w, h) {
     }
   }
   const g = ctx.createLinearGradient(x, y, x + w, y + h)
-  g.addColorStop(0, 'rgba(255,107,53,0.55)')
-  g.addColorStop(0.55, 'rgba(124,58,237,0.28)')
-  g.addColorStop(1, 'rgba(0,245,255,0.22)')
+  g.addColorStop(0, P.coverFallback0)
+  g.addColorStop(0.55, P.coverFallback1)
+  g.addColorStop(1, P.coverFallback2)
   ctx.fillStyle = g
   ctx.fillRect(x, y, w, h)
 }
 
-async function drawAvatar(ctx, avatar, name, cx, cy, size) {
+async function drawAvatar(ctx, avatar, name, cx, cy, size, P) {
   const x = cx - size / 2
   const y = cy - size / 2
   ctx.save()
   ctx.beginPath()
   ctx.arc(cx, cy, size / 2 + 6, 0, Math.PI * 2)
-  ctx.fillStyle = '#14141C'
+  ctx.fillStyle = P.card
   ctx.fill()
   ctx.beginPath()
   ctx.arc(cx, cy, size / 2, 0, Math.PI * 2)
@@ -72,9 +75,9 @@ async function drawAvatar(ctx, avatar, name, cx, cy, size) {
       /* fallback */
     }
   }
-  ctx.fillStyle = '#2A2A35'
+  ctx.fillStyle = P.avatarFallback
   ctx.fillRect(x, y, size, size)
-  ctx.fillStyle = '#FF6B35'
+  ctx.fillStyle = P.primary
   ctx.font = `bold ${Math.round(size * 0.42)}px Outfit, system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -91,11 +94,13 @@ function planLabel(user) {
 }
 
 /**
- * @param {object} user - auth / profile user
- * @returns {Promise<string|null>} data URL png
+ * @param {object} user
+ * @param {{ theme?: 'light'|'dark' }} [options]
+ * @returns {Promise<string|null>}
  */
-export async function buildNativeProfileShareImage(user) {
+export async function buildNativeProfileShareImage(user, options = {}) {
   if (!user) return null
+  const P = getShareThemePalette(options.theme)
 
   const W = 1080
   const H = 1350
@@ -105,20 +110,18 @@ export async function buildNativeProfileShareImage(user) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  // Background
   const bg = ctx.createLinearGradient(0, 0, W, H)
-  bg.addColorStop(0, '#0A0A0F')
-  bg.addColorStop(0.5, '#12121A')
-  bg.addColorStop(1, '#0E0E16')
+  bg.addColorStop(0, P.bg0)
+  bg.addColorStop(0.5, P.bg1)
+  bg.addColorStop(1, P.bg2)
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, W, H)
 
-  // Soft orbs
-  ctx.fillStyle = 'rgba(255,107,53,0.08)'
+  ctx.fillStyle = P.brandOrb
   ctx.beginPath()
   ctx.arc(180, 220, 220, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = 'rgba(0,245,255,0.06)'
+  ctx.fillStyle = P.accentOrb
   ctx.beginPath()
   ctx.arc(900, 1100, 280, 0, Math.PI * 2)
   ctx.fill()
@@ -128,65 +131,60 @@ export async function buildNativeProfileShareImage(user) {
   const cardW = W - 128
   const cardH = H - 200
 
-  // Card
-  ctx.fillStyle = 'rgba(22,22,30,0.96)'
+  ctx.fillStyle = P.cardFill
   roundRect(ctx, cardX, cardY, cardW, cardH, 36)
   ctx.fill()
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+  ctx.strokeStyle = P.border
   ctx.lineWidth = 2
   roundRect(ctx, cardX, cardY, cardW, cardH, 36)
   ctx.stroke()
 
-  // Clip card for cover
   ctx.save()
   roundRect(ctx, cardX, cardY, cardW, cardH, 36)
   ctx.clip()
 
   const coverH = 340
-  await drawCover(ctx, user?.profile?.coverUrl, cardX, cardY, cardW, coverH)
+  await drawCover(ctx, user?.profile?.coverUrl, cardX, cardY, cardW, coverH, P)
 
-  // Cover blend into card
   const blend = ctx.createLinearGradient(0, cardY + coverH * 0.35, 0, cardY + coverH + 40)
-  blend.addColorStop(0, 'rgba(22,22,30,0)')
-  blend.addColorStop(0.55, 'rgba(22,22,30,0.55)')
-  blend.addColorStop(1, 'rgba(22,22,30,1)')
+  const blendBase = P.cardBlend
+  blend.addColorStop(0, `${blendBase}00`)
+  // approximate fade without hex alpha parse issues
+  blend.addColorStop(0.55, P.mode === 'light' ? 'rgba(255,255,255,0.55)' : 'rgba(22,22,30,0.55)')
+  blend.addColorStop(1, P.mode === 'light' ? 'rgba(255,255,255,1)' : 'rgba(22,22,30,1)')
   ctx.fillStyle = blend
   ctx.fillRect(cardX, cardY + coverH * 0.35, cardW, coverH * 0.65 + 40)
   ctx.restore()
 
   const name = String(user?.name || 'Usuario')
   const avatarCy = cardY + coverH - 8
-  await drawAvatar(ctx, user?.avatar, name, W / 2, avatarCy, 168)
+  await drawAvatar(ctx, user?.avatar, name, W / 2, avatarCy, 168, P)
 
-  // Brand eyebrow
   ctx.textAlign = 'center'
-  ctx.fillStyle = '#FF6B35'
+  ctx.fillStyle = P.primary
   ctx.font = '700 22px Outfit, system-ui, sans-serif'
   ctx.fillText('PERFIL · QYNTRA GYM', W / 2, avatarCy + 120)
 
-  // Name
-  ctx.fillStyle = '#FFFFFF'
+  ctx.fillStyle = P.text
   ctx.font = 'bold 52px Outfit, system-ui, sans-serif'
   const displayName = name.length > 28 ? `${name.slice(0, 27)}…` : name
   ctx.fillText(displayName, W / 2, avatarCy + 184)
 
-  // Plan pill
   const plan = planLabel(user)
   ctx.font = '600 24px Outfit, system-ui, sans-serif'
   const planW = ctx.measureText(plan).width + 48
   const planX = W / 2 - planW / 2
   const planY = avatarCy + 210
-  ctx.fillStyle = 'rgba(168,85,247,0.22)'
+  ctx.fillStyle = P.eliteBg
   roundRect(ctx, planX, planY, planW, 44, 22)
   ctx.fill()
-  ctx.strokeStyle = 'rgba(168,85,247,0.4)'
+  ctx.strokeStyle = P.mode === 'light' ? 'rgba(124,58,237,0.35)' : 'rgba(168,85,247,0.4)'
   ctx.lineWidth = 1.5
   roundRect(ctx, planX, planY, planW, 44, 22)
   ctx.stroke()
-  ctx.fillStyle = '#C084FC'
+  ctx.fillStyle = P.eliteText
   ctx.fillText(plan, W / 2, planY + 30)
 
-  // Stats
   const level = user?.stats?.level || 1
   const workouts = user?.stats?.totalWorkouts || 0
   const streak = user?.stats?.longestStreak || 0
@@ -202,56 +200,53 @@ export async function buildNativeProfileShareImage(user) {
   const slotW = (cardW - 72) / 3
   stats.forEach((s, i) => {
     const sx = cardX + 36 + i * slotW
-    ctx.fillStyle = 'rgba(10,10,15,0.45)'
+    ctx.fillStyle = P.inset
     roundRect(ctx, sx + 8, statsY, slotW - 16, 130, 20)
     ctx.fill()
-    ctx.fillStyle = '#FF6B35'
+    ctx.fillStyle = P.primary
     ctx.font = 'bold 44px Outfit, system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText(s.value, sx + slotW / 2, statsY + 62)
-    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+    ctx.fillStyle = P.textFaint
     ctx.font = '22px Outfit, system-ui, sans-serif'
     ctx.fillText(s.label, sx + slotW / 2, statsY + 100)
   })
 
-  // XP bar
   const barY = statsY + 170
   const barX = cardX + 48
   const barW = cardW - 96
   ctx.textAlign = 'left'
-  ctx.fillStyle = '#FFFFFF'
+  ctx.fillStyle = P.text
   ctx.font = '600 26px Outfit, system-ui, sans-serif'
   ctx.fillText(`Nivel ${level}`, barX, barY)
   ctx.textAlign = 'right'
-  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.fillStyle = P.textFaint
   ctx.font = '22px Outfit, system-ui, sans-serif'
   ctx.fillText(`${xpTotal.toLocaleString('es-ES')} XP`, barX + barW, barY)
 
   const trackY = barY + 24
-  ctx.fillStyle = 'rgba(255,255,255,0.08)'
+  ctx.fillStyle = P.surface
   roundRect(ctx, barX, trackY, barW, 18, 9)
   ctx.fill()
   const fillW = Math.max(12, (Math.min(100, xpInto) / 100) * barW)
   const barGrad = ctx.createLinearGradient(barX, trackY, barX + fillW, trackY)
   barGrad.addColorStop(0, '#FACC15')
-  barGrad.addColorStop(1, '#FF6B35')
+  barGrad.addColorStop(1, P.primary)
   ctx.fillStyle = barGrad
   roundRect(ctx, barX, trackY, fillW, 18, 9)
   ctx.fill()
 
   ctx.textAlign = 'left'
-  ctx.fillStyle = 'rgba(255,255,255,0.4)'
+  ctx.fillStyle = P.textMuted
   ctx.font = '20px Outfit, system-ui, sans-serif'
   ctx.fillText(`${xpInto} / 100 XP en este nivel`, barX, trackY + 48)
 
-  // Footer CTA on image
   ctx.textAlign = 'center'
-  ctx.fillStyle = 'rgba(255,107,53,0.9)'
+  ctx.fillStyle = P.primary
   ctx.font = '600 24px Outfit, system-ui, sans-serif'
   ctx.fillText('Únete a mí en Qyntra Gym', W / 2, cardY + cardH - 48)
 
-  // Outer brand mark
-  ctx.fillStyle = 'rgba(255,255,255,0.45)'
+  ctx.fillStyle = P.textFaint
   ctx.font = '600 22px Outfit, system-ui, sans-serif'
   ctx.fillText('Qyntra Gym', W / 2, H - 48)
 
