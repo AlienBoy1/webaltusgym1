@@ -520,8 +520,226 @@ async function drawHeader(ctx, user, x, y, subtitle = null) {
   return y + 100
 }
 
+function drawStageBackground(ctx, w, h) {
+  const bg = ctx.createLinearGradient(0, 0, w, h)
+  bg.addColorStop(0, P.bg0)
+  bg.addColorStop(0.5, P.bg1)
+  bg.addColorStop(1, P.bg2)
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, w, h)
+
+  ctx.fillStyle = P.brandOrb
+  ctx.beginPath()
+  ctx.arc(w * 0.82, h * 0.18, 260, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = P.accentOrb
+  ctx.beginPath()
+  ctx.arc(w * 0.14, h * 0.78, 300, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = `rgba(${P.primaryRgb},${P.mode === 'light' ? 0.06 : 0.1})`
+  ctx.beginPath()
+  ctx.arc(w * 0.5, h * 0.45, 420, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function drawPhoneChrome(ctx, phone) {
+  const { x, y, w, h, bezel, radius } = phone
+  const light = P.mode === 'light'
+
+  // Drop shadow
+  ctx.save()
+  ctx.shadowColor = light ? 'rgba(16,16,24,0.22)' : 'rgba(0,0,0,0.55)'
+  ctx.shadowBlur = 55
+  ctx.shadowOffsetY = 28
+  const bezelGrad = ctx.createLinearGradient(x, y, x + w, y + h)
+  if (light) {
+    bezelGrad.addColorStop(0, '#F4F4F5')
+    bezelGrad.addColorStop(0.36, '#D4D4D8')
+    bezelGrad.addColorStop(0.68, '#E4E4E7')
+    bezelGrad.addColorStop(1, '#A1A1AA')
+  } else {
+    bezelGrad.addColorStop(0, '#2A2A32')
+    bezelGrad.addColorStop(0.38, '#121218')
+    bezelGrad.addColorStop(0.72, '#1C1C24')
+    bezelGrad.addColorStop(1, '#0C0C10')
+  }
+  ctx.fillStyle = bezelGrad
+  roundRect(ctx, x, y, w, h, radius)
+  ctx.fill()
+  ctx.restore()
+
+  // Brand rim
+  ctx.strokeStyle = `rgba(${P.primaryRgb},0.28)`
+  ctx.lineWidth = 3
+  roundRect(ctx, x + 1.5, y + 1.5, w - 3, h - 3, radius - 1)
+  ctx.stroke()
+
+  // Side buttons
+  const btnGrad = light
+    ? ['#E4E4E7', '#A1A1AA', '#71717A']
+    : ['#4A4A54', '#1A1A22', '#2E2E36']
+  const drawBtn = (bx, by, bw, bh) => {
+    const g = ctx.createLinearGradient(bx, by, bx, by + bh)
+    g.addColorStop(0, btnGrad[0])
+    g.addColorStop(0.55, btnGrad[1])
+    g.addColorStop(1, btnGrad[2])
+    ctx.fillStyle = g
+    roundRect(ctx, bx, by, bw, bh, 2)
+    ctx.fill()
+  }
+  drawBtn(x - 6, y + h * 0.18, 6, 36) // silent
+  drawBtn(x - 6, y + h * 0.28, 6, 70) // vol up
+  drawBtn(x - 6, y + h * 0.36, 6, 70) // vol down
+  drawBtn(x + w, y + h * 0.3, 6, 100) // power
+
+  // Screen
+  const sx = x + bezel
+  const sy = y + bezel
+  const sw = w - bezel * 2
+  const sh = h - bezel * 2
+  const sr = Math.max(28, radius - 14)
+
+  ctx.fillStyle = P.bg0
+  roundRect(ctx, sx, sy, sw, sh, sr)
+  ctx.fill()
+  ctx.strokeStyle = light ? 'rgba(15,15,20,0.08)' : 'rgba(255,255,255,0.05)'
+  ctx.lineWidth = 1
+  roundRect(ctx, sx, sy, sw, sh, sr)
+  ctx.stroke()
+
+  return { sx, sy, sw, sh, sr }
+}
+
+function drawDynamicIsland(ctx, sx, sy, sw) {
+  const iw = 150
+  const ih = 36
+  const ix = sx + (sw - iw) / 2
+  const iy = sy + 18
+  ctx.fillStyle = '#050508'
+  roundRect(ctx, ix, iy, iw, ih, 18)
+  ctx.fill()
+  // speaker
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'
+  roundRect(ctx, ix + 36, iy + 14, 42, 8, 4)
+  ctx.fill()
+  // lens
+  ctx.beginPath()
+  ctx.arc(ix + iw - 28, iy + ih / 2, 6, 0, Math.PI * 2)
+  ctx.fillStyle = '#1a2744'
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(ix + iw - 28, iy + ih / 2, 3, 0, Math.PI * 2)
+  ctx.fillStyle = '#3b82f6'
+  ctx.fill()
+}
+
+function drawStatusBar(ctx, sx, sy, sw) {
+  const y = sy + 78
+  ctx.fillStyle = P.text
+  ctx.font = '600 22px Outfit, system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  const now = new Date()
+  const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  ctx.fillText(time, sx + 28, y)
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = P.primary
+  ctx.font = '700 16px Outfit, system-ui, sans-serif'
+  ctx.fillText('QYNTRA', sx + sw / 2, y)
+
+  // signal + battery stubs
+  ctx.textAlign = 'left'
+  const rx = sx + sw - 28
+  ctx.fillStyle = P.text
+  for (let i = 0; i < 4; i++) {
+    const bh = 6 + i * 3
+    ctx.fillRect(rx - 78 + i * 7, y - bh + 2, 5, bh)
+  }
+  ctx.strokeStyle = P.text
+  ctx.lineWidth = 1.5
+  roundRect(ctx, rx - 42, y - 12, 30, 14, 3)
+  ctx.stroke()
+  ctx.fillStyle = P.primary
+  ctx.fillRect(rx - 39, y - 9, 20, 8)
+  ctx.fillStyle = P.text
+  ctx.fillRect(rx - 12, y - 8, 3, 6)
+}
+
+function drawHomeIndicator(ctx, sx, sy, sw, sh) {
+  const hw = 140
+  const hh = 6
+  ctx.fillStyle = P.mode === 'light' ? 'rgba(15,15,20,0.28)' : 'rgba(255,255,255,0.35)'
+  roundRect(ctx, sx + (sw - hw) / 2, sy + sh - 28, hw, hh, 3)
+  ctx.fill()
+}
+
+async function drawFeedPost(ctx, post, x, y, maxW, maxBottom) {
+  const pad = 28
+  const cardX = x
+  const cardY = y
+  const cardW = maxW
+
+  const shared = post.sharedFrom || post.shared_from || null
+  const bodyEstimate =
+    estimatePayloadHeight(post) +
+    (shared ? 90 + estimatePayloadHeight(shared) : 0) +
+    100
+  const cardH = Math.min(Math.max(bodyEstimate + pad * 2, 280), maxBottom - cardY)
+
+  // Feed card surface
+  ctx.fillStyle = P.cardFill
+  roundRect(ctx, cardX, cardY, cardW, cardH, 28)
+  ctx.fill()
+  ctx.strokeStyle = P.border
+  ctx.lineWidth = 2
+  roundRect(ctx, cardX, cardY, cardW, cardH, 28)
+  ctx.stroke()
+
+  const contentX = cardX + pad
+  const contentW = cardW - pad * 2
+  const contentBottom = cardY + cardH - pad
+  let cy = cardY + pad
+
+  const headerUser = typeof post.user === 'object' ? post.user : { name: 'Usuario' }
+  cy = await drawHeader(ctx, headerUser, contentX, cy)
+
+  if (shared) {
+    const shareCaption = cleanCaption(post.content)
+    if (shareCaption) {
+      ctx.fillStyle = P.text
+      ctx.font = '26px Outfit, system-ui, sans-serif'
+      cy = wrapText(ctx, shareCaption, contentX, cy + 6, contentW, 34, 3) + 12
+    }
+    const embedPad = 16
+    const embedH = Math.min(contentBottom - cy - 8, estimatePayloadHeight(shared) + 80)
+    ctx.fillStyle = P.embedBg
+    roundRect(ctx, contentX, cy, contentW, embedH, 18)
+    ctx.fill()
+    ctx.strokeStyle = P.embedBorder
+    ctx.lineWidth = 1.5
+    roundRect(ctx, contentX, cy, contentW, embedH, 18)
+    ctx.stroke()
+    let ey = cy + embedPad
+    const origUser = typeof shared.user === 'object' ? shared.user : { name: 'Usuario' }
+    ey = await drawHeader(ctx, origUser, contentX + embedPad, ey, 'Publicación original')
+    await drawPayloadBody(
+      ctx,
+      shared,
+      contentX + embedPad,
+      ey,
+      contentW - embedPad * 2,
+      cy + embedH - embedPad
+    )
+  } else {
+    await drawPayloadBody(ctx, post, contentX, cy, contentW, contentBottom)
+  }
+
+  return cardY + cardH
+}
+
 /**
- * Story / WhatsApp native post share image (9:16) for ANY post type.
+ * Story / WhatsApp native post share image (9:16).
+ * Phone-frame stage (like login) with a single community-feed post centered inside.
  * @param {object} post
  * @param {{ theme?: 'light'|'dark' }} [options]
  */
@@ -537,96 +755,85 @@ export async function buildNativePostShareImage(post, options = {}) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  const bg = ctx.createLinearGradient(0, 0, w, h)
-  bg.addColorStop(0, P.bg0)
-  bg.addColorStop(0.55, P.bg1)
-  bg.addColorStop(1, P.bg2)
-  ctx.fillStyle = bg
-  ctx.fillRect(0, 0, w, h)
+  drawStageBackground(ctx, w, h)
 
+  // Centered phone (login-like proportions)
+  const phoneW = 860
+  const phoneH = 1640
+  const phoneX = (w - phoneW) / 2
+  const phoneY = (h - phoneH) / 2 - 10
+  const phone = { x: phoneX, y: phoneY, w: phoneW, h: phoneH, bezel: 18, radius: 72 }
+
+  const screen = drawPhoneChrome(ctx, phone)
+  const { sx, sy, sw, sh } = screen
+
+  // Clip screen contents
+  ctx.save()
+  roundRect(ctx, sx, sy, sw, sh, Math.max(28, phone.radius - 14))
+  ctx.clip()
+
+  // Soft screen atmosphere
+  ctx.fillStyle = P.bg0
+  ctx.fillRect(sx, sy, sw, sh)
   ctx.fillStyle = P.brandOrb
   ctx.beginPath()
-  ctx.arc(w * 0.85, h * 0.12, 220, 0, Math.PI * 2)
+  ctx.arc(sx + sw * 0.85, sy + 120, 140, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = P.accentOrb
-  ctx.beginPath()
-  ctx.arc(w * 0.12, h * 0.78, 260, 0, Math.PI * 2)
-  ctx.fill()
+
+  drawDynamicIsland(ctx, sx, sy, sw)
+  drawStatusBar(ctx, sx, sy, sw)
+
+  // Community header
+  const headerTop = sy + 110
+  ctx.fillStyle = P.primary
+  ctx.font = '700 18px Outfit, system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('COMUNIDAD', sx + 32, headerTop)
 
   ctx.fillStyle = P.text
-  ctx.font = 'bold 42px Bebas Neue, Outfit, system-ui, sans-serif'
-  ctx.fillText('QYNTRA GYM', 64, 110)
-  ctx.fillStyle = P.textFaint
-  ctx.font = '22px Outfit, system-ui, sans-serif'
-  ctx.fillText('Publicación de la comunidad', 64, 148)
+  ctx.font = 'bold 36px Outfit, system-ui, sans-serif'
+  ctx.fillText('Feed', sx + 32, headerTop + 40)
 
-  const cardX = 56
-  const cardY = 200
-  const cardW = w - 112
-  const cardPad = 40
-  const maxCardBottom = h - 140
+  // Chips
+  const chipY = headerTop + 58
+  const chips = ['Gym OS', 'Training+']
+  let chipX = sx + 32
+  chips.forEach((label, i) => {
+    ctx.font = '600 16px Outfit, system-ui, sans-serif'
+    const cw = ctx.measureText(label).width + 28
+    ctx.fillStyle = i === 0 ? `rgba(${P.primaryRgb},0.16)` : `rgba(${P.accentRgb},0.14)`
+    roundRect(ctx, chipX, chipY, cw, 32, 16)
+    ctx.fill()
+    ctx.fillStyle = i === 0 ? P.primary : P.accent
+    ctx.fillText(label, chipX + 14, chipY + 22)
+    chipX += cw + 10
+  })
+
+  // Feed area — center the single post vertically in remaining space
+  const feedTop = chipY + 52
+  const feedBottom = sy + sh - 56
+  const feedPadX = 28
+  const feedW = sw - feedPadX * 2
 
   const shared = post.sharedFrom || post.shared_from || null
-  const bodyEstimate =
+  const estimated =
     estimatePayloadHeight(post) +
     (shared ? 90 + estimatePayloadHeight(shared) : 0) +
-    120
-  const cardH = Math.min(Math.max(bodyEstimate + cardPad * 2, 420), maxCardBottom - cardY)
+    140
+  const avail = feedBottom - feedTop
+  const postH = Math.min(Math.max(estimated, 300), avail)
+  const postY = feedTop + Math.max(0, (avail - postH) / 2)
 
-  ctx.fillStyle = P.cardFill
-  roundRect(ctx, cardX, cardY, cardW, cardH, 36)
-  ctx.fill()
-  ctx.strokeStyle = P.border
-  ctx.lineWidth = 2
-  roundRect(ctx, cardX, cardY, cardW, cardH, 36)
-  ctx.stroke()
+  await drawFeedPost(ctx, post, sx + feedPadX, postY, feedW, postY + postH)
 
-  const contentX = cardX + cardPad
-  const contentW = cardW - cardPad * 2
-  const contentBottom = cardY + cardH - cardPad
-  let y = cardY + cardPad
+  drawHomeIndicator(ctx, sx, sy, sw, sh)
+  ctx.restore()
 
-  const headerUser = typeof post.user === 'object' ? post.user : { name: 'Usuario' }
-  y = await drawHeader(ctx, headerUser, contentX, y)
-
-  if (shared) {
-    const shareCaption = cleanCaption(post.content)
-    if (shareCaption) {
-      ctx.fillStyle = P.text
-      ctx.font = '28px Outfit, system-ui, sans-serif'
-      y = wrapText(ctx, shareCaption, contentX, y + 8, contentW, 38, 4) + 16
-    }
-
-    const embedPad = 20
-    const embedH = Math.min(contentBottom - y - 8, estimatePayloadHeight(shared) + 90)
-    ctx.fillStyle = P.embedBg
-    roundRect(ctx, contentX, y, contentW, embedH, 22)
-    ctx.fill()
-    ctx.strokeStyle = P.embedBorder
-    ctx.lineWidth = 1.5
-    roundRect(ctx, contentX, y, contentW, embedH, 22)
-    ctx.stroke()
-
-    let ey = y + embedPad
-    const origUser = typeof shared.user === 'object' ? shared.user : { name: 'Usuario' }
-    ey = await drawHeader(ctx, origUser, contentX + embedPad, ey, 'Publicación original')
-    ey = await drawPayloadBody(
-      ctx,
-      shared,
-      contentX + embedPad,
-      ey,
-      contentW - embedPad * 2,
-      y + embedH - embedPad
-    )
-    y = y + embedH + 16
-  } else {
-    y = await drawPayloadBody(ctx, post, contentX, y, contentW, contentBottom)
-  }
-
+  // Caption under phone
   ctx.fillStyle = P.textFaint
-  ctx.font = '22px Outfit, system-ui, sans-serif'
+  ctx.font = '600 24px Outfit, system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('Comparte tu progreso en Qyntra Gym', w / 2, h - 80)
+  ctx.fillText('Qyntra Gym · Comunidad', w / 2, phoneY + phoneH + 52)
   ctx.textAlign = 'left'
 
   return canvas.toDataURL('image/png')

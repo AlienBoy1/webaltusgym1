@@ -58,6 +58,7 @@ export default function StoriesRail({
   const [mediaType, setMediaType] = useState(null)
   const [mediaData, setMediaData] = useState(null)
   const [publishing, setPublishing] = useState(false)
+  const [composeContain, setComposeContain] = useState(false)
   const [reply, setReply] = useState('')
   const [replyFocused, setReplyFocused] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -97,6 +98,7 @@ export default function StoriesRail({
         setMediaPreview(draft.mediaUrl)
         setMediaType(draft.mediaType || 'image')
         setCaption(draft.caption || '')
+        setComposeContain(Boolean(draft.fromPostId))
         setComposeOpen(true)
       } catch {
         /* ignore */
@@ -585,6 +587,7 @@ export default function StoriesRail({
     setMediaData(null)
     setMediaPreview(null)
     setMediaType(null)
+    setComposeContain(false)
   }
 
   const readFile = (file, type) => {
@@ -604,6 +607,7 @@ export default function StoriesRail({
         setMediaPreview(e.target.result)
         setMediaType(type)
         setCaption('')
+        setComposeContain(false)
         setComposeOpen(true)
       }
       reader.readAsDataURL(file)
@@ -819,7 +823,11 @@ export default function StoriesRail({
                 </button>
               </div>
 
-              <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+              <div
+                className={`relative flex flex-1 items-center justify-center overflow-hidden ${
+                  composeContain ? 'bg-[color:var(--bg-app)]' : ''
+                }`}
+              >
                 {mediaType === 'video' ? (
                   <video
                     src={mediaPreview}
@@ -830,7 +838,15 @@ export default function StoriesRail({
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <img src={mediaPreview} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={mediaPreview}
+                    alt=""
+                    className={
+                      composeContain
+                        ? 'max-h-full max-w-full object-contain'
+                        : 'h-full w-full object-cover'
+                    }
+                  />
                 )}
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/45" />
               </div>
