@@ -299,37 +299,30 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  /** Load full avatar/cover after slim /auth/me. Uses existing /users/profile (works in prod). */
+  /** Load full avatar/cover after slim /auth/me — same endpoint as perfil público. */
   loadMyMedia: async () => {
     const token = getStoredToken()
-    if (!token) return
+    const prev = get().user
+    const id = prev?.id || prev?._id
+    if (!token || !id) return
     try {
-      // Prefer dedicated endpoint when deployed; fall back to full profile (always shipped)
-      let avatar = null
-      let coverUrl = null
-      let profilePatch = null
-      try {
-        const { data } = await api.get('/users/profile-media', { timeout: 90000 })
-        avatar = data?.avatar ?? null
-        coverUrl = data?.coverUrl ?? null
-      } catch {
-        const { data } = await api.get('/users/profile', { timeout: 90000 })
-        avatar = data?.avatar ?? null
-        coverUrl = data?.profile?.coverUrl ?? null
-        profilePatch = data?.profile || null
-      }
-      const prev = get().user
-      if (!prev) return
-      const next = withIdAlias({
-        ...prev,
-        avatar: avatar || prev.avatar,
-        profile: {
-          ...(prev.profile || {}),
-          ...(profilePatch || {}),
-          coverUrl: coverUrl ?? prev.profile?.coverUrl ?? null
-        }
+      const { data } = await api.get(`/users/${id}`, { timeout: 90000 })
+      if (!data) return
+      const nextAvatar = data.avatar || prev.avatar
+      const nextCover = data.profile?.coverUrl ?? prev.profile?.coverUrl ?? null
+      set({
+        user: withIdAlias({
+          ...prev,
+          ...data,
+          avatar: nextAvatar,
+          profile: {
+            ...(prev.profile || {}),
+            ...(data.profile || {}),
+            coverUrl: nextCover
+          }
+        }),
+        isAuthenticated: true
       })
-      set({ user: next, isAuthenticated: true })
     } catch (error) {
       console.warn('loadMyMedia failed:', error?.message || error)
     }

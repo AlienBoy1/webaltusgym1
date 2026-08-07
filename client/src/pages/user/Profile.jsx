@@ -499,6 +499,9 @@ export default function Profile() {
   const [coverMenuOpen, setCoverMenuOpen] = useState(false)
   const [viewCoverOpen, setViewCoverOpen] = useState(false)
   const [showCoverPicker, setShowCoverPicker] = useState(false)
+  // Local media (auth store strips huge base64 — same pattern as UserProfile)
+  const [displayAvatar, setDisplayAvatar] = useState(user?.avatar || null)
+  const [displayCover, setDisplayCover] = useState(user?.profile?.coverUrl || null)
 
   useEffect(() => {
     if (user) {
@@ -507,43 +510,32 @@ export default function Profile() {
     }
   }, [user])
 
-  // Always hydrate avatar/cover on this page (slim /auth/me strips them)
+  // Load avatar/cover like "perfil público" (dedicated page state, not slim auth)
   useEffect(() => {
     const id = user?.id || user?._id
     if (!id) return undefined
     let cancelled = false
     ;(async () => {
       try {
-        // Same source of truth as "perfil público"
         const { data } = await api.get(`/users/${id}`, { timeout: 90000 })
         if (cancelled || !data) return
+        const nextAvatar = data.avatar || null
+        const nextCover = data.profile?.coverUrl || null
+        setDisplayAvatar(nextAvatar)
+        setDisplayCover(nextCover)
         updateUser({
-          ...(data.avatar ? { avatar: data.avatar } : {}),
-          profile: {
-            ...(data.profile || {})
-          }
+          ...(nextAvatar ? { avatar: nextAvatar } : {}),
+          profile: { ...(data.profile || {}), coverUrl: nextCover }
         })
       } catch (err) {
         console.warn('Profile media hydrate failed:', err?.message || err)
-        try {
-          await useAuthStore.getState().loadMyMedia()
-        } catch {
-          /* ignore */
-        }
       }
     })()
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on identity change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?._id])
-
-  useEffect(() => {
-    if (user?.avatar) {
-      // Force re-render when avatar changes
-      setLoading(false)
-    }
-  }, [user?.avatar])
 
   useEffect(() => {
     let cancelled = false
@@ -576,11 +568,15 @@ export default function Profile() {
   }
 
   const handleAvatarSave = (avatarValue) => {
-    if (avatarValue) updateUser({ avatar: avatarValue })
+    if (avatarValue) {
+      setDisplayAvatar(avatarValue)
+      updateUser({ avatar: avatarValue })
+    }
   }
 
   const handleCoverSave = (coverUrl) => {
     if (coverUrl) {
+      setDisplayCover(coverUrl)
       updateUser({
         profile: { ...(user?.profile || {}), coverUrl }
       })
@@ -592,6 +588,7 @@ export default function Profile() {
       const { data } = await api.put('/users/profile', {
         profile: { ...(user?.profile || {}), coverUrl: null }
       })
+      setDisplayCover(null)
       updateUser({
         ...(data?.user || {}),
         profile: { ...(data?.user?.profile || user?.profile || {}), coverUrl: null }
@@ -610,7 +607,7 @@ export default function Profile() {
   }
 
   const onCoverPencilClick = () => {
-    if (user?.profile?.coverUrl) {
+    if (displayCover) {
       setCoverMenuOpen(true)
     } else {
       setShowCoverPicker(true)
@@ -657,9 +654,9 @@ export default function Profile() {
         className="card overflow-hidden p-0"
       >
         <div data-tour="tour-profile-cover" data-protected-media="1" className="relative h-[168px] sm:h-[236px] overflow-hidden">
-          {user?.profile?.coverUrl ? (
+          {displayCover ? (
             <ProtectedMedia
-              src={user.profile.coverUrl}
+              src={displayCover}
               alt=""
               className="h-full w-full scale-[1.02] object-cover object-center"
             />
@@ -727,7 +724,7 @@ export default function Profile() {
             <div className="absolute -inset-1 rounded-full bg-[color:var(--bg-card)]/80 blur-[1px]" aria-hidden />
             <div className="relative">
             <ProfileAvatar
-              avatar={user?.avatar}
+              avatar={displayAvatar}
               name={user?.name}
               size="xl"
               hasStories={hasStories}
@@ -1010,7 +1007,7 @@ export default function Profile() {
         isOpen={showCoverPicker}
         onClose={() => setShowCoverPicker(false)}
         onSave={handleCoverSave}
-        currentCover={user?.profile?.coverUrl || null}
+        currentCover={displayCover || null}
       />
 
       <AnimatePresence>
@@ -1071,7 +1068,7 @@ export default function Profile() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {viewCoverOpen && user?.profile?.coverUrl && (
+        {viewCoverOpen && displayCover && (
           <motion.div
             className="fixed inset-0 z-[85] flex items-center justify-center bg-black/90 p-4"
             initial={{ opacity: 0 }}
@@ -1089,7 +1086,7 @@ export default function Profile() {
             </button>
             <div data-protected-media="1" onClick={(e) => e.stopPropagation()}>
               <ProtectedMedia
-                src={user.profile.coverUrl}
+                src={displayCover}
                 alt="Portada"
                 className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
               />
