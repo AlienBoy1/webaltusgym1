@@ -213,7 +213,7 @@ export default function TutorialDemoSurface({ demoId }) {
     return (
       <div data-tour="tour-chat-compose-demo" className={`${shell} p-4`}>
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
-          Composer
+          Escribir mensaje
         </p>
         <div className="mt-3 flex items-end gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[1.65rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-2 py-1.5">
@@ -361,7 +361,7 @@ export default function TutorialDemoSurface({ demoId }) {
           </div>
         </div>
         <p className="px-3 pb-3 text-[11px] text-[color:var(--text-muted)]">
-          Con estilo activo, la UI del chat se vuelve immersiva y legible
+          Con un estilo activo, el chat se adapta al fondo y se lee mejor
         </p>
       </div>
     )

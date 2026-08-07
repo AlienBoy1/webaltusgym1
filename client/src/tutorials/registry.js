@@ -81,10 +81,10 @@ export const TUTORIAL_CATALOG = [
   {
     id: TUTORIAL_IDS.CHAT,
     title: 'Mensajes y chat',
-    short: 'Conversaciones premium',
+    short: 'Chats de la comunidad',
     icon: '💬',
     description:
-      'Chats, adjuntos, audio estilo WhatsApp, ver una vez, respuestas, estilos y archivos compartidos.',
+      'Bandeja, adjuntos, mensajes de voz, ver una vez, respuestas, estilos y archivos compartidos.',
     completionKey: 'qyntra_tutorial_chat_done',
     settingsKey: 'tutorialChatCompleted'
   },
@@ -452,8 +452,8 @@ const CHAT_STEPS = [
     target: 'tour-chat-voice-demo',
     demo: 'chat-voice',
     forceDemo: true,
-    title: 'Audio estilo WhatsApp',
-    body: 'Al grabar puedes pausar, continuar, previsualizar, eliminar o enviar. Solo un audio se reproduce a la vez en el chat.'
+    title: 'Mensajes de voz',
+    body: 'Al grabar puedes pausar, continuar, escuchar la vista previa, borrar o enviar. En el chat solo suena un audio a la vez.'
   },
   {
     id: 'chat-view-once',
@@ -489,7 +489,7 @@ const CHAT_STEPS = [
     demo: 'chat-styles',
     forceDemo: true,
     title: 'Estilo del chat',
-    body: 'Por defecto el chat sigue tu tema claro u oscuro. Si eliges un estilo premium, el encabezado, el composer y la barra superior se adaptan al fondo.'
+    body: 'Por defecto el chat sigue tu tema claro u oscuro. Si eliges un estilo visual, el encabezado, la caja de mensaje y la barra superior se adaptan al fondo.'
   },
   {
     id: 'chat-shared',
