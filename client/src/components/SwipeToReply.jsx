@@ -3,9 +3,12 @@ import { FiCornerUpLeft } from 'react-icons/fi'
 
 const THRESHOLD = 64
 const MAX_DRAG = 96
+const MOVE_TOLERANCE = 14
+const SWIPE_CANCEL_LONG = 22
 
 /**
- * WhatsApp-like swipe-to-reply + long-press hook.
+ * Swipe-to-reply + long-press (reaction / actions sheet).
+ * Allows small finger jitter so long-press still fires on mobile.
  */
 export default function SwipeToReply({ children, enabled = true, onReply, onLongPress }) {
   const startX = useRef(0)
@@ -40,34 +43,44 @@ export default function SwipeToReply({ children, enabled = true, onReply, onLong
 
     clearLong()
     longTimer.current = window.setTimeout(() => {
-      if (!dragging.current || Math.abs(offsetRef.current) > 8) return
+      if (!dragging.current || Math.abs(offsetRef.current) > MOVE_TOLERANCE) return
       longFired.current = true
+      clearLong()
       try {
         navigator.vibrate?.(12)
       } catch {
         /* ignore */
       }
       onLongPress?.()
-    }, 420)
+    }, 380)
 
-    e.currentTarget.setPointerCapture?.(e.pointerId)
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    } catch {
+      /* ignore */
+    }
   }
 
   const onPointerMove = (e) => {
-    if (!dragging.current || !enabled) return
+    if (!dragging.current || !enabled || longFired.current) return
     const dx = e.clientX - startX.current
     const dy = e.clientY - startY.current
+    const adx = Math.abs(dx)
+    const ady = Math.abs(dy)
 
     if (!locked.current) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
-      locked.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      if (adx < MOVE_TOLERANCE && ady < MOVE_TOLERANCE) return
+      locked.current = adx > ady ? 'h' : 'v'
       if (locked.current === 'v') {
         clearLong()
         return
       }
-      clearLong()
+      // Horizontal intent: keep long-press until real swipe distance
+      if (adx >= SWIPE_CANCEL_LONG) clearLong()
     }
+
     if (locked.current !== 'h') return
+    if (adx >= SWIPE_CANCEL_LONG) clearLong()
 
     const raw = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dx))
     offsetRef.current = raw
@@ -95,11 +108,20 @@ export default function SwipeToReply({ children, enabled = true, onReply, onLong
 
   return (
     <div
-      className="relative touch-pan-y"
+      className="relative touch-manipulation select-none"
+      style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={finish}
       onPointerCancel={finish}
+      onContextMenu={(e) => {
+        // Long-press actions replace the native menu on message bubbles
+        e.preventDefault()
+        if (!enabled || longFired.current) return
+        longFired.current = true
+        clearLong()
+        onLongPress?.()
+      }}
     >
       <div
         className={`pointer-events-none absolute inset-y-0 z-0 flex items-center ${

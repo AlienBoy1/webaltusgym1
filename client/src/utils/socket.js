@@ -41,22 +41,37 @@ function emit(event, payload) {
   })
 }
 
-function emitMessageUpdate(row) {
+function emitMessageUpdate(row, oldRow = null) {
   if (!row?.id) return
+
+  const hasOldContent =
+    oldRow != null && Object.prototype.hasOwnProperty.call(oldRow, 'content')
+  const contentUpdated = hasOldContent ? oldRow.content !== row.content : false
+
+  const delivered =
+    row.delivered === undefined || row.delivered === null ? undefined : Boolean(row.delivered)
+  const read = row.read === undefined || row.read === null ? undefined : Boolean(row.read)
+
   const decoded = decodeChatContent(row.content)
-  emit('messageStatus', {
+  const payload = {
     id: row.id,
     from: row.from_user_id,
     to: row.to_user_id,
-    delivered: Boolean(row.delivered),
-    read: Boolean(row.read),
-    status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent',
+    // Soft-sync body every time — decode of same content is safe; do not wipe receipts
+    contentSync: true,
+    contentUpdated,
     text: decoded.text,
     attachment: decoded.attachment,
     reply: decoded.reply || null,
-    reactions: decoded.reactions || null,
-    contentUpdated: true
-  })
+    reactions: decoded.reactions || null
+  }
+  if (delivered !== undefined) payload.delivered = delivered
+  if (read !== undefined) payload.read = read
+  if (delivered !== undefined || read !== undefined) {
+    payload.status = read ? 'read' : delivered ? 'delivered' : 'sent'
+  }
+
+  emit('messageStatus', payload)
 }
 
 export function onChatEvent(event, handler) {
@@ -121,7 +136,7 @@ export function initSocket(userId) {
         filter: `from_user_id=eq.${userId}`
       },
       (payload) => {
-        emitMessageUpdate(payload.new)
+        emitMessageUpdate(payload.new, payload.old)
       }
     )
     .on(
@@ -133,7 +148,7 @@ export function initSocket(userId) {
         filter: `to_user_id=eq.${userId}`
       },
       (payload) => {
-        emitMessageUpdate(payload.new)
+        emitMessageUpdate(payload.new, payload.old)
       }
     )
     .subscribe((status) => {
@@ -191,10 +206,18 @@ function scheduleSocketReconnect() {
   }, 1500)
 }
 
-/** Re-subscribe channels after tab wake / network restore. */
-export function ensureSocketAlive(userId) {
+/** Force tear-down + resubscribe (needed on mobile PWA when WS dies silently). */
+export function forceSocketReconnect(userId) {
   const id = userId ? String(userId) : trackedUserId
   if (!id) return null
+  return initSocket(id)
+}
+
+/** Re-subscribe channels after tab wake / network restore. */
+export function ensureSocketAlive(userId, { force = false } = {}) {
+  const id = userId ? String(userId) : trackedUserId
+  if (!id) return null
+  if (force) return initSocket(id)
   const msgState = messageChannel?.state
   const presenceState = presenceChannel?.state
   const healthy =
@@ -307,6 +330,7 @@ export function getSocket() {
 export default {
   initSocket,
   ensureSocketAlive,
+  forceSocketReconnect,
   disconnectSocket,
   getSocket,
   onChatEvent,

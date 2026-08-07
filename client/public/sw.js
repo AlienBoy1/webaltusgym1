@@ -1,13 +1,44 @@
-const CACHE_NAME = 'qyntra-gym-runtime-v2'
+const CACHE_NAME = 'qyntra-gym-runtime-v3'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/favicon.svg',
-  '/version.json',
   '/badge-96x96.png',
   '/pwa-192x192.png'
 ]
+
+function networkFirst(request, { fallbackUrl = null, jsonFallback = null } = {}) {
+  return fetch(request)
+    .then((response) => {
+      if (response && response.ok) {
+        const clone = response.clone()
+        caches.open(CACHE_NAME).then((cache) => {
+          try {
+            cache.put(request, clone)
+          } catch {
+            /* ignore */
+          }
+        })
+      }
+      return response
+    })
+    .catch(async () => {
+      const cached = await caches.match(request)
+      if (cached) return cached
+      if (fallbackUrl) {
+        const byPath = await caches.match(fallbackUrl)
+        if (byPath) return byPath
+      }
+      if (jsonFallback != null) {
+        return new Response(JSON.stringify(jsonFallback), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+        })
+      }
+      return new Response('', { status: 503, statusText: 'Service Unavailable' })
+    })
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -38,8 +69,29 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith(self.location.origin)) return
   if (event.request.method !== 'GET') return
 
-  if (event.request.url.includes('/api/') || event.request.url.includes('/version.json')) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)))
+  const url = new URL(event.request.url)
+
+  // Always network version.json; never reject FetchEvent with undefined
+  if (url.pathname === '/version.json' || url.pathname.endsWith('/version.json')) {
+    event.respondWith(
+      networkFirst(event.request, {
+        fallbackUrl: '/version.json',
+        jsonFallback: { version: 'offline' }
+      })
+    )
+    return
+  }
+
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(event.request).catch(
+        () =>
+          new Response(JSON.stringify({ message: 'Offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          })
+      )
+    )
     return
   }
 
@@ -47,7 +99,7 @@ self.addEventListener('fetch', (event) => {
   const isDocument =
     event.request.mode === 'navigate' ||
     accept.includes('text/html') ||
-    /\.(js|css|html)(\?|$)/.test(event.request.url)
+    /\.(js|css|html)(\?|$)/.test(url.pathname)
 
   if (isDocument) {
     event.respondWith(
@@ -59,7 +111,13 @@ self.addEventListener('fetch', (event) => {
           }
           return response
         })
-        .catch(() => caches.match(event.request).then((r) => r || caches.match('/index.html')))
+        .catch(async () => {
+          const cached = await caches.match(event.request)
+          if (cached) return cached
+          const index = await caches.match('/index.html')
+          if (index) return index
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' })
+        })
     )
     return
   }
@@ -84,7 +142,13 @@ self.addEventListener('fetch', (event) => {
           }
           return response
         })
-        .catch(() => caches.match(event.request).then((cached) => cached || new Response('Service unavailable', { status: 503, statusText: 'Service Unavailable' })))
+        .catch(
+          () =>
+            new Response('Service unavailable', {
+              status: 503,
+              statusText: 'Service Unavailable'
+            })
+        )
     })
   )
 })
@@ -105,7 +169,6 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || 'Tienes una nueva notificación',
     icon: data.icon || '/pwa-192x192.png',
-    // Android status bar requires a monochrome alpha mask (not a full-color icon)
     badge: data.badge || '/badge-96x96.png',
     vibrate: [100, 50, 100],
     tag: data.tag || data.data?.tag || undefined,

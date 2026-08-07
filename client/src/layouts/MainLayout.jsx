@@ -11,7 +11,7 @@ import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
-import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification } from '../utils/socket'
+import { initSocket, disconnectSocket, forceSocketReconnect, onChatEvent, showNotification } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -197,7 +197,8 @@ export default function MainLayout() {
             /* ignore */
           }
         }
-        ensureSocketAlive(id)
+        // Force-resubscribe: mobile PWAs often keep state "joined" after the socket dies
+        forceSocketReconnect(id)
         subscribeRealtime(id)
         fetchUnreadCount()
         if (Notification.permission === 'granted') {
@@ -217,13 +218,25 @@ export default function MainLayout() {
       if (document.visibilityState === 'visible') revive()
     }
     const onOnline = () => revive()
+    const onPageShow = (e) => {
+      if (e.persisted || document.visibilityState === 'visible') revive()
+    }
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('online', onOnline)
     window.addEventListener('focus', onVis)
+    window.addEventListener('pageshow', onPageShow)
+
+    // Heartbeat while foreground — silent WS death is common in installed PWAs
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === 'visible') revive()
+    }, 40000)
+
     return () => {
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('online', onOnline)
       window.removeEventListener('focus', onVis)
+      window.removeEventListener('pageshow', onPageShow)
+      window.clearInterval(heartbeat)
     }
   }, [user?.id, user?._id, fetchUnreadCount, subscribeRealtime])
 

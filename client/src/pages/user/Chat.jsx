@@ -549,19 +549,22 @@ export default function Chat() {
     const handleMessageStatus = (data) => {
       if (!data?.id) return
       const myId = user?._id || user?.id
+      const targetId = String(data.id)
       setMessages((prev) =>
         prev.map((m) => {
-          if (m.id !== data.id) return m
+          if (String(m.id) !== targetId) return m
+          const delivered = data.delivered !== undefined ? data.delivered : m.delivered
+          const read = data.read !== undefined ? data.read : m.read
           const next = {
             ...m,
-            delivered: data.delivered ?? m.delivered,
-            read: data.read ?? m.read,
-            status: data.status || (data.read ? 'read' : data.delivered ? 'delivered' : m.status || 'sent')
+            delivered,
+            read,
+            status: read ? 'read' : delivered ? 'delivered' : data.status || m.status || 'sent'
           }
-          if (data.contentUpdated) {
-            next.text = data.text ?? m.text
-            next.attachment = data.attachment !== undefined ? data.attachment : m.attachment
-            next.reply = data.reply !== undefined ? data.reply : m.reply
+          if (data.contentUpdated || data.contentSync) {
+            if (data.text !== undefined) next.text = data.text
+            if (data.attachment !== undefined) next.attachment = data.attachment
+            if (data.reply !== undefined) next.reply = data.reply
             if (data.reactions !== undefined) {
               next.reactions = data.reactions
               const summarized = summarizeMessageReactions(data.reactions, myId)
@@ -643,6 +646,53 @@ export default function Chat() {
     if (selectedChat?.otherId) {
       fetchMessages(selectedChat.otherId)
     }
+  }, [selectedChat?.otherId])
+
+  // Safety net while a thread is open: merge server messages if realtime hiccups (common on PWA)
+  useEffect(() => {
+    const otherId = selectedChat?.otherId
+    if (!otherId) return undefined
+    const poll = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const { data } = await api.get(`/chat/messages/${otherId}`, { timeout: 10000 })
+        if (!Array.isArray(data)) return
+        setMessages((prev) => {
+          const temps = prev.filter((m) => String(m.id).startsWith('temp-'))
+          const prevById = new Map(prev.map((m) => [String(m.id), m]))
+          const merged = data.map((server) => {
+            const local = prevById.get(String(server.id))
+            if (!local) return server
+            return {
+              ...local,
+              ...server,
+              // Prefer higher receipt status from either side
+              delivered: Boolean(server.delivered || local.delivered),
+              read: Boolean(server.read || local.read),
+              status:
+                server.read || local.read
+                  ? 'read'
+                  : server.delivered || local.delivered
+                    ? 'delivered'
+                    : server.status || local.status || 'sent'
+            }
+          })
+          return temps.length ? [...merged, ...temps] : merged
+        })
+      } catch {
+        /* ignore */
+      }
+    }, 7000)
+    return () => window.clearInterval(poll)
+  }, [selectedChat?.otherId])
+
+  // Inbox preview safety net (typing / last message) when list is visible
+  useEffect(() => {
+    if (selectedChat?.otherId) return undefined
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === 'visible') fetchConversations()
+    }, 10000)
+    return () => window.clearInterval(poll)
   }, [selectedChat?.otherId])
 
   // Fill missing conversation avatars after inbox loads
@@ -2831,7 +2881,8 @@ export default function Chat() {
           typeof document !== 'undefined' &&
           createPortal(
             <motion.div
-              className="fixed inset-0 z-[135] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4"
+              key={`msg-action-${msgAction.msg.id}`}
+              className="fixed inset-0 z-[160] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
