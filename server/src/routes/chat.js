@@ -2,7 +2,7 @@
 import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyNewMessage } from '../services/notificationService.js'
-import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment, CHAT_REACTIONS } from '../utils/chatMessage.js'
+import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment, DELETE_FOR_EVERYONE_MS } from '../utils/chatMessage.js'
 import { broadcastChatReceipt } from '../utils/broadcastReceipt.js'
 
 /** Mark peer→me messages as delivered/read. Falls back if `delivered` column missing. */
@@ -205,7 +205,11 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
     if (error) throw error
 
-    const visible = (messages || []).filter((m) => isAfterClear(m, clearedAt))
+    const visible = (messages || []).filter((m) => {
+      if (!isAfterClear(m, clearedAt)) return false
+      const hidden = Array.isArray(m.hidden_for) ? m.hidden_for.map(String) : []
+      return !hidden.includes(String(myId))
+    })
 
     if (shouldMarkRead) {
       try {
@@ -607,7 +611,7 @@ router.post('/view-once/:messageId', authenticate, async (req, res) => {
   }
 })
 
-/** Toggle/set message reaction (same emoji set as Comunidad). */
+/** Toggle/set message reaction — any emoji (quick bar or + picker). */
 router.post('/react/:messageId', authenticate, async (req, res) => {
   try {
     const messageId = req.params.messageId
@@ -616,9 +620,9 @@ router.post('/react/:messageId', authenticate, async (req, res) => {
     const emoji =
       rawEmoji === null || rawEmoji === undefined || rawEmoji === ''
         ? null
-        : String(rawEmoji).trim().slice(0, 16)
+        : String(rawEmoji).trim().slice(0, 64)
 
-    if (emoji && !CHAT_REACTIONS.includes(emoji)) {
+    if (emoji && emoji.length > 64) {
       return res.status(400).json({ message: 'Reacción no válida' })
     }
 
@@ -637,6 +641,10 @@ router.post('/react/:messageId', authenticate, async (req, res) => {
     }
 
     const decoded = decodeChatContent(message.content)
+    if (decoded.deleted) {
+      return res.status(410).json({ message: 'Este mensaje fue eliminado' })
+    }
+
     const nextReactions = { ...(decoded.reactions || {}) }
     if (!emoji || nextReactions[userId] === emoji) {
       delete nextReactions[userId]
@@ -659,6 +667,100 @@ router.post('/react/:messageId', authenticate, async (req, res) => {
       .single()
 
     if (updateError) throw updateError
+
+    res.json(formatChatMessage(updated, userId))
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+/** Hide message only for the current user. */
+router.post('/delete-for-me/:messageId', authenticate, async (req, res) => {
+  try {
+    const messageId = req.params.messageId
+    const userId = req.user.id
+
+    const { data: message, error } = await supabaseAdmin
+      .from('messages')
+      .select('id, from_user_id, to_user_id, hidden_for')
+      .eq('id', messageId)
+      .single()
+
+    if (error || !message) {
+      return res.status(404).json({ message: 'Mensaje no encontrado' })
+    }
+    if (message.from_user_id !== userId && message.to_user_id !== userId) {
+      return res.status(403).json({ message: 'No eres participante de este chat' })
+    }
+
+    const prev = Array.isArray(message.hidden_for) ? message.hidden_for.map(String) : []
+    const next = [...new Set([...prev, String(userId)])]
+
+    const { error: updErr } = await supabaseAdmin
+      .from('messages')
+      .update({ hidden_for: next })
+      .eq('id', messageId)
+
+    if (updErr) {
+      // Column may not exist yet — soft-fail with clear message
+      console.error('delete-for-me:', updErr.message)
+      return res.status(503).json({
+        message: 'Aplica la migración messages.hidden_for en Supabase',
+        error: updErr.message
+      })
+    }
+
+    res.json({ ok: true, messageId })
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+/** Soft-delete for everyone (sender only, within 1 hour). */
+router.post('/delete-for-everyone/:messageId', authenticate, async (req, res) => {
+  try {
+    const messageId = req.params.messageId
+    const userId = req.user.id
+
+    const { data: message, error } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('id', messageId)
+      .single()
+
+    if (error || !message) {
+      return res.status(404).json({ message: 'Mensaje no encontrado' })
+    }
+    if (String(message.from_user_id) !== String(userId)) {
+      return res.status(403).json({ message: 'Solo puedes eliminar tus mensajes para todos' })
+    }
+
+    const age = Date.now() - new Date(message.created_at).getTime()
+    if (age > DELETE_FOR_EVERYONE_MS) {
+      return res.status(400).json({
+        message: 'Solo puedes eliminar para todos durante la primera hora'
+      })
+    }
+
+    const stored = encodeChatContent({ deleted: true })
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('messages')
+      .update({ content: stored })
+      .eq('id', messageId)
+      .select('*')
+      .single()
+
+    if (updateError) throw updateError
+
+    const peerId =
+      String(message.to_user_id) === String(userId) ? message.from_user_id : message.to_user_id
+    broadcastChatReceipt(peerId, {
+      from: userId,
+      delivered: true,
+      read: true,
+      messageIds: [messageId],
+      deleted: true
+    }).catch(() => {})
 
     res.json(formatChatMessage(updated, userId))
   } catch (error) {

@@ -1,6 +1,7 @@
 const MSG_PREFIX = '__QMSG__'
 
-function previewLabel(text, attachment) {
+function previewLabel(text, attachment, deleted = false) {
+  if (deleted) return '🚫 Se eliminó este mensaje'
   if (attachment?.viewOnce) {
     if (attachment.opened || !attachment.url) {
       return attachment.type === 'audio' ? '🎤 Audio abierto' : '📷 Foto abierta'
@@ -30,7 +31,7 @@ function normalizeReactions(raw) {
   const out = {}
   for (const [uid, emoji] of Object.entries(raw)) {
     if (!uid || typeof emoji !== 'string' || !emoji.trim()) continue
-    out[String(uid)] = emoji.trim().slice(0, 16)
+    out[String(uid)] = emoji.trim().slice(0, 64)
   }
   return Object.keys(out).length ? out : null
 }
@@ -54,6 +55,16 @@ export function decodeChatContent(raw) {
   if (typeof raw === 'string' && raw.startsWith(MSG_PREFIX)) {
     try {
       const parsed = JSON.parse(raw.slice(MSG_PREFIX.length))
+      if (parsed.deleted) {
+        return {
+          text: '',
+          attachment: null,
+          reply: null,
+          reactions: null,
+          deleted: true,
+          preview: previewLabel('', null, true)
+        }
+      }
       const text = parsed.text || ''
       const attachment = parsed.attachment || null
       const reply = parsed.reply || null
@@ -63,17 +74,25 @@ export function decodeChatContent(raw) {
         attachment,
         reply,
         reactions,
-        preview: previewLabel(text, attachment)
+        deleted: false,
+        preview: previewLabel(text, attachment, false)
       }
     } catch {
       /* fallthrough */
     }
   }
-  return { text: raw || '', attachment: null, reply: null, reactions: null, preview: raw || '' }
+  return {
+    text: raw || '',
+    attachment: null,
+    reply: null,
+    reactions: null,
+    deleted: false,
+    preview: raw || ''
+  }
 }
 
 export function replySnippetFromMessage(msg) {
-  if (!msg) return ''
+  if (!msg || msg.deleted) return 'Mensaje eliminado'
   if (msg.text?.trim()) {
     const t = msg.text.trim()
     return t.length > 120 ? `${t.slice(0, 117)}…` : t
@@ -90,7 +109,7 @@ export function replySnippetFromMessage(msg) {
 }
 
 export function buildReplyPayload(msg, { myName = 'Tú', otherName = 'Usuario' } = {}) {
-  if (!msg?.id || String(msg.id).startsWith('temp-')) return null
+  if (!msg?.id || String(msg.id).startsWith('temp-') || msg.deleted) return null
   const isMe = msg.sender === 'me'
   return {
     id: msg.id,

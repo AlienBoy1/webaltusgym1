@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
 import { FiCornerUpLeft } from 'react-icons/fi'
 
-const THRESHOLD = 64
+const THRESHOLD = 56
 const MAX_DRAG = 96
-const MOVE_TOLERANCE = 14
-const SWIPE_CANCEL_LONG = 22
+const MOVE_TOLERANCE = 12
+const SWIPE_CANCEL_LONG = 18
 
 /**
  * Swipe-to-reply + long-press (reaction / actions sheet).
@@ -28,9 +28,19 @@ export default function SwipeToReply({ children, enabled = true, onReply, onLong
     }
   }
 
+  const shouldIgnoreTarget = (target) => {
+    if (!target?.closest) return false
+    // Allow gestures on the bubble; only skip real controls / media chrome
+    return Boolean(
+      target.closest(
+        'a, input, textarea, select, audio, video, [data-no-swipe], [contenteditable="true"]'
+      )
+    )
+  }
+
   const onPointerDown = (e) => {
     if (!enabled || e.button === 2) return
-    if (e.target?.closest?.('button, a, input, textarea, audio, video, [data-no-swipe]')) return
+    if (shouldIgnoreTarget(e.target)) return
 
     startX.current = e.clientX
     startY.current = e.clientY
@@ -52,7 +62,7 @@ export default function SwipeToReply({ children, enabled = true, onReply, onLong
         /* ignore */
       }
       onLongPress?.()
-    }, 380)
+    }, 420)
 
     try {
       e.currentTarget.setPointerCapture?.(e.pointerId)
@@ -75,17 +85,20 @@ export default function SwipeToReply({ children, enabled = true, onReply, onLong
         clearLong()
         return
       }
-      // Horizontal intent: keep long-press until real swipe distance
       if (adx >= SWIPE_CANCEL_LONG) clearLong()
     }
 
     if (locked.current !== 'h') return
     if (adx >= SWIPE_CANCEL_LONG) clearLong()
 
+    // Prefer swipe-right (WhatsApp-like); still allow left
     const raw = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dx))
     offsetRef.current = raw
     setOffset(raw)
     setReplyReady(Math.abs(raw) >= THRESHOLD)
+
+    // Avoid the list stealing the gesture once we know it's horizontal
+    if (e.cancelable) e.preventDefault()
   }
 
   const finish = (e) => {
@@ -108,18 +121,27 @@ export default function SwipeToReply({ children, enabled = true, onReply, onLong
 
   return (
     <div
-      className="relative touch-manipulation select-none"
-      style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+      className="relative select-none"
+      style={{
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        // Vertical scroll OK; horizontal handled here for reply swipe
+        touchAction: 'pan-y'
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={finish}
       onPointerCancel={finish}
       onContextMenu={(e) => {
-        // Long-press actions replace the native menu on message bubbles
+        // Desktop / long-press: open message actions instead of browser menu
         e.preventDefault()
-        if (!enabled || longFired.current) return
+        if (!enabled) return
         longFired.current = true
         clearLong()
+        dragging.current = false
+        offsetRef.current = 0
+        setOffset(0)
+        setReplyReady(false)
         onLongPress?.()
       }}
     >

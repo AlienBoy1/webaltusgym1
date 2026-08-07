@@ -1196,6 +1196,20 @@ export default function Social() {
                       ) : (
                         <PostCommentsList
                           comments={postComments}
+                          onCommentsChange={(comments) => {
+                            setPosts((prev) =>
+                              prev.map((p) =>
+                                (p._id || p.id) === (post._id || post.id)
+                                  ? {
+                                      ...p,
+                                      comments,
+                                      commentsLoaded: true,
+                                      commentsCount: countComments(comments)
+                                    }
+                                  : p
+                              )
+                            )
+                          }}
                           onReply={(c) => {
                             setReplyToByPost((prev) => ({ ...prev, [post._id]: c }))
                             const u = typeof c.user === 'object' ? c.user : null

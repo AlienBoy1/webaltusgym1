@@ -33,6 +33,8 @@ import ProtectedMedia from './ProtectedMedia'
 import { compressImageFile } from '../utils/compressImage'
 import UserNoteBadge from './UserNoteBadge'
 import { saveStoryMedia, shareStoryToNetwork } from '../utils/shareStoryMedia'
+import TutorialHelpButton from './TutorialHelpButton'
+import { TUTORIAL_IDS } from '../tutorials/registry'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -691,6 +693,7 @@ export default function StoriesRail({
   }
 
   const openShare = async () => {
+    if (!isOwnStory) return
     setMenuOpen(false)
     setShareOpen(true)
     setShareQuery('')
@@ -1235,19 +1238,29 @@ export default function StoriesRail({
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen((v) => !v)}
-                  className="shrink-0 rounded-full p-2 text-white drop-shadow"
-                  aria-label="Más opciones"
-                >
-                  <FiMoreVertical size={20} />
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <TutorialHelpButton
+                    tutorialId={TUTORIAL_IDS.STORIES}
+                    size="sm"
+                    className="!border-white/25 !bg-black/40 !text-white shadow-md hover:!border-white/45 hover:!bg-black/55 hover:!text-white"
+                    message="Tutorial de historias: crear, ver, reaccionar, responder, favoritos y compartir."
+                  />
+                  {isOwnStory ? (
+                    <button
+                      type="button"
+                      onClick={() => setMenuOpen((v) => !v)}
+                      className="shrink-0 rounded-full p-2 text-white drop-shadow"
+                      aria-label="Más opciones"
+                    >
+                      <FiMoreVertical size={20} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
-              {/* Story options — follows app light/dark theme */}
+              {/* Story options — own stories only (others may only react / reply) */}
               <AnimatePresence>
-                {menuOpen && (
+                {menuOpen && isOwnStory && (
                   <>
                     <button
                       type="button"
@@ -1299,27 +1312,23 @@ export default function StoriesRail({
                       >
                         <FaInstagram className="text-[#E4405F]" /> Compartir en Instagram
                       </button>
-                      {isOwnStory && (
-                        <button
-                          type="button"
-                          onClick={openFavorites}
-                          className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm transition-colors hover:bg-[color:var(--bg-muted)]"
-                          style={{ color: 'var(--text-primary)', borderColor: 'var(--border-subtle)' }}
-                        >
-                          <FiStar className="text-accent-yellow" /> Agregar a favoritos
-                        </button>
-                      )}
-                      {isOwnStory && (
-                        <button
-                          type="button"
-                          disabled={deleting}
-                          onClick={deleteStory}
-                          className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm text-red-500 transition-colors hover:bg-[color:var(--bg-muted)] disabled:opacity-50"
-                          style={{ borderColor: 'var(--border-subtle)' }}
-                        >
-                          <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={openFavorites}
+                        className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm transition-colors hover:bg-[color:var(--bg-muted)]"
+                        style={{ color: 'var(--text-primary)', borderColor: 'var(--border-subtle)' }}
+                      >
+                        <FiStar className="text-accent-yellow" /> Agregar a favoritos
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={deleteStory}
+                        className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm text-red-500 transition-colors hover:bg-[color:var(--bg-muted)] disabled:opacity-50"
+                        style={{ borderColor: 'var(--border-subtle)' }}
+                      >
+                        <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
+                      </button>
                     </motion.div>
                   </>
                 )}
@@ -1507,9 +1516,9 @@ export default function StoriesRail({
               </div>
             </div>
 
-            {/* Share sheet */}
+            {/* Share sheet — own stories only */}
             <AnimatePresence>
-              {shareOpen && (
+              {shareOpen && isOwnStory && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

@@ -355,6 +355,11 @@ export default function PostImageViewer({
                   <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                     <PostCommentsList
                       comments={post.comments || []}
+                      onCommentsChange={(comments) => {
+                        const next = { ...post, comments }
+                        setPost(next)
+                        onPostUpdated?.(next)
+                      }}
                       onReply={(c) => {
                         setReplyTo(c)
                         const u = typeof c.user === 'object' ? c.user : null

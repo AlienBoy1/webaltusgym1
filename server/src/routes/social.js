@@ -24,9 +24,9 @@ function normalizeReactionEmoji(raw) {
   return null
 }
 
-function mapComment(row, userMap = {}) {
+function mapComment(row, userMap = {}, reactionMeta = null) {
   const u = userMap[row.user_id]
-  return {
+  const base = {
     _id: row.id,
     id: row.id,
     parentId: row.parent_id || null,
@@ -35,8 +35,77 @@ function mapComment(row, userMap = {}) {
       : row.user_id,
     content: row.content,
     createdAt: row.created_at,
-    replies: []
+    replies: [],
+    myReaction: null,
+    reactionSummary: [],
+    likesCount: 0
   }
+  if (reactionMeta) {
+    base.myReaction = reactionMeta.myReaction || null
+    base.reactionSummary = reactionMeta.reactionSummary || []
+    base.likesCount = Number(reactionMeta.likesCount) || 0
+  }
+  return base
+}
+
+/** Load reaction aggregates for a list of comment ids. */
+async function getCommentReactionMeta(commentIds = [], viewerId = null) {
+  const ids = [...new Set((commentIds || []).filter(Boolean).map(String))]
+  const empty = {}
+  if (!ids.length) return empty
+
+  const { data: likes, error } = await supabaseAdmin
+    .from('comment_likes')
+    .select('comment_id, user_id, emoji')
+    .in('comment_id', ids)
+
+  if (error) {
+    // Table may not exist yet
+    console.warn('comment_likes:', error.message)
+    return empty
+  }
+
+  const byComment = {}
+  for (const id of ids) {
+    byComment[id] = { myReaction: null, reactionSummary: [], likesCount: 0, counts: {} }
+  }
+  for (const row of likes || []) {
+    const cid = String(row.comment_id)
+    if (!byComment[cid]) continue
+    const emoji = normalizeReactionEmoji(row.emoji) || '❤️'
+    byComment[cid].counts[emoji] = (byComment[cid].counts[emoji] || 0) + 1
+    byComment[cid].likesCount += 1
+    if (viewerId && String(row.user_id) === String(viewerId)) {
+      byComment[cid].myReaction = emoji
+    }
+  }
+  for (const cid of Object.keys(byComment)) {
+    const counts = byComment[cid].counts
+    byComment[cid].reactionSummary = Object.entries(counts)
+      .map(([emoji, count]) => ({ emoji, count }))
+      .sort((a, b) => b.count - a.count)
+    delete byComment[cid].counts
+  }
+  return byComment
+}
+
+async function mapCommentsWithReactions(rows = [], userMap = {}, viewerId = null) {
+  const flat = (rows || []).map((c) => mapComment(c, userMap))
+  const meta = await getCommentReactionMeta(
+    flat.map((c) => c._id || c.id),
+    viewerId
+  )
+  return flat.map((c) => {
+    const id = String(c._id || c.id)
+    const m = meta[id]
+    if (!m) return c
+    return {
+      ...c,
+      myReaction: m.myReaction,
+      reactionSummary: m.reactionSummary,
+      likesCount: m.likesCount
+    }
+  })
 }
 
 /** Nest flat comments into Facebook-style threads (root + replies). */
@@ -355,9 +424,14 @@ async function enrichPosts(posts, viewerId = null, options = {}) {
   }
 
   const commentsByPost = {}
-  for (const c of comments || []) {
-    if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = []
-    commentsByPost[c.post_id].push(mapComment(c, userMap))
+  const commentsWithReactions = await mapCommentsWithReactions(comments || [], userMap, viewerId)
+  // Preserve post_id from original rows (mapComment drops it)
+  const postIdByCommentId = Object.fromEntries((comments || []).map((c) => [String(c.id), c.post_id]))
+  for (const c of commentsWithReactions) {
+    const pid = postIdByCommentId[String(c._id || c.id)]
+    if (!pid) continue
+    if (!commentsByPost[pid]) commentsByPost[pid] = []
+    commentsByPost[pid].push(c)
   }
   for (const pid of Object.keys(commentsByPost)) {
     commentsByPost[pid] = nestComments(commentsByPost[pid])
@@ -1209,9 +1283,109 @@ router.post('/:id/comment', authenticate, async (req, res) => {
       .order('created_at', { ascending: true })
 
     const userMap = await getProfilesMap((comments || []).map((c) => c.user_id))
-    res.json(nestComments((comments || []).map((c) => mapComment(c, userMap))))
+    const mapped = await mapCommentsWithReactions(comments || [], userMap, req.user.id)
+    res.json(nestComments(mapped))
   } catch (error) {
     res.status(500).json({ message: 'Error al comentar', error: error.message })
+  }
+})
+
+// React to a comment (same emoji set as posts)
+router.post('/comments/:commentId/like', authenticate, async (req, res) => {
+  try {
+    const emojiRaw = req.body?.emoji
+    let emoji
+    if (emojiRaw === null) {
+      emoji = null
+    } else if (emojiRaw === undefined || emojiRaw === '') {
+      emoji = '❤️'
+    } else {
+      emoji = normalizeReactionEmoji(emojiRaw)
+      if (!emoji) {
+        return res.status(400).json({ message: 'Reacción no válida' })
+      }
+    }
+
+    const { data: comment } = await supabaseAdmin
+      .from('post_comments')
+      .select('id')
+      .eq('id', req.params.commentId)
+      .maybeSingle()
+
+    if (!comment) {
+      return res.status(404).json({ message: 'Comentario no encontrado' })
+    }
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from('comment_likes')
+      .select('comment_id, user_id, emoji')
+      .eq('comment_id', comment.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    if (existingErr) {
+      if (/comment_likes|does not exist|42P01/i.test(existingErr.message || '')) {
+        return res.status(503).json({
+          message:
+            'Falta la tabla comment_likes. Ejecuta supabase/migrations/APPLY_NOW_comment_likes.sql.',
+          code: 'MISSING_COMMENT_LIKES'
+        })
+      }
+      throw existingErr
+    }
+
+    let liked = false
+    let myReaction = null
+
+    if (emoji === null) {
+      if (existing) {
+        await supabaseAdmin
+          .from('comment_likes')
+          .delete()
+          .eq('comment_id', comment.id)
+          .eq('user_id', req.user.id)
+      }
+      liked = false
+      myReaction = null
+    } else if (existing && normalizeReactionEmoji(existing.emoji || '❤️') === emoji) {
+      await supabaseAdmin
+        .from('comment_likes')
+        .delete()
+        .eq('comment_id', comment.id)
+        .eq('user_id', req.user.id)
+      liked = false
+      myReaction = null
+    } else if (existing) {
+      const { error } = await supabaseAdmin
+        .from('comment_likes')
+        .update({ emoji })
+        .eq('comment_id', comment.id)
+        .eq('user_id', req.user.id)
+      if (error) throw error
+      liked = true
+      myReaction = emoji
+    } else {
+      const { error } = await supabaseAdmin.from('comment_likes').insert({
+        comment_id: comment.id,
+        user_id: req.user.id,
+        emoji
+      })
+      if (error) throw error
+      liked = true
+      myReaction = emoji
+    }
+
+    const meta = await getCommentReactionMeta([comment.id], req.user.id)
+    const m = meta[String(comment.id)] || { reactionSummary: [], likesCount: 0, myReaction: null }
+
+    res.json({
+      liked,
+      likesCount: m.likesCount || 0,
+      myReaction: liked ? myReaction || m.myReaction : null,
+      reactionSummary: m.reactionSummary || []
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al reaccionar al comentario', error: error.message })
   }
 })
 

@@ -456,6 +456,11 @@ export default function PostDetailSheet({
                   </h3>
                   <PostCommentsList
                     comments={post.comments || []}
+                    onCommentsChange={(comments) => {
+                      const next = { ...post, comments }
+                      setPost(next)
+                      onPostUpdated?.(next)
+                    }}
                     onReply={(c) => {
                       setReplyTo(c)
                       const u = typeof c.user === 'object' ? c.user : null

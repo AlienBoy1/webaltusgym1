@@ -65,7 +65,14 @@ function emitMessageUpdate(row, oldRow = null) {
     text: decoded.text,
     attachment: decoded.attachment,
     reply: decoded.reply || null,
-    reactions: decoded.reactions || null
+    reactions: decoded.reactions || null,
+    deleted: Boolean(decoded.deleted)
+  }
+  if (decoded.deleted) {
+    payload.attachment = null
+    payload.reply = null
+    payload.reactions = null
+    payload.text = ''
   }
   if (delivered !== undefined) payload.delivered = delivered
   if (read !== undefined) payload.read = read

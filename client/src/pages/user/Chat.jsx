@@ -49,12 +49,12 @@ import { ViewOnceAttachmentBubble } from '../../components/ViewOnceMedia'
 import SwipeToReply from '../../components/SwipeToReply'
 import { buildReplyPayload } from '../../utils/chatMessage'
 import { isEmojiOnlyText, emojiOnlySizeClass, summarizeMessageReactions } from '../../utils/chatEmoji'
-import { POST_REACTIONS } from '../../components/PostReactionButton'
 import { useChatStore } from '../../store/chatStore'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { addChatShortcut } from '../../utils/chatShortcuts'
 import { compressImageFile } from '../../utils/compressImage'
+import ChatMessageActionOverlay from '../../components/ChatMessageActionOverlay'
 
 const MESSAGING_DISABLED_COPY =
   'Este usuario tiene la mensajería desactivada por ahora. Podrás escribirle cuando la active; inténtalo de nuevo más tarde.'
@@ -149,19 +149,65 @@ function MessageTicks({ status, isMe, muted = false }) {
   if (!status) return null
   const read = status === 'read'
   const delivered = status === 'delivered' || read
+  const label = read ? 'Leído' : delivered ? 'Entregado' : 'Enviado'
+
+  // Premium + readable on any Apariencia primary:
+  // white glyph + dark outline, optional blue accent bar when read
+  // (sky-blue checks vanish on cyan/teal bubbles).
+  const fill = 'rgba(255,255,255,0.98)'
+  const outline = 'rgba(0,0,0,0.78)'
+
+  const Check = ({ x = 0 }) => (
+    <g transform={`translate(${x} 0)`}>
+      <path
+        d="M2.8 7.6 6.1 10.8 12.4 3.4"
+        fill="none"
+        stroke={outline}
+        strokeWidth="3.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.8 7.6 6.1 10.8 12.4 3.4"
+        fill="none"
+        stroke={fill}
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </g>
+  )
+
   return (
     <span
-      className="ml-1 inline-flex items-end text-[11px] leading-none tracking-tighter"
+      role="img"
+      aria-label={label}
+      title={label}
+      className="ml-1.5 inline-flex flex-col items-center justify-center rounded-full px-[6px] py-[3px] align-middle"
       style={{
-        color: read
-          ? '#53bdeb'
-          : muted || !isMe
-            ? 'var(--text-muted)'
-            : 'rgba(255,255,255,0.72)'
+        background: muted ? 'rgba(15, 23, 42, 0.32)' : 'rgba(15, 23, 42, 0.42)',
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.16), 0 1px 2px rgba(0,0,0,0.22)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)'
       }}
-      title={read ? 'Leído' : delivered ? 'Entregado' : 'Enviado'}
     >
-      {delivered ? '✓✓' : '✓'}
+      <svg
+        width={delivered ? 17 : 11}
+        height={11}
+        viewBox={delivered ? '0 0 21 13' : '0 0 14 13'}
+        className="block overflow-visible"
+        aria-hidden
+      >
+        <Check x={0} />
+        {delivered ? <Check x={6.5} /> : null}
+      </svg>
+      {read ? (
+        <span
+          className="mt-[2px] block h-[2px] w-full max-w-[14px] rounded-full"
+          style={{ background: '#38bdf8', boxShadow: '0 0 0 1px rgba(0,0,0,0.25)' }}
+          aria-hidden
+        />
+      ) : null}
     </span>
   )
 }
@@ -173,6 +219,7 @@ function PostAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   return (
     <button
       type="button"
+      data-no-swipe
       onClick={(e) => {
         e.stopPropagation()
         onOpen?.(attachment)
@@ -238,6 +285,7 @@ function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   return (
     <button
       type="button"
+      data-no-swipe
       onClick={(e) => {
         e.stopPropagation()
         onOpen?.(attachment)
@@ -447,7 +495,8 @@ export default function Chat() {
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [replyTo, setReplyTo] = useState(null)
   const replyToRef = useRef(null)
-  const [msgAction, setMsgAction] = useState(null) // { msg, x, y } for long-press
+  const [msgAction, setMsgAction] = useState(null) // { msg, rect }
+  const [msgActionBusy, setMsgActionBusy] = useState(false)
   const messagesEndRef = useRef(null)
   const messagesScrollRef = useRef(null)
   const inputRef = useRef(null)
@@ -618,14 +667,24 @@ export default function Chat() {
             ...receipt
           }
           if (data.contentUpdated || data.contentSync) {
-            if (data.text !== undefined) next.text = data.text
-            if (data.attachment !== undefined) next.attachment = data.attachment
-            if (data.reply !== undefined) next.reply = data.reply
-            if (data.reactions !== undefined) {
-              next.reactions = data.reactions
-              const summarized = summarizeMessageReactions(data.reactions, myId)
-              next.myReaction = summarized.myReaction
-              next.reactionSummary = summarized.reactionSummary
+            if (data.deleted) {
+              next.deleted = true
+              next.text = ''
+              next.attachment = null
+              next.reply = null
+              next.reactions = null
+              next.myReaction = null
+              next.reactionSummary = []
+            } else {
+              if (data.text !== undefined) next.text = data.text
+              if (data.attachment !== undefined) next.attachment = data.attachment
+              if (data.reply !== undefined) next.reply = data.reply
+              if (data.reactions !== undefined) {
+                next.reactions = data.reactions
+                const summarized = summarizeMessageReactions(data.reactions, myId)
+                next.myReaction = summarized.myReaction
+                next.reactionSummary = summarized.reactionSummary
+              }
             }
           }
           return next
@@ -1096,6 +1155,25 @@ export default function Chat() {
     window.setTimeout(() => inputRef.current?.focus(), 50)
   }
 
+  const openMessageActions = (msg) => {
+    if (!msg?.id || String(msg.id).startsWith('temp-')) {
+      toast.error('Espera a que se envíe el mensaje')
+      return
+    }
+    const el = document.querySelector(`[data-msg-id="${CSS.escape(String(msg.id))}"]`)
+    const rect = el?.getBoundingClientRect?.()
+      ? {
+          top: el.getBoundingClientRect().top,
+          bottom: el.getBoundingClientRect().bottom,
+          left: el.getBoundingClientRect().left,
+          right: el.getBoundingClientRect().right,
+          width: el.getBoundingClientRect().width,
+          height: el.getBoundingClientRect().height
+        }
+      : null
+    setMsgAction({ msg, rect })
+  }
+
   const applyReaction = async (msg, emoji) => {
     if (!msg?.id || String(msg.id).startsWith('temp-')) {
       toast.error('Espera a que se envíe el mensaje para reaccionar')
@@ -1129,6 +1207,79 @@ export default function Chat() {
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo reaccionar')
+    }
+  }
+
+  const deleteMessageForMe = async (msg) => {
+    if (!msg?.id) return
+    setMsgActionBusy(true)
+    try {
+      await api.post(`/chat/delete-for-me/${msg.id}`)
+      setMessages((prev) => prev.filter((m) => String(m.id) !== String(msg.id)))
+      setMsgAction(null)
+      toast.success('Mensaje eliminado para ti')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo eliminar')
+    } finally {
+      setMsgActionBusy(false)
+    }
+  }
+
+  const deleteMessageForEveryone = async (msg) => {
+    if (!msg?.id) return
+    setMsgActionBusy(true)
+    try {
+      const { data } = await api.post(`/chat/delete-for-everyone/${msg.id}`)
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(msg.id)
+            ? {
+                ...m,
+                ...(data || {}),
+                deleted: true,
+                text: '',
+                attachment: null,
+                reply: null,
+                reactions: null,
+                myReaction: null,
+                reactionSummary: []
+              }
+            : m
+        )
+      )
+      setMsgAction(null)
+      toast.success('Mensaje eliminado para todos')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo eliminar para todos')
+    } finally {
+      setMsgActionBusy(false)
+    }
+  }
+
+  const forwardMessage = async (msg, conv) => {
+    if (!msg || !conv?.otherId || msg.deleted) return
+    const content = msg.text || ''
+    const attachment = msg.attachment || null
+    if (!content.trim() && !attachment) {
+      toast.error('Nada que reenviar')
+      return
+    }
+    try {
+      await api.post('/chat/send', {
+        to: conv.otherId,
+        content,
+        attachment: attachment
+          ? {
+              ...attachment,
+              // Don't re-send opened view-once media
+              ...(attachment.viewOnce ? { viewOnce: false } : {})
+            }
+          : null
+      })
+      toast.success(`Reenviado a ${conv.name || 'contacto'}`)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo reenviar')
+      throw error
     }
   }
 
@@ -2032,6 +2183,16 @@ export default function Chat() {
                   </div>
                 </span>
               </Link>
+              <TutorialHelpButton
+                tutorialId={TUTORIAL_IDS.CHAT}
+                size="sm"
+                className={
+                  hasStyledWall
+                    ? '!border-white/20 !bg-black/35 !text-white/90 hover:!border-white/40 hover:!bg-black/50 hover:!text-white'
+                    : ''
+                }
+                message="Tutorial de mensajes: bandeja, respuestas, reacciones, adjuntos, voz y estados de lectura."
+              />
               <div className="relative shrink-0" ref={threadMenuRef}>
                 <button
                   type="button"
@@ -2129,14 +2290,20 @@ export default function Chat() {
                     >
                       <div className="w-fit max-w-[88%] sm:max-w-[72%]">
                       <SwipeToReply
-                        enabled={!voiceSession && !sending}
+                        enabled={!voiceSession && !sending && !msg.deleted}
                         onReply={() => beginReply(msg)}
-                        onLongPress={() => setMsgAction({ msg })}
+                        onLongPress={() => openMessageActions(msg)}
                       >
                         <div
                           data-msg-id={msg.id}
                           className={`relative transition-[box-shadow] ${
-                            emojiOnly
+                            msg.deleted
+                              ? `px-3.5 py-2.5 shadow-sm italic ${
+                                  isMe
+                                    ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)]/75 text-white/90'
+                                    : 'rounded-[1.15rem] rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-muted)]'
+                                }`
+                              : emojiOnly
                               ? `bg-transparent px-1 py-0.5 shadow-none ${
                                   isMe ? 'text-white' : 'text-[color:var(--text-primary)]'
                                 }`
@@ -2151,6 +2318,11 @@ export default function Chat() {
                                 }`
                           }`}
                         >
+                        {msg.deleted ? (
+                          <p className="text-[14px] leading-relaxed">Se eliminó este mensaje</p>
+                        ) : null}
+                        {!msg.deleted && (
+                          <>
                         <ReplyQuote
                           reply={msg.reply}
                           isMe={isMe}
@@ -2235,9 +2407,11 @@ export default function Chat() {
                         {!msg.text && !msg.attachment ? (
                           <p className="break-words opacity-70"> </p>
                         ) : null}
+                          </>
+                        )}
                         <p
                           className={`mt-1 flex items-center justify-end gap-0.5 text-[10px] ${
-                            emojiOnly || bareCard
+                            emojiOnly || bareCard || msg.deleted
                               ? 'text-[color:var(--text-muted)]'
                               : isMe
                                 ? 'text-white/70'
@@ -2245,7 +2419,7 @@ export default function Chat() {
                           }`}
                         >
                           {msg.time}
-                          {isMe && (
+                          {isMe && !msg.deleted && (
                             <MessageTicks
                               isMe
                               muted={emojiOnly || bareCard}
@@ -2255,7 +2429,7 @@ export default function Chat() {
                         </p>
                         </div>
                       </SwipeToReply>
-                      {reactionChips.length > 0 && (
+                      {reactionChips.length > 0 && !msg.deleted && (
                         <div
                           className={`mt-1 flex flex-wrap gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}
                         >
@@ -3038,78 +3212,17 @@ export default function Chat() {
         </div>
       )}
 
-      <AnimatePresence>
-        {msgAction?.msg &&
-          typeof document !== 'undefined' &&
-          createPortal(
-            <motion.div
-              key={`msg-action-${msgAction.msg.id}`}
-              className="fixed inset-0 z-[160] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMsgAction(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
-                className="w-full max-w-sm overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] sm:rounded-3xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
-                  <p className="text-sm font-semibold">Mensaje</p>
-                  <p className="truncate text-xs text-[color:var(--text-muted)]">
-                    {msgAction.msg.text?.trim() ||
-                      (msgAction.msg.attachment?.type === 'audio'
-                        ? 'Audio'
-                        : msgAction.msg.attachment?.type === 'image'
-                          ? 'Foto'
-                          : 'Adjunto')}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-1 px-3 py-3">
-                  {POST_REACTIONS.map((r) => {
-                    const active = msgAction.msg.myReaction === r.emoji
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        title={r.label}
-                        onClick={() => applyReaction(msgAction.msg, r.emoji)}
-                        className={`flex h-11 w-11 items-center justify-center rounded-full text-xl transition active:scale-90 ${
-                          active
-                            ? 'bg-[rgba(var(--color-primary-rgb),0.2)] ring-2 ring-[color:var(--color-primary)]'
-                            : 'hover:bg-[color:var(--bg-muted)]'
-                        }`}
-                      >
-                        {r.emoji}
-                      </button>
-                    )
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => beginReply(msgAction.msg)}
-                  className="flex w-full items-center gap-3 border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-left text-sm hover:bg-[color:var(--bg-muted)]"
-                >
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]">
-                    <FiCornerUpLeft size={18} />
-                  </span>
-                  Responder
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMsgAction(null)}
-                  className="w-full border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
-                >
-                  Cancelar
-                </button>
-              </motion.div>
-            </motion.div>,
-            document.body
-          )}
-      </AnimatePresence>
+      <ChatMessageActionOverlay
+        action={msgAction}
+        onClose={() => setMsgAction(null)}
+        onReply={beginReply}
+        onReact={applyReaction}
+        onDeleteForMe={deleteMessageForMe}
+        onDeleteForEveryone={deleteMessageForEveryone}
+        onForward={forwardMessage}
+        conversations={conversations}
+        busy={msgActionBusy}
+      />
     </div>
   )
 }

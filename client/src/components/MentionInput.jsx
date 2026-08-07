@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { Avatar } from '../utils/avatarUtils'
 
@@ -179,8 +179,9 @@ export default function MentionInput({
   )
 }
 
-/** Render plain text with @username links */
+/** Render plain text with @username in-app links (no native browser link menu). */
 export function MentionText({ text, className = '' }) {
+  const navigate = useNavigate()
   const parts = String(text || '').split(/(@[a-z0-9._]{3,20})\b/gi)
   return (
     <span className={className}>
@@ -188,14 +189,20 @@ export function MentionText({ text, className = '' }) {
         if (/^@[a-z0-9._]{3,20}$/i.test(part)) {
           const handle = part.slice(1).toLowerCase()
           return (
-            <Link
+            <button
               key={`${handle}-${i}`}
-              to={`/user/${handle}`}
-              className="font-semibold text-primary-500 hover:underline"
-              onClick={(e) => e.stopPropagation()}
+              type="button"
+              className="inline font-semibold text-primary-500 hover:underline bg-transparent border-0 p-0 m-0 cursor-pointer align-baseline"
+              style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                navigate(`/user/${handle}`)
+              }}
+              onContextMenu={(e) => e.preventDefault()}
             >
               @{handle}
-            </Link>
+            </button>
           )
         }
         return <span key={`t-${i}`}>{part}</span>
