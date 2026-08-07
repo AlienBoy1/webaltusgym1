@@ -267,26 +267,28 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
     }
   }
 
-  const onTouchMove = (e) => {
-    e.preventDefault()
-    if (e.touches.length === 2 && pinchRef.current) {
-      const dist = pinchDistance(e.touches[0], e.touches[1])
-      const ratio = dist / pinchRef.current.dist
-      const rect = viewportRef.current?.getBoundingClientRect()
-      const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - (rect?.left ?? 0)
-      const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - (rect?.top ?? 0)
-      applyZoom(pinchRef.current.zoom * ratio, cx, cy)
-      return
-    }
-    if (e.touches.length === 1 && dragRef.current?.pointerId === 'touch') {
-      const t = e.touches[0]
-      const { w, h } = imgSizeRef.current
-      const scale = getAbsoluteScale()
-      const nx = dragRef.current.origX + (t.clientX - dragRef.current.startX)
-      const ny = dragRef.current.origY + (t.clientY - dragRef.current.startY)
-      setOffset(clampOffset(nx, ny, w, h, scale, viewportSizeRef.current))
-    }
-  }
+  const applyTouchMove = useCallback(
+    (e) => {
+      if (e.touches.length === 2 && pinchRef.current) {
+        const dist = pinchDistance(e.touches[0], e.touches[1])
+        const ratio = dist / pinchRef.current.dist
+        const rect = viewportRef.current?.getBoundingClientRect()
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - (rect?.left ?? 0)
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - (rect?.top ?? 0)
+        applyZoom(pinchRef.current.zoom * ratio, cx, cy)
+        return
+      }
+      if (e.touches.length === 1 && dragRef.current?.pointerId === 'touch') {
+        const t = e.touches[0]
+        const { w, h } = imgSizeRef.current
+        const scale = getAbsoluteScale()
+        const nx = dragRef.current.origX + (t.clientX - dragRef.current.startX)
+        const ny = dragRef.current.origY + (t.clientY - dragRef.current.startY)
+        setOffset(clampOffset(nx, ny, w, h, scale, viewportSizeRef.current))
+      }
+    },
+    [applyZoom, getAbsoluteScale]
+  )
 
   const onTouchEnd = (e) => {
     if (e.touches.length < 2) pinchRef.current = null
@@ -306,18 +308,25 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
   useEffect(() => {
     const el = viewportRef.current
     if (!el || step !== 'crop') return undefined
-    const handler = (e) => {
+    const onTouchMoveNative = (e) => {
+      e.preventDefault()
+      applyTouchMove(e)
+    }
+    const onWheel = (e) => {
       e.preventDefault()
       e.stopPropagation()
       const rect = viewportRef.current?.getBoundingClientRect()
       const fx = e.clientX - (rect?.left ?? 0)
       const fy = e.clientY - (rect?.top ?? 0)
-      const delta = e.deltaY > 0 ? -0.08 : 0.08
-      applyZoom(zoomRef.current + delta, fx, fy)
+      applyZoom(zoomRef.current + (e.deltaY > 0 ? -0.08 : 0.08), fx, fy)
     }
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
-  }, [step, cropSrc, applyZoom])
+    el.addEventListener('touchmove', onTouchMoveNative, { passive: false })
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('touchmove', onTouchMoveNative)
+      el.removeEventListener('wheel', onWheel)
+    }
+  }, [step, cropSrc, applyTouchMove, applyZoom])
 
   const exportCroppedImage = () => {
     const { w, h } = imgSize
@@ -494,7 +503,6 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                   onPointerUp={onPointerUp}
                   onPointerCancel={onPointerUp}
                   onTouchStart={onTouchStart}
-                  onTouchMove={onTouchMove}
                   onTouchEnd={onTouchEnd}
                   onTouchCancel={onTouchEnd}
                 >

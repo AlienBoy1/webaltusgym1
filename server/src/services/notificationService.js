@@ -63,7 +63,8 @@ export async function notifyUser({
       url,
       notificationId: data.id,
       type,
-      tag: pushTag || undefined
+      tag: pushTag || undefined,
+      fromUserId: relatedUserId || relatedData?.fromUserId || null
     },
     tag: pushTag || undefined,
     renotify: Boolean(pushTag)
@@ -127,10 +128,10 @@ export async function notifyNewMessage({ toUserId, fromUserId, fromName, content
     body,
     icon: '💬',
     relatedUserId: fromUserId,
-    relatedData: { unreadCount: unread },
+    relatedData: { unreadCount: unread, fromUserId },
     priority: 'high',
     pushTag: `msg-${fromUserId}`,
-    pushUrl: null // inbox highlight
+    pushUrl: '/chat'
   })
 }
 

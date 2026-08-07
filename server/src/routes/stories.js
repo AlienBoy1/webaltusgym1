@@ -104,8 +104,8 @@ function mapAlbum(row, extras = {}) {
     name: row.name,
     userId: row.user_id,
     createdAt: row.created_at,
-    coverUrl: extras.coverUrl || null,
-    coverType: extras.coverType || null,
+    coverUrl: extras.coverUrl || row.cover_url || null,
+    coverType: extras.coverType || (row.cover_url ? 'image' : null),
     count: extras.count || 0,
     items: extras.items || undefined
   }
@@ -157,8 +157,8 @@ router.get('/favorites/albums', authenticate, async (req, res) => {
         const items = byAlbum[a.id] || []
         const cover = items[0]
         return mapAlbum(a, {
-          coverUrl: cover?.media_url || null,
-          coverType: cover?.media_type || null,
+          coverUrl: a.cover_url || cover?.media_url || null,
+          coverType: a.cover_url ? 'image' : cover?.media_type || null,
           count: items.length
         })
       })
@@ -206,14 +206,63 @@ router.get('/favorites/albums/:albumId', authenticate, async (req, res) => {
     const mappedItems = (items || []).map(mapFavorite)
     res.json(
       mapAlbum(album, {
-        coverUrl: mappedItems[0]?.mediaUrl || null,
-        coverType: mappedItems[0]?.mediaType || null,
+        coverUrl: album.cover_url || mappedItems[0]?.mediaUrl || null,
+        coverType: album.cover_url ? 'image' : mappedItems[0]?.mediaType || null,
         count: mappedItems.length,
         items: mappedItems
       })
     )
   } catch (error) {
     res.status(500).json({ message: 'Error al cargar álbum', error: error.message })
+  }
+})
+
+router.patch('/favorites/albums/:albumId', authenticate, async (req, res) => {
+  try {
+    const { data: album, error: albumErr } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .select('*')
+      .eq('id', req.params.albumId)
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+
+    if (albumErr) throw albumErr
+    if (!album) return res.status(404).json({ message: 'Álbum no encontrado' })
+
+    let coverUrl = null
+    const favoriteId = req.body?.favoriteId || req.body?.coverFavoriteId
+    if (favoriteId) {
+      const { data: fav } = await supabaseAdmin
+        .from('story_favorites')
+        .select('id, media_url, media_type, album_id')
+        .eq('id', favoriteId)
+        .eq('album_id', album.id)
+        .maybeSingle()
+      if (!fav?.media_url) {
+        return res.status(400).json({ message: 'Historia del álbum no válida' })
+      }
+      coverUrl = fav.media_url
+    } else if (typeof req.body?.coverUrl === 'string' && req.body.coverUrl.trim()) {
+      coverUrl = req.body.coverUrl.trim()
+      if (coverUrl.length > 3_500_000) {
+        return res.status(400).json({ message: 'Imagen demasiado grande' })
+      }
+    } else {
+      return res.status(400).json({ message: 'coverUrl o favoriteId requerido' })
+    }
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('story_favorite_albums')
+      .update({ cover_url: coverUrl })
+      .eq('id', album.id)
+      .eq('user_id', req.user.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    res.json(mapAlbum(updated, { coverUrl, coverType: 'image', count: 0 }))
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar portada', error: error.message })
   }
 })
 

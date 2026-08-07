@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyNewMessage } from '../services/notificationService.js'
 import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment, CHAT_REACTIONS } from '../utils/chatMessage.js'
+import { broadcastChatReceipt } from '../utils/broadcastReceipt.js'
 
 const router = express.Router()
 
@@ -135,12 +136,20 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
     const visible = (messages || []).filter((m) => isAfterClear(m, clearedAt))
 
     const now = new Date().toISOString()
-    await supabaseAdmin
+    const { data: marked } = await supabaseAdmin
       .from('messages')
       .update({ read: true, delivered: true, delivered_at: now })
       .eq('from_user_id', otherId)
       .eq('to_user_id', myId)
       .or('read.eq.false,delivered.eq.false')
+      .select('id')
+
+    broadcastChatReceipt(otherId, {
+      from: myId,
+      delivered: true,
+      read: true,
+      messageIds: (marked || []).map((r) => r.id)
+    }).catch(() => {})
 
     res.json(visible.map((m) => {
       if (m.from_user_id === otherId && m.to_user_id === myId) {
@@ -188,7 +197,16 @@ router.post('/delivered/:userId', authenticate, async (req, res) => {
       .eq('delivered', false)
       .select('id')
     if (error) throw error
-    res.json({ ok: true, messageIds: (data || []).map((r) => r.id) })
+    const messageIds = (data || []).map((r) => r.id)
+    if (messageIds.length) {
+      broadcastChatReceipt(fromId, {
+        from: myId,
+        delivered: true,
+        read: false,
+        messageIds
+      }).catch(() => {})
+    }
+    res.json({ ok: true, messageIds })
   } catch (error) {
     res.json({ ok: false, messageIds: [] })
   }
@@ -207,7 +225,15 @@ router.post('/read/:userId', authenticate, async (req, res) => {
       .or('read.eq.false,delivered.eq.false')
       .select('id')
     if (error) throw error
-    res.json({ ok: true, messageIds: (data || []).map((r) => r.id) })
+    const messageIds = (data || []).map((r) => r.id)
+    // Always notify peer (even if already marked — ids may be empty after GET /messages)
+    broadcastChatReceipt(fromId, {
+      from: myId,
+      delivered: true,
+      read: true,
+      messageIds
+    }).catch(() => {})
+    res.json({ ok: true, messageIds })
   } catch (error) {
     res.json({ ok: false, messageIds: [] })
   }

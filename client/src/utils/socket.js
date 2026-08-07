@@ -3,6 +3,7 @@ import { decodeChatContent } from './chatMessage'
 
 let messageChannel = null
 let presenceChannel = null
+let receiptsChannel = null
 const listeners = {
   newMessage: new Set(),
   messageStatus: new Set(),
@@ -158,6 +159,20 @@ export function initSocket(userId) {
       }
     })
 
+  // Private receipts channel — server broadcasts here after /delivered and /read
+  receiptsChannel = supabase
+    .channel(`receipts:${userId}`)
+    .on('broadcast', { event: 'receipt' }, ({ payload }) => {
+      if (!payload) return
+      emit('messageReceipt', {
+        from: payload.from,
+        delivered: Boolean(payload.delivered || payload.read),
+        read: Boolean(payload.read),
+        messageIds: Array.isArray(payload.messageIds) ? payload.messageIds : []
+      })
+    })
+    .subscribe()
+
   presenceChannel = supabase.channel('online-users', {
     config: { presence: { key: userId } }
   })
@@ -234,6 +249,7 @@ export function ensureSocketAlive(userId, { force = false } = {}) {
   const healthy =
     messageChannel &&
     presenceChannel &&
+    receiptsChannel &&
     trackedUserId === String(id) &&
     (msgState === 'joined' || msgState === 'joining') &&
     (presenceState === 'joined' || presenceState === 'joining')
@@ -277,6 +293,10 @@ function cleanupSocket() {
   if (messageChannel) {
     supabase.removeChannel(messageChannel)
     messageChannel = null
+  }
+  if (receiptsChannel) {
+    supabase.removeChannel(receiptsChannel)
+    receiptsChannel = null
   }
   if (presenceChannel) {
     supabase.removeChannel(presenceChannel)

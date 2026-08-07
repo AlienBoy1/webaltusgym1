@@ -611,16 +611,31 @@ export default function Chat() {
       if (!peerId) return
       const ids = (data.messageIds || []).map(String)
       const openPeer = selectedChatRef.current?.otherId
-      // Only mutate the open thread (messages state is for current chat)
-      if (openPeer && String(openPeer) !== String(peerId)) return
 
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.sender !== 'me') return m
-          if (ids.length && !ids.includes(String(m.id))) return m
+      // Update open thread ticks
+      if (!openPeer || String(openPeer) === String(peerId)) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.sender !== 'me') return m
+            if (ids.length && !ids.includes(String(m.id))) return m
+            return {
+              ...m,
+              ...mergeReceipt(m, {
+                delivered: data.delivered,
+                read: data.read
+              })
+            }
+          })
+        )
+      }
+
+      // Keep conversation list receipt state in sync
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (String(c.otherId) !== String(peerId) || !c.lastFromMe) return c
           return {
-            ...m,
-            ...mergeReceipt(m, {
+            ...c,
+            ...mergeReceipt(c, {
               delivered: data.delivered,
               read: data.read
             })

@@ -31,7 +31,9 @@ export async function sendPushNotification(userId, notification) {
       data: {
         url: notification.data?.url || '/notifications',
         notificationId: notification.data?.notificationId || notification.id || null,
-        type: notification.data?.type || null
+        type: notification.data?.type || null,
+        fromUserId: notification.data?.fromUserId || null,
+        tag: notification.tag || notification.data?.tag || undefined
       }
     })
 

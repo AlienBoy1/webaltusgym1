@@ -71,13 +71,20 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url)
 
-  // Always network version.json; never reject FetchEvent with undefined
+  // Always network version.json — never invent a fake version that triggers UpdateCenter
   if (url.pathname === '/version.json' || url.pathname.endsWith('/version.json')) {
     event.respondWith(
-      networkFirst(event.request, {
-        fallbackUrl: '/version.json',
-        jsonFallback: { version: 'offline' }
-      })
+      fetch(event.request)
+        .then((response) => response)
+        .catch(async () => {
+          const cached = (await caches.match('/version.json')) || (await caches.match(event.request))
+          if (cached) return cached
+          // Soft fail — do NOT return version:"offline" (causes false update prompts)
+          return new Response(JSON.stringify({ error: 'offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+          })
+        })
     )
     return
   }
@@ -162,8 +169,11 @@ self.addEventListener('push', (event) => {
   }
 
   const notificationId = data.data?.notificationId || data.notificationId || null
+  const fromUserId = data.data?.fromUserId || data.fromUserId || null
+  const type = data.data?.type || data.type || null
   const targetUrl =
     data.data?.url ||
+    (type === 'message' ? '/chat' : null) ||
     (notificationId ? `/notifications?highlight=${notificationId}` : '/notifications')
 
   const options = {
@@ -176,7 +186,8 @@ self.addEventListener('push', (event) => {
     data: {
       url: targetUrl,
       notificationId,
-      type: data.data?.type || null
+      type,
+      fromUserId
     },
     actions: [
       { action: 'open', title: 'Abrir' },
@@ -184,7 +195,39 @@ self.addEventListener('push', (event) => {
     ]
   }
 
-  event.waitUntil(self.registration.showNotification(data.title || 'QYNTRA GYM', options))
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+      })
+      let hasVisibleClient = false
+      for (const client of clientsList) {
+        if (client.visibilityState === 'visible') hasVisibleClient = true
+        try {
+          client.postMessage({
+            type: 'PUSH_INBOX',
+            title: data.title || 'QYNTRA GYM',
+            body: options.body,
+            url: targetUrl,
+            notificationId,
+            pushType: type,
+            fromUserId,
+            tag: options.tag || null
+          })
+          if (type === 'message' && fromUserId) {
+            client.postMessage({ type: 'CHAT_DELIVERED_ACK', fromUserId })
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      // OS banner when no visible tab (background / killed). Avoid double alert when app is open.
+      if (!hasVisibleClient) {
+        await self.registration.showNotification(data.title || 'QYNTRA GYM', options)
+      }
+    })()
+  )
 })
 
 self.addEventListener('notificationclick', (event) => {

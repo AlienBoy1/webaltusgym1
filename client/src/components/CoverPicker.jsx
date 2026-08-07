@@ -63,7 +63,7 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
   const { user, updateUser } = useAuthStore()
   const [preview, setPreview] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [step, setStep] = useState('pick') // 'pick' | 'crop'
+  const [step, setStep] = useState('pick') // 'pick' | 'crop' | 'preview'
   const [cropSrc, setCropSrc] = useState(null)
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
   const [zoom, setZoom] = useState(1)
@@ -247,27 +247,29 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
     }
   }
 
-  const onTouchMove = (e) => {
-    e.preventDefault()
-    if (e.touches.length === 2 && pinchRef.current) {
-      const dist = pinchDistance(e.touches[0], e.touches[1])
-      const ratio = dist / pinchRef.current.dist
-      const rect = viewportRef.current?.getBoundingClientRect()
-      const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - (rect?.left ?? 0)
-      const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - (rect?.top ?? 0)
-      applyZoom(pinchRef.current.zoom * ratio, cx, cy)
-      return
-    }
-    if (e.touches.length === 1 && dragRef.current?.pointerId === 'touch') {
-      const t = e.touches[0]
-      const { w, h } = imgSizeRef.current
-      const { w: fw, h: fh } = frameRef.current
-      const scale = getAbsoluteScale()
-      const nx = dragRef.current.origX + (t.clientX - dragRef.current.startX)
-      const ny = dragRef.current.origY + (t.clientY - dragRef.current.startY)
-      setOffset(clampOffset(nx, ny, w, h, scale, fw, fh))
-    }
-  }
+  const applyTouchMove = useCallback(
+    (e) => {
+      if (e.touches.length === 2 && pinchRef.current) {
+        const dist = pinchDistance(e.touches[0], e.touches[1])
+        const ratio = dist / pinchRef.current.dist
+        const rect = viewportRef.current?.getBoundingClientRect()
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - (rect?.left ?? 0)
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - (rect?.top ?? 0)
+        applyZoom(pinchRef.current.zoom * ratio, cx, cy)
+        return
+      }
+      if (e.touches.length === 1 && dragRef.current?.pointerId === 'touch') {
+        const t = e.touches[0]
+        const { w, h } = imgSizeRef.current
+        const { w: fw, h: fh } = frameRef.current
+        const scale = getAbsoluteScale()
+        const nx = dragRef.current.origX + (t.clientX - dragRef.current.startX)
+        const ny = dragRef.current.origY + (t.clientY - dragRef.current.startY)
+        setOffset(clampOffset(nx, ny, w, h, scale, fw, fh))
+      }
+    },
+    [applyZoom, getAbsoluteScale]
+  )
 
   const onTouchEnd = (e) => {
     if (e.touches.length < 2) pinchRef.current = null
@@ -287,7 +289,11 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
   useEffect(() => {
     const el = viewportRef.current
     if (!el || step !== 'crop') return undefined
-    const handler = (e) => {
+    const onTouchMoveNative = (e) => {
+      e.preventDefault()
+      applyTouchMove(e)
+    }
+    const onWheel = (e) => {
       e.preventDefault()
       e.stopPropagation()
       const rect = viewportRef.current?.getBoundingClientRect()
@@ -295,9 +301,13 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
       const fy = e.clientY - (rect?.top ?? 0)
       applyZoom(zoomRef.current + (e.deltaY > 0 ? -0.08 : 0.08), fx, fy)
     }
-    el.addEventListener('wheel', handler, { Passive: false })
-    return () => el.removeEventListener('wheel', handler)
-  }, [step, cropSrc, applyZoom])
+    el.addEventListener('touchmove', onTouchMoveNative, { passive: false })
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('touchmove', onTouchMoveNative)
+      el.removeEventListener('wheel', onWheel)
+    }
+  }, [step, cropSrc, applyTouchMove, applyZoom])
 
   const exportCroppedImage = () => {
     const { w, h } = imgSize
@@ -375,20 +385,18 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
         toast.error('Error al procesar la imagen')
         return
       }
-      revokeObjectUrl()
-      setCropSrc(null)
-      setImgSize({ w: 0, h: 0 })
-      setZoom(1)
-      setOffset({ x: 0, y: 0 })
       setPreview(dataUrl)
-      setStep('pick')
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      setStep('preview')
     } catch (error) {
       console.error(error)
       toast.error('Error al procesar la imagen')
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleBackToAdjust = () => {
+    setStep('crop')
   }
 
   const handleCropAndSave = async () => {
@@ -462,7 +470,11 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
         >
           <div className="flex shrink-0 items-center justify-between border-b border-[color:var(--border-subtle)] px-4 py-3">
             <h2 className="font-display text-xl text-[color:var(--text-primary)]">
-              {step === 'crop' ? 'Ajustar portada' : 'Foto de portada'}
+              {step === 'crop'
+                ? 'Ajustar portada'
+                : step === 'preview'
+                  ? 'Vista previa'
+                  : 'Foto de portada'}
             </h2>
             <button
               type="button"
@@ -475,7 +487,63 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
-            {step === 'crop' ? (
+            {step === 'preview' && preview ? (
+              <div className="space-y-3">
+                <p className="text-center text-sm text-[color:var(--text-secondary)]">
+                  Así se verá tu perfil con esta portada
+                </p>
+                <div
+                  className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] shadow-xl"
+                  style={{ maxWidth: 420, margin: '0 auto' }}
+                >
+                  <div className="relative h-[148px] w-full overflow-hidden sm:h-[168px]">
+                    <img
+                      src={preview}
+                      alt=""
+                      className="h-full w-full object-cover object-center"
+                    />
+                    <div
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-[72%]"
+                      style={{
+                        background: `
+                          linear-gradient(
+                            to top,
+                            var(--bg-card) 0%,
+                            color-mix(in srgb, var(--bg-card) 92%, transparent) 18%,
+                            color-mix(in srgb, var(--bg-card) 55%, transparent) 42%,
+                            color-mix(in srgb, var(--bg-card) 18%, transparent) 68%,
+                            transparent 100%
+                          )
+                        `
+                      }}
+                    />
+                  </div>
+                  <div className="relative z-10 -mt-14 px-4 pb-5 text-center">
+                    <div className="mx-auto mb-3 inline-block">
+                      <div
+                        className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-4 border-[color:var(--bg-card)] bg-[color:var(--bg-muted)] text-2xl font-bold text-[color:var(--text-primary)] shadow-md"
+                      >
+                        {user?.avatar && String(user.avatar).startsWith('data:') ? (
+                          <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+                        ) : user?.avatar && String(user.avatar).startsWith('http') ? (
+                          <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="font-display text-xl text-[color:var(--text-primary)]">
+                      {user?.name || 'Tu perfil'}
+                    </p>
+                    {user?.username && (
+                      <p className="mt-0.5 text-sm text-[color:var(--text-muted)]">
+                        @{user.username}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : step === 'crop' ? (
               <div className="flex flex-col items-center gap-4">
                 <p className="text-center text-sm text-[color:var(--text-secondary)]">
                   Arrastra para mover · pellizca o usa el control para acercar
@@ -490,7 +558,6 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
                   onPointerUp={onPointerUp}
                   onPointerCancel={onPointerUp}
                   onTouchStart={onTouchStart}
-                  onTouchMove={onTouchMove}
                   onTouchEnd={onTouchEnd}
                   onTouchCancel={onTouchEnd}
                 >
@@ -535,7 +602,7 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
               <div className="space-y-5">
                 <div>
                   <p className="mb-2 text-center text-sm text-[color:var(--text-secondary)]">
-                    Previsualización
+                    Portada actual
                   </p>
                   <div
                     className="mx-auto overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]"
@@ -557,11 +624,6 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
                       </div>
                     )}
                   </div>
-                  {preview && (
-                    <p className="mt-2 text-center text-xs font-medium text-primary-500">
-                      Nueva foto lista · pulsa Guardar para aplicar
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -612,6 +674,26 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
                   type="button"
                   onClick={handleCropAndSave}
                   disabled={saving}
+                  className="btn-primary flex flex-1 items-center justify-center gap-2"
+                >
+                  <FiCheck size={18} />
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            ) : step === 'preview' ? (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleBackToAdjust}
+                  disabled={saving}
+                  className="btn-secondary flex-1"
+                >
+                  Volver a ajustar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!preview || saving}
                   className="btn-primary flex flex-1 items-center justify-center gap-2"
                 >
                   <FiCheck size={18} />

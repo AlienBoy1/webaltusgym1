@@ -13,7 +13,12 @@ const POLL_VISIBLE_MS = 20_000
 async function fetchRemoteVersion() {
   const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error('version fetch failed')
-  return res.json()
+  const data = await res.json()
+  // Guard against SW offline fallback / garbage payloads that caused false prompts
+  if (!data?.version || data.version === 'offline' || data.error) {
+    throw new Error('invalid version payload')
+  }
+  return data
 }
 
 function delay(ms) {
@@ -101,7 +106,25 @@ export default function UpdateCenter() {
 
   const openPrompt = useCallback((version, worker = null) => {
     if (updatingRef.current) return
-    // Delay auto-open during session restore / login theater
+    // SW waiting alone is not enough — verify version.json mismatch to avoid spam on resume
+    if (!version && worker) {
+      waitingWorkerRef.current = worker
+      fetchRemoteVersion()
+        .then((remote) => {
+          const local = localStorage.getItem(VERSION_KEY)
+          if (remote?.version && local && String(remote.version) !== String(local)) {
+            if (!promptReadyRef.current) {
+              pendingPromptRef.current = { version: remote, worker }
+              return
+            }
+            showPromptNow(remote, worker)
+          }
+        })
+        .catch(() => {
+          /* network blip — do not prompt */
+        })
+      return
+    }
     if (!promptReadyRef.current) {
       pendingPromptRef.current = { version, worker }
       return
@@ -217,17 +240,25 @@ export default function UpdateCenter() {
       setupSW()
     }
 
-    const onFocus = () => checkVersion()
+    const onFocus = () => {
+      window.setTimeout(() => {
+        if (!cancelled) checkVersion()
+      }, 2000)
+    }
     window.addEventListener('focus', onFocus)
+    let visTimer = 0
     const onVis = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState !== 'visible') return
+      window.clearTimeout(visTimer)
+      visTimer = window.setTimeout(() => {
+        if (cancelled) return
         checkVersion()
         if (promptReadyRef.current && pendingPromptRef.current && !updatingRef.current) {
           const pending = pendingPromptRef.current
           pendingPromptRef.current = null
           showPromptNow(pending.version, pending.worker)
         }
-      }
+      }, 2500)
     }
     document.addEventListener('visibilitychange', onVis)
 
@@ -251,6 +282,7 @@ export default function UpdateCenter() {
       cancelled = true
       clearTimeout(readyTimer)
       clearInterval(pollId)
+      window.clearTimeout(visTimer)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVis)
       unsub()

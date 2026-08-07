@@ -11,7 +11,7 @@ import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
-import { initSocket, disconnectSocket, forceSocketReconnect, onChatEvent, showNotification } from '../utils/socket'
+import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -159,20 +159,60 @@ export default function MainLayout() {
     // Intentionally only on user id — full user object changes must not reconnect sockets
   }, [user?.id, user?._id])
 
-  // In-app message alerts even when /chat is not mounted
+  // In-app message alerts + delivered ACK even when /chat is not mounted
   useEffect(() => {
     if (!user?.id && !user?._id) return undefined
-    const unsub = onChatEvent('newMessage', (data) => {
+    const me = user?.id || user?._id
+    const recentPushTags = new Set()
+
+    const alertMessage = (data, { fromPush = false } = {}) => {
+      if (data?.from && me) {
+        api.post(`/chat/delivered/${data.from}`).catch(() => {})
+      }
       if (location.pathname.startsWith('/chat')) return
+      const tag = data.tag || `msg-${data.from}`
+      if (recentPushTags.has(tag)) return
+      recentPushTags.add(tag)
+      window.setTimeout(() => recentPushTags.delete(tag), 3500)
       showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
-        tag: `msg-${data.from}`,
+        tag,
         onClick: () => navigate('/chat')
       })
       toast.success(`${data.fromName || 'Mensaje'}: ${data.message || 'Nuevo mensaje'}`, {
         duration: 4000
       })
-    })
-    return unsub
+    }
+
+    const unsub = onChatEvent('newMessage', (data) => alertMessage(data, { fromPush: false }))
+
+    const onSwMessage = (event) => {
+      if (event.data?.type === 'CHAT_DELIVERED_ACK' && event.data.fromUserId) {
+        api.post(`/chat/delivered/${event.data.fromUserId}`).catch(() => {})
+        return
+      }
+      if (event.data?.type !== 'PUSH_INBOX') return
+      if (event.data.pushType !== 'message') {
+        if (document.visibilityState === 'visible') {
+          toast(event.data.body || event.data.title || 'Nueva notificación', { duration: 4000 })
+        }
+        return
+      }
+      alertMessage(
+        {
+          from: event.data.fromUserId,
+          fromName: event.data.title,
+          message: event.data.body,
+          tag: event.data.tag
+        },
+        { fromPush: true }
+      )
+    }
+    navigator.serviceWorker?.addEventListener('message', onSwMessage)
+
+    return () => {
+      unsub()
+      navigator.serviceWorker?.removeEventListener('message', onSwMessage)
+    }
   }, [user?.id, user?._id, location.pathname, navigate])
 
   // Keep realtime / push alive when returning to the app (mobile browsers kill WS in background)
@@ -181,7 +221,7 @@ export default function MainLayout() {
     if (!id) return undefined
 
     let busy = false
-    const revive = async () => {
+    const revive = async ({ force = false } = {}) => {
       if (busy || document.visibilityState === 'hidden') return
       busy = true
       try {
@@ -197,8 +237,7 @@ export default function MainLayout() {
             /* ignore */
           }
         }
-        // Force-resubscribe: mobile PWAs often keep state "joined" after the socket dies
-        forceSocketReconnect(id)
+        ensureSocketAlive(id, { force })
         subscribeRealtime(id)
         fetchUnreadCount()
         if (Notification.permission === 'granted') {
@@ -215,21 +254,21 @@ export default function MainLayout() {
     }
 
     const onVis = () => {
-      if (document.visibilityState === 'visible') revive()
+      if (document.visibilityState === 'visible') revive({ force: true })
     }
-    const onOnline = () => revive()
+    const onOnline = () => revive({ force: true })
     const onPageShow = (e) => {
-      if (e.persisted || document.visibilityState === 'visible') revive()
+      if (e.persisted || document.visibilityState === 'visible') revive({ force: true })
     }
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('online', onOnline)
     window.addEventListener('focus', onVis)
     window.addEventListener('pageshow', onPageShow)
 
-    // Heartbeat while foreground — silent WS death is common in installed PWAs
+    // Soft heartbeat — only resubscribe if channel looks dead (no force teardown)
     const heartbeat = window.setInterval(() => {
-      if (document.visibilityState === 'visible') revive()
-    }, 40000)
+      if (document.visibilityState === 'visible') revive({ force: false })
+    }, 45000)
 
     return () => {
       document.removeEventListener('visibilitychange', onVis)

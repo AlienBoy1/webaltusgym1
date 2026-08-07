@@ -96,6 +96,12 @@ function PushNavigationBridge() {
 
   useEffect(() => {
     const onMessage = (event) => {
+      if (event.data?.type === 'CHAT_DELIVERED_ACK' && event.data.fromUserId && isAuthenticated) {
+        import('./utils/api')
+          .then(({ default: api }) => api.post(`/chat/delivered/${event.data.fromUserId}`))
+          .catch(() => {})
+        return
+      }
       if (event.data?.type !== 'NOTIFICATION_CLICK') return
       const url = event.data.url || '/notifications'
       if (isAuthenticated) {
