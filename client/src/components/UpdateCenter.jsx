@@ -144,18 +144,10 @@ export default function UpdateCenter() {
       return undefined
     }
 
-    // Don't settle / show update until username is claimed (listeners still mount)
-    const initialUser = useAuthStore.getState().user
-    if (initialUser && !initialUser.username) {
-      setUpdateBlocking(false)
-      setUpdateSettled(false)
-    }
-
+    // Update check is highest priority — run even before username setup
     promptReadyRef.current = false
     const readyTimer = window.setTimeout(() => {
       promptReadyRef.current = true
-      const u = useAuthStore.getState().user
-      if (u && !u.username) return
       if (pendingPromptRef.current && !updatingRef.current) {
         const pending = pendingPromptRef.current
         pendingPromptRef.current = null
@@ -168,11 +160,6 @@ export default function UpdateCenter() {
 
     const checkVersion = async () => {
       if (!isAuthenticated || updatingRef.current) return
-      const currentUser = useAuthStore.getState().user
-      if (currentUser && !currentUser.username) {
-        setUpdateSettled(false)
-        return
-      }
       try {
         const remote = await fetchRemoteVersion()
         if (cancelled || !remote?.version) {
@@ -234,11 +221,8 @@ export default function UpdateCenter() {
       }
     }
 
-    const uNow = useAuthStore.getState().user
-    if (!uNow || uNow.username) {
-      checkVersion()
-      setupSW()
-    }
+    checkVersion()
+    setupSW()
 
     const onFocus = () => {
       window.setTimeout(() => {
@@ -262,22 +246,6 @@ export default function UpdateCenter() {
     }
     document.addEventListener('visibilitychange', onVis)
 
-    // Re-run when username gets claimed
-    let prevUsername = useAuthStore.getState().user?.username
-    const unsub = useAuthStore.subscribe((state) => {
-      const nextUsername = state.user?.username
-      if (nextUsername && !prevUsername) {
-        checkVersion()
-        setupSW()
-        if (promptReadyRef.current && pendingPromptRef.current && !updatingRef.current) {
-          const pending = pendingPromptRef.current
-          pendingPromptRef.current = null
-          showPromptNow(pending.version, pending.worker)
-        }
-      }
-      prevUsername = nextUsername
-    })
-
     return () => {
       cancelled = true
       clearTimeout(readyTimer)
@@ -285,7 +253,6 @@ export default function UpdateCenter() {
       window.clearTimeout(visTimer)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVis)
-      unsub()
     }
   }, [isAuthenticated, openPrompt, showPromptNow])
 

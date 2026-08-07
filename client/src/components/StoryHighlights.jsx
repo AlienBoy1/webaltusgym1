@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import ProtectedMedia from './ProtectedMedia'
 import AlbumCoverPicker from './AlbumCoverPicker'
 import { useAuthStore } from '../store/authStore'
+import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 
 const IMAGE_MS = 5500
 const MAX_VIDEO_MS = 30000
@@ -31,6 +32,12 @@ export default function StoryHighlights({ userId, isOwner = false }) {
   const longPressRef = useRef(null)
   const longFiredRef = useRef(false)
   const pressMovedRef = useRef(false)
+
+  const requestCloseHighlight = useHistoryBackLayer(
+    Boolean(active),
+    () => setActive(null),
+    'story-highlight'
+  )
 
   const reloadAlbums = useCallback(async () => {
     if (!userId) return
@@ -386,7 +393,7 @@ export default function StoryHighlights({ userId, isOwner = false }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActive(null)}
+                    onClick={requestCloseHighlight}
                     className="rounded-full bg-black/40 p-2 text-white"
                   >
                     <FiX size={18} />

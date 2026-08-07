@@ -5,7 +5,12 @@ import { FiBookOpen } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import { TUTORIAL_IDS, hasCompletedTutorial } from '../tutorials/registry'
 import { getUnnotifiedTutorials, markTutorialsKnown } from '../tutorials/spotlight'
-import { canStartTutorials, subscribeAppGate } from '../utils/appGate'
+import {
+  canStartTutorials,
+  subscribeAppGate,
+  setTutorialBlocking,
+  canShowPrompt
+} from '../utils/appGate'
 import { openTutorialHub, TUTORIAL_CLOSED_EVENT } from './AppTutorial'
 
 /**
@@ -21,11 +26,13 @@ export default function NewTutorialPrompt() {
   const dismiss = (openHub) => {
     if (!payload?.ids?.length) {
       setPayload(null)
+      setTutorialBlocking(false)
       return
     }
     const ids = payload.ids
     markTutorialsKnown(user, ids)
     setPayload(null)
+    setTutorialBlocking(false)
     if (openHub) {
       window.setTimeout(() => openTutorialHub({ highlightIds: ids }), 180)
     }
@@ -47,7 +54,7 @@ export default function NewTutorialPrompt() {
       clearTimer()
       const u = useAuthStore.getState().user
       if (!u?.username) return
-      if (!canStartTutorials()) return
+      if (!canStartTutorials() || !canShowPrompt('tutorial')) return
       if (!hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) return
       if (payload) return
       if (document.body.dataset.qyntraTutorial === '1') return
@@ -63,8 +70,9 @@ export default function NewTutorialPrompt() {
 
       timerRef.current = window.setTimeout(() => {
         if (document.body.dataset.qyntraTutorial === '1') return
-        if (!canStartTutorials()) return
+        if (!canStartTutorials() || !canShowPrompt('tutorial')) return
         offeredIdsRef.current = key
+        setTutorialBlocking(true)
         setPayload({
           ids: fresh.map((t) => t.id),
           items: fresh
@@ -82,6 +90,12 @@ export default function NewTutorialPrompt() {
       window.removeEventListener(TUTORIAL_CLOSED_EVENT, onClosed)
     }
   }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, payload])
+
+  useEffect(() => {
+    if (!payload) return undefined
+    setTutorialBlocking(true)
+    return () => setTutorialBlocking(false)
+  }, [payload])
 
   if (typeof document === 'undefined' || !payload) return null
 

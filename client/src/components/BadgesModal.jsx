@@ -215,6 +215,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
                           {badge.type === 'challenge' && `${badge.threshold} retos`}
                           {badge.type === 'class' && `${badge.threshold} clases`}
                           {badge.type === 'social' && `${badge.threshold} interacciones`}
+                          {badge.type === 'tutorial' && badge.tutorialKey && 'Tutorial de inicio'}
+                          {badge.type === 'tutorial' && !badge.tutorialKey && badge.threshold >= 12 && 'Todos los tutoriales'}
+                          {badge.type === 'tutorial' && !badge.tutorialKey && badge.threshold < 12 && `${badge.threshold} tutoriales`}
+                          {badge.xpReward ? ` · +${badge.xpReward} XP` : ''}
                         </div>
                         {badge.difficulty && (
                           <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full ${
@@ -304,6 +308,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
                         {selectedBadge.type === 'challenge' && `Completa ${selectedBadge.threshold} retos para desbloquear esta insignia`}
                         {selectedBadge.type === 'class' && `Completa ${selectedBadge.threshold} clases para desbloquear esta insignia`}
                         {selectedBadge.type === 'social' && `Realiza ${selectedBadge.threshold} interacciones sociales para desbloquear esta insignia`}
+                        {selectedBadge.type === 'tutorial' && selectedBadge.tutorialKey && 'Completa el tutorial de inicio para desbloquear esta insignia'}
+                        {selectedBadge.type === 'tutorial' && !selectedBadge.tutorialKey && selectedBadge.threshold >= 12 && 'Completa todos los tutoriales para desbloquear esta insignia'}
+                        {selectedBadge.type === 'tutorial' && !selectedBadge.tutorialKey && selectedBadge.threshold < 12 && `Completa ${selectedBadge.threshold} tutoriales para desbloquear esta insignia`}
+                        {selectedBadge.xpReward ? ` (+${selectedBadge.xpReward} XP)` : ''}
                       </p>
                       {selectedBadge.difficulty && (
                         <span className={`inline-block text-xs px-3 py-1 rounded-full mb-4 ${

@@ -35,6 +35,7 @@ import UserNoteBadge from './UserNoteBadge'
 import { saveStoryMedia, shareStoryToNetwork } from '../utils/shareStoryMedia'
 import TutorialHelpButton from './TutorialHelpButton'
 import { TUTORIAL_IDS } from '../tutorials/registry'
+import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -439,26 +440,11 @@ export default function StoriesRail({
   const closeViewerRef = useRef(closeViewer)
   closeViewerRef.current = closeViewer
 
-  const requestCloseViewer = useCallback(() => {
-    if (window.history.state?.qyntraStory) {
-      window.history.back()
-      return
-    }
-    closeViewer()
-  }, [closeViewer])
-
-  // Hardware / browser back closes story viewer instead of leaving the page
-  useEffect(() => {
-    if (viewer == null) return undefined
-    window.history.pushState({ qyntraStory: true }, '')
-    const onPop = () => {
-      closeViewerRef.current()
-    }
-    window.addEventListener('popstate', onPop)
-    return () => {
-      window.removeEventListener('popstate', onPop)
-    }
-  }, [viewer != null]) // eslint-disable-line react-hooks/exhaustive-deps
+  const requestCloseViewer = useHistoryBackLayer(
+    viewer != null,
+    () => closeViewerRef.current(),
+    'story-viewer'
+  )
 
   const openViewers = async () => {
     if (!currentStory || !isOwnStory) return

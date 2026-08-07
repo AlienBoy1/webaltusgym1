@@ -7,27 +7,39 @@ import { useAuthStore } from '../store/authStore'
 import { normalizeUsername, validateUsernameFormat } from '../utils/username'
 import QyntraLogo from './QyntraLogo'
 import { applyAppearanceSettings, cacheAppearance } from '../utils/theme'
-import { setUsernameBlocking } from '../utils/appGate'
+import {
+  setUsernameBlocking,
+  canShowPrompt,
+  subscribeAppGate
+} from '../utils/appGate'
 
 /**
  * Blocking gate: existing users without username must claim one.
- * Tutorials wait until username is set AND any pending app update finishes.
+ * Waits behind app-update; blocks welcome/tutorials until done.
  */
 export default function UsernameSetupModal({ open }) {
   const updateUser = useAuthStore((s) => s.updateUser)
   const [value, setValue] = useState('')
   const [status, setStatus] = useState({ checking: false, available: false, message: '' })
   const [saving, setSaving] = useState(false)
+  const [gateOk, setGateOk] = useState(() => canShowPrompt('username'))
 
   const format = useMemo(() => validateUsernameFormat(value), [value])
 
   useEffect(() => {
+    // Reserve the username slot as soon as it's required (even while waiting for update UI)
     setUsernameBlocking(Boolean(open))
     return () => setUsernameBlocking(false)
   }, [open])
 
   useEffect(() => {
-    if (!open) return
+    const sync = () => setGateOk(canShowPrompt('username'))
+    sync()
+    return subscribeAppGate(sync)
+  }, [])
+
+  useEffect(() => {
+    if (!open || !gateOk) return
     if (!format.ok) {
       setStatus({ checking: false, available: false, message: format.message })
       return
@@ -55,7 +67,7 @@ export default function UsernameSetupModal({ open }) {
       cancelled = true
       window.clearTimeout(t)
     }
-  }, [open, format.ok, format.username, format.message])
+  }, [open, gateOk, format.ok, format.username, format.message])
 
   const canSubmit = format.ok && status.available && !status.checking && !saving
 
@@ -79,7 +91,6 @@ export default function UsernameSetupModal({ open }) {
       updateUser({ ...(data.user || {}), settings: lightSettings })
       setUsernameBlocking(false)
       toast.success('Username registrado')
-      // Tutorial starts only after UpdateCenter settles (see AppTutorial + appGate)
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo registrar el username')
     } finally {
@@ -87,7 +98,9 @@ export default function UsernameSetupModal({ open }) {
     }
   }
 
-  if (!open) return null
+  if (!open || !gateOk) return null
+
+  // claim handled above; render modal UI when update gate allows
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">

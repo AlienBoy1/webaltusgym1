@@ -11,6 +11,7 @@ import PostReactionButton from './PostReactionButton'
 import PostCommentsList from './PostCommentsList'
 import PostReactorsModal from './PostReactorsModal'
 import { countComments, normalizeCommentTree } from '../utils/commentTree'
+import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 import toast from 'react-hot-toast'
 import ProtectedMedia from './ProtectedMedia'
 
@@ -62,28 +63,17 @@ export default function PostImageViewer({
     }
   }, [open])
 
-  useEffect(() => {
-    if (!open) return undefined
-    window.history.pushState({ qyntraImageViewer: true }, '')
-    const onPop = () => {
-      if (commentsOpen) {
-        setCommentsOpen(false)
-        window.history.pushState({ qyntraImageViewer: true }, '')
-        return
-      }
-      onClose?.()
-    }
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [open, commentsOpen, onClose])
+  const requestCloseComments = useHistoryBackLayer(
+    Boolean(open && commentsOpen),
+    () => setCommentsOpen(false),
+    `img-comments-${postId || 'x'}`
+  )
 
-  const requestClose = useCallback(() => {
-    if (window.history.state?.qyntraImageViewer) {
-      window.history.back()
-      return
-    }
-    onClose?.()
-  }, [onClose])
+  const requestClose = useHistoryBackLayer(
+    Boolean(open),
+    () => onClose?.(),
+    `img-viewer-${postId || 'x'}`
+  )
 
   const go = (dir) => {
     if (images.length < 2) return
@@ -324,7 +314,7 @@ export default function PostImageViewer({
                   type="button"
                   className="absolute inset-0 bg-black/55"
                   aria-label="Cerrar comentarios"
-                  onClick={() => setCommentsOpen(false)}
+                  onClick={requestCloseComments}
                 />
                 <motion.div
                   initial={{ y: '100%' }}
@@ -344,7 +334,7 @@ export default function PostImageViewer({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setCommentsOpen(false)}
+                      onClick={requestCloseComments}
                       className="rounded-xl p-2 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
                       aria-label="Cerrar"
                     >

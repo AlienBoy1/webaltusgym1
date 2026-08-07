@@ -11,6 +11,8 @@ import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
+import WelcomeIntroModal from '../components/WelcomeIntroModal'
+import BadgeUnlockCelebration from '../components/BadgeUnlockCelebration'
 import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification, sendReceipt } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -911,6 +913,8 @@ export default function MainLayout() {
       <AppTutorial />
       <TutorialHub />
       <NewTutorialPrompt />
+      <WelcomeIntroModal />
+      <BadgeUnlockCelebration />
       <MembershipExpiryNotice />
     </div>
     </StoryViewerProvider>

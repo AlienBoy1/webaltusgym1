@@ -12,7 +12,8 @@ import {
 } from '../tutorials/registry'
 import { userIdOf, writeLocalCompletion } from '../tutorials/completion'
 import TutorialDemoSurface from './TutorialDemoSurface'
-import { canStartTutorials, subscribeAppGate } from '../utils/appGate'
+import { canStartTutorials, subscribeAppGate, setTutorialBlocking } from '../utils/appGate'
+import { showBadgeUnlockCelebration } from './BadgeUnlockCelebration'
 
 export const TUTORIAL_STORAGE_KEY = 'qyntra_tutorial_done'
 export const TUTORIAL_START_EVENT = 'qyntra:start-tutorial'
@@ -522,6 +523,7 @@ export default function AppTutorial() {
         setOpen(false)
         setReady(false)
         setAvatarMenuOpen(false)
+        setTutorialBlocking(false)
         delete document.body.dataset.qyntraTutorial
       }
     })
@@ -622,12 +624,28 @@ export default function AppTutorial() {
         [currentMeta.settingsKey]: true,
         ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
       }
-      await api.put('/users/profile', { settings: nextSettings })
-      updateUser({
-        onboardingCompleted: true,
-        settings: nextSettings,
-        ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
-      })
+      const { data } = await api.put('/users/profile', { settings: nextSettings })
+      if (data?.user) {
+        updateUser({
+          ...data.user,
+          onboardingCompleted: true,
+          settings: { ...(data.user.settings || nextSettings) },
+          ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
+        })
+      } else {
+        updateUser({
+          onboardingCompleted: true,
+          settings: nextSettings,
+          ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
+        })
+      }
+      const unlocked = Array.isArray(data?.unlockedBadges) ? data.unlockedBadges : []
+      if (unlocked.length) {
+        showBadgeUnlockCelebration(unlocked, {
+          title: currentMeta.title,
+          subtitle: `Por completar: ${currentMeta.title}`
+        })
+      }
     } catch {
       updateUser({
         onboardingCompleted: true,
@@ -648,8 +666,10 @@ export default function AppTutorial() {
   useEffect(() => {
     if (open) {
       hadOpenRef.current = true
+      setTutorialBlocking(true)
       return
     }
+    setTutorialBlocking(false)
     delete document.body.dataset.qyntraTutorial
     if (hadOpenRef.current) {
       hadOpenRef.current = false

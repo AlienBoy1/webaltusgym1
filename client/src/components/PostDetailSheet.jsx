@@ -16,6 +16,7 @@ import PostImageViewer from './PostImageViewer'
 import ProtectedMedia from './ProtectedMedia'
 import SharedPostAttachment from './SharedPostAttachment'
 import { countComments, normalizeCommentTree } from '../utils/commentTree'
+import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 import toast from 'react-hot-toast'
 
 /**
@@ -76,27 +77,12 @@ export default function PostDetailSheet({
     }
   }, [open])
 
-  // Hardware back closes detail
-  useEffect(() => {
-    if (!open) return undefined
-    const key = `post-detail-${postId || 'x'}`
-    window.history.pushState({ qyntraPostDetail: key }, '')
-    const onPop = () => {
-      onClose?.()
-    }
-    window.addEventListener('popstate', onPop)
-    return () => {
-      window.removeEventListener('popstate', onPop)
-    }
-  }, [open, postId, onClose])
-
-  const handleClose = () => {
-    if (window.history.state?.qyntraPostDetail) {
-      window.history.back()
-      return
-    }
-    onClose?.()
-  }
+  // Hardware back closes detail (stable handler — avoid re-push on onClose identity churn)
+  const handleClose = useHistoryBackLayer(
+    open,
+    () => onClose?.(),
+    `post-detail-${postId || 'x'}`
+  )
 
   const handleReact = async (emoji) => {
     if (!postId) return

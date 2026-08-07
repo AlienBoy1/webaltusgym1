@@ -1,5 +1,25 @@
 import { supabaseAdmin } from '../lib/supabase.js'
 
+/** Must stay aligned with client/src/tutorials/registry.js settingsKey values */
+export const TUTORIAL_SETTINGS_KEYS = [
+  'tutorialCompleted',
+  'tutorialProfileCompleted',
+  'tutorialWorkoutsCompleted',
+  'tutorialCommunityCompleted',
+  'tutorialChatCompleted',
+  'tutorialStoriesCompleted',
+  'tutorialChallengesCompleted',
+  'tutorialClassesCompleted',
+  'tutorialInvitesCompleted',
+  'tutorialProgressCompleted',
+  'tutorialRestTimesCompleted',
+  'tutorialPrivacyPermissionsCompleted'
+]
+
+export function countCompletedTutorials(settings = {}) {
+  return TUTORIAL_SETTINGS_KEYS.filter((k) => settings?.[k] === true).length
+}
+
 const BADGE_DEFINITIONS = [
   { id: 'first_workout', name: 'Primer Entrenamiento', icon: '🎯', xpRequired: 0, type: 'workout', threshold: 1, difficulty: 'easy' },
   { id: 'workout_5', name: '5 Entrenamientos', icon: '💪', xpRequired: 0, type: 'workout', threshold: 5, difficulty: 'easy' },
@@ -54,6 +74,38 @@ const BADGE_DEFINITIONS = [
   { id: 'social_25', name: 'Influencer', icon: '🌟', xpRequired: 0, type: 'social', threshold: 25, difficulty: 'normal' },
   { id: 'social_50', name: 'Comunidad Activa', icon: '🔥', xpRequired: 0, type: 'social', threshold: 50, difficulty: 'epic' },
   { id: 'social_100', name: 'Líder Social', icon: '👑', xpRequired: 0, type: 'social', threshold: 100, difficulty: 'legendary' },
+  // Tutoriales
+  {
+    id: 'tutorial_start',
+    name: 'Primeros Pasos',
+    icon: '🚀',
+    xpRequired: 0,
+    type: 'tutorial',
+    threshold: 1,
+    tutorialKey: 'tutorialCompleted',
+    xpReward: 30,
+    difficulty: 'easy'
+  },
+  {
+    id: 'tutorial_5',
+    name: 'Explorador',
+    icon: '📘',
+    xpRequired: 0,
+    type: 'tutorial',
+    threshold: 5,
+    xpReward: 80,
+    difficulty: 'normal'
+  },
+  {
+    id: 'tutorial_all',
+    name: 'Maestro Qyntra',
+    icon: '🎓',
+    xpRequired: 0,
+    type: 'tutorial',
+    threshold: 12,
+    xpReward: 200,
+    difficulty: 'epic'
+  },
   { id: 'early_bird', name: 'Madrugador', icon: '🌅', xpRequired: 0, type: 'special', threshold: 10, difficulty: 'normal' },
   { id: 'night_owl', name: 'Búho Nocturno', icon: '🦉', xpRequired: 0, type: 'special', threshold: 10, difficulty: 'normal' },
   { id: 'weekend_warrior', name: 'Guerrero de Fin de Semana', icon: '⚔️', xpRequired: 0, type: 'special', threshold: 20, difficulty: 'epic' },
@@ -99,7 +151,7 @@ export async function awardXP(userId, amount, reason = 'Actividad', skipBadgeChe
   return { xp: stats.xp, level: stats.level, leveledUp, oldLevel }
 }
 
-export async function checkBadgeUnlocks(userId, skipXPBadges = false) {
+export async function checkBadgeUnlocks(userId, skipXPBadges = false, _depth = 0) {
   const { data: user, error } = await supabaseAdmin
     .from('profiles')
     .select('*')
@@ -138,6 +190,15 @@ export async function checkBadgeUnlocks(userId, skipXPBadges = false) {
       case 'class':
         shouldUnlock = (user.stats?.classesCompleted || 0) >= badgeDef.threshold
         break
+      case 'tutorial': {
+        const settings = user.settings || {}
+        if (badgeDef.tutorialKey) {
+          shouldUnlock = settings[badgeDef.tutorialKey] === true
+        } else {
+          shouldUnlock = countCompletedTutorials(settings) >= (badgeDef.threshold || 0)
+        }
+        break
+      }
       default:
         shouldUnlock = false
     }
@@ -166,6 +227,13 @@ export async function checkBadgeUnlocks(userId, skipXPBadges = false) {
       .from('profiles')
       .update({ badges, updated_at: new Date().toISOString() })
       .eq('id', userId)
+
+    const bonusXp = unlockedBadges.reduce((sum, b) => sum + (Number(b.xpReward) || 0), 0)
+    if (bonusXp > 0 && _depth < 2) {
+      await awardXP(userId, bonusXp, 'Insignias desbloqueadas', true)
+      // Catch XP / level badges unlocked by the bonus (won't re-grant tutorial badges)
+      await checkBadgeUnlocks(userId, false, _depth + 1)
+    }
   }
 
   return unlockedBadges

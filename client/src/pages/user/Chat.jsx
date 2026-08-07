@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -55,6 +55,7 @@ import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { addChatShortcut } from '../../utils/chatShortcuts'
 import { compressImageFile } from '../../utils/compressImage'
 import ChatMessageActionOverlay from '../../components/ChatMessageActionOverlay'
+import { useHistoryBackLayer } from '../../hooks/useHistoryBackLayer'
 
 const MESSAGING_DISABLED_COPY =
   'Este usuario tiene la mensajería desactivada por ahora. Podrás escribirle cuando la active; inténtalo de nuevo más tarde.'
@@ -1029,12 +1030,25 @@ export default function Chat() {
     }
   }
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     setShowEmoji(false)
     setShowAttachMenu(false)
     setPeerTyping(false)
     setSelectedChat(null)
-  }
+  }, [])
+
+  const requestChatBack = useHistoryBackLayer(
+    Boolean(selectedChat),
+    handleBack,
+    'chat-thread'
+  )
+
+  const closeMsgAction = useCallback(() => setMsgAction(null), [])
+  const requestCloseMsgAction = useHistoryBackLayer(
+    Boolean(msgAction),
+    closeMsgAction,
+    'chat-msg-action'
+  )
 
   const insertEmoji = (emoji) => {
     const el = inputRef.current
@@ -2132,7 +2146,7 @@ export default function Chat() {
             >
               <button
                 type="button"
-                onClick={handleBack}
+                onClick={requestChatBack}
                 className={`rounded-xl p-2 md:hidden ${
                   hasStyledWall
                     ? 'text-white/85 hover:bg-white/10'
@@ -3214,7 +3228,7 @@ export default function Chat() {
 
       <ChatMessageActionOverlay
         action={msgAction}
-        onClose={() => setMsgAction(null)}
+        onClose={requestCloseMsgAction}
         onReply={beginReply}
         onReact={applyReaction}
         onDeleteForMe={deleteMessageForMe}

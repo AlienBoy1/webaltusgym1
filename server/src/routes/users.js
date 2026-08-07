@@ -8,6 +8,7 @@ import {
   syncMembershipPlansLifecycle
 } from '../services/membershipService.js'
 import { isPaidEraLive } from '../utils/membershipLifecycle.js'
+import { checkBadgeUnlocks } from '../services/xpService.js'
 
 const router = express.Router()
 
@@ -94,15 +95,19 @@ router.put('/profile', authenticate, async (req, res) => {
     if (name) updateData.name = name
     if (avatar !== undefined) updateData.avatar = avatar
     if (phone !== undefined) updateData.phone = phone
-    if (settings !== undefined) updateData.settings = settings
     if (goal !== undefined) updateData.goal = goal
+
+    const { data: current } = await supabaseAdmin
+      .from('profiles')
+      .select('settings, profile')
+      .eq('id', req.user.id)
+      .single()
+
+    if (settings !== undefined) {
+      updateData.settings = { ...(current?.settings || {}), ...settings }
+    }
     if (profile !== undefined) {
-      const { data: cur } = await supabaseAdmin
-        .from('profiles')
-        .select('profile')
-        .eq('id', req.user.id)
-        .single()
-      updateData.profile = { ...(cur?.profile || {}), ...profile }
+      updateData.profile = { ...(current?.profile || {}), ...profile }
       if (updateData.profile.coverUrl === null || updateData.profile.coverUrl === '') {
         delete updateData.profile.coverUrl
       }
@@ -133,6 +138,33 @@ router.put('/profile', authenticate, async (req, res) => {
     }
     invalidateAuthProfileCache(req.user.id)
 
+    // Tutorial completion flags → badge unlocks (+ XP)
+    let unlockedBadges = []
+    if (settings !== undefined) {
+      try {
+        const unlocked = await checkBadgeUnlocks(req.user.id, false)
+        unlockedBadges = (unlocked || []).map((b) => ({
+          id: b.id,
+          name: b.name,
+          icon: b.icon,
+          xpReward: Number(b.xpReward) || 0,
+          type: b.type || null
+        }))
+        const { data: refreshed } = await supabaseAdmin
+          .from('profiles')
+          .select('stats, badges, settings')
+          .eq('id', req.user.id)
+          .single()
+        if (refreshed) {
+          data.stats = refreshed.stats
+          data.badges = refreshed.badges
+          data.settings = refreshed.settings
+        }
+      } catch (badgeErr) {
+        console.warn('badge check after profile update:', badgeErr?.message || badgeErr)
+      }
+    }
+
     const out = { ...data }
     // Never echo megabyte data-URLs in the response — client already has them in memory
     const reqCover = profile?.coverUrl
@@ -152,7 +184,11 @@ router.put('/profile', authenticate, async (req, res) => {
     } else if (out.avatar && String(out.avatar).startsWith('data:') && String(out.avatar).length > 12000) {
       out.avatar = null
     }
-    res.json({ message: 'Perfil actualizado', user: mapProfile(out) })
+    res.json({
+      message: 'Perfil actualizado',
+      user: mapProfile(out),
+      unlockedBadges
+    })
   } catch (error) {
     res.status(500).json({ message: 'Error al actualizar perfil', error: error.message })
   }
@@ -347,6 +383,28 @@ router.get('/badges/definitions', authenticate, async (req, res) => {
     res.json(getBadgeDefinitions())
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener definiciones de insignias', error: error.message })
+  }
+})
+
+/** Re-evaluate unlocks (e.g. tutorial badges for users who already completed guides). */
+router.post('/badges/sync', authenticate, async (req, res) => {
+  try {
+    const unlocked = await checkBadgeUnlocks(req.user.id, false)
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+      )
+      .eq('id', req.user.id)
+      .single()
+    if (error) throw error
+    invalidateAuthProfileCache(req.user.id)
+    res.json({
+      unlocked: (unlocked || []).map((b) => ({ id: b.id, name: b.name, icon: b.icon, xpReward: b.xpReward || 0 })),
+      user: mapProfile(data)
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al sincronizar insignias', error: error.message })
   }
 })
 

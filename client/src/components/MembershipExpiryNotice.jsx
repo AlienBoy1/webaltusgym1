@@ -9,7 +9,7 @@ import {
   isPastFreeEra,
   isPaidEraLive
 } from '../utils/membershipLifecycle'
-import { subscribeAppGate } from '../utils/appGate'
+import { subscribeAppGate, canShowPrompt, setMembershipBlocking } from '../utils/appGate'
 import { TUTORIAL_CLOSED_EVENT } from './AppTutorial'
 
 const OPT_OUT_KEY = 'qyntra_membership_expiry_notice'
@@ -66,19 +66,42 @@ export default function MembershipExpiryNotice() {
 
   useEffect(() => {
     const tryOpen = () => {
-      if (!isAuthenticated) return
+      if (!isAuthenticated) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
       const u = useAuthStore.getState().user
       if (!u?.id && !u?._id) return
       if (!u.username) return
-      if (isPaidEraLive()) return
+      if (isPaidEraLive()) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
       if (document.body.dataset.qyntraTutorial === '1') return
 
       const tick = useAuthStore.getState().authSessionTick || 0
       if (closedForTickRef.current === tick && tick > 0) return
 
       const uid = u.id || u._id
-      if (hasOptedOut(uid)) return
-      if (!isLegacyMembership(u.membership)) return
+      if (hasOptedOut(uid)) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
+      if (!isLegacyMembership(u.membership)) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
+
+      // Reserve slot so notifications wait behind this notice
+      setMembershipBlocking(true)
+      if (!canShowPrompt('membership')) {
+        setOpen(false)
+        return
+      }
 
       setOpen(true)
     }
@@ -115,6 +138,7 @@ export default function MembershipExpiryNotice() {
 
   const closeForSession = () => {
     closedForTickRef.current = useAuthStore.getState().authSessionTick || 0
+    setMembershipBlocking(false)
     setOpen(false)
   }
 
@@ -123,6 +147,7 @@ export default function MembershipExpiryNotice() {
     markOptedOut(uid)
     closedForTickRef.current = useAuthStore.getState().authSessionTick || 0
     clearMembershipNotice?.()
+    setMembershipBlocking(false)
     setOpen(false)
   }
 
