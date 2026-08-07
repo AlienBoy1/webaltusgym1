@@ -5,6 +5,8 @@ function mapConversations(data = []) {
   return (data || []).map((c) => ({
     ...c,
     otherId: c.otherId || c.oderId,
+    unread: Number(c.unread) || 0,
+    lastFromMe: Boolean(c.lastFromMe),
     time: c.time
       ? new Date(c.time).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
       : c.time || ''

@@ -32,12 +32,18 @@ export default function PeopleYouMayKnow() {
   const handleFollow = async (userId) => {
     setBusyId(userId)
     try {
-      await api.post(`/social/${userId}/follow`)
-      toast.success('Solicitud de seguimiento enviada')
+      const { data } = await api.post(`/social/${userId}/follow`)
+      toast.success(
+        data.status === 'following' ? 'Ahora sigues a este usuario' : 'Solicitud de seguimiento enviada'
+      )
       setPeople((prev) =>
         prev.map((p) =>
           (p._id || p.id) === userId
-            ? { ...p, hasPendingRequest: true, isFollowing: false }
+            ? {
+                ...p,
+                hasPendingRequest: data.status === 'pending',
+                isFollowing: data.status === 'following'
+              }
             : p
         )
       )

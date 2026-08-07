@@ -260,10 +260,11 @@ export default function Chat() {
                   ...c,
                   lastMessage: data.message,
                   time: 'Ahora',
+                  lastFromMe: false,
                   unread:
                     selectedChatRef.current?.otherId === data.from
                       ? 0
-                      : (c.unread || 0) + 1
+                      : (Number(c.unread) || 0) + 1
                 }
               : c
           )
@@ -276,6 +277,7 @@ export default function Chat() {
             avatar: data.fromName?.charAt(0) || '👤',
             lastMessage: data.message,
             time: 'Ahora',
+            lastFromMe: false,
             unread: 1
           },
           ...prev
@@ -434,7 +436,13 @@ export default function Chat() {
       setConversations((convs) =>
         convs.map((c) =>
           c.otherId === selectedChat.otherId
-            ? { ...c, lastMessage: msgText, time: 'Ahora' }
+            ? {
+                ...c,
+                lastMessage: msgText,
+                time: 'Ahora',
+                lastFromMe: true
+                // keep existing unread unchanged — outbound never creates unread
+              }
             : c
         )
       )
@@ -643,7 +651,8 @@ export default function Chat() {
             <div className="space-y-0.5">
               {filteredConversations.map((conv) => {
                 const active = selectedChat?.otherId === conv.otherId
-                const unread = conv.unread > 0
+                // Only real inbound unread — never style outbound previews as unread
+                const unread = Number(conv.unread) > 0 && !conv.lastFromMe
                 return (
                   <motion.button
                     key={conv.id || conv.otherId}

@@ -547,7 +547,11 @@ function mapFeedRpcPost(row) {
     sharedFrom,
     commentsCount: Number(row.comments_count) || 0,
     commentsLoaded: false,
-    imagesOmitted: Boolean(row.images_omitted) || postLikelyHasImages(row)
+    imagesOmitted: Boolean(row.images_omitted) || postLikelyHasImages(row),
+    profilePublic: row.profile_public !== false,
+    isFollowing: Boolean(row.is_following),
+    hasPendingRequest: Boolean(row.has_pending_request),
+    canFollow: Boolean(row.can_follow)
   }
 }
 
@@ -578,40 +582,77 @@ router.get('/feed', authenticate, async (req, res) => {
       console.warn('[feed] RPC unavailable, using lite path:', rpcError.message)
     }
 
-    const { data: following, error: followErr } = await supabaseAdmin
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', req.user.id)
-      .limit(MAX_FEED_FOLLOWING)
+    const [{ data: following }, { data: pendingReqs }] = await Promise.all([
+      supabaseAdmin
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', req.user.id)
+        .limit(200),
+      supabaseAdmin
+        .from('follow_requests')
+        .select('to_user_id')
+        .eq('from_user_id', req.user.id)
+        .limit(100)
+    ])
 
-    if (followErr) throw followErr
+    const followingSet = new Set((following || []).map((f) => f.following_id))
+    const pendingSet = new Set((pendingReqs || []).map((r) => r.to_user_id))
 
-    const followingIds = (following || []).map((f) => f.following_id)
-    const feedUserIds = [...new Set([req.user.id, ...followingIds])]
-
+    // Oversample then filter by public/private so fallback matches RPC visibility
     let query = supabaseAdmin
       .from('posts')
       .select(POST_FEED_COLUMNS)
-      .in('user_id', feedUserIds)
       .order('created_at', { ascending: false })
-      .limit(limit + 1)
+      .limit(Math.min((limit + 1) * 4, 60))
 
     if (before) {
       query = query.lt('created_at', before)
     }
 
-    const { data: posts, error } = await query
+    const { data: rawPosts, error } = await query
     if (error) throw error
 
-    const rows = posts || []
-    const hasMore = rows.length > limit
-    const page = hasMore ? rows.slice(0, limit) : rows
+    const candidates = rawPosts || []
+    const authorIds = [...new Set(candidates.map((p) => p.user_id).filter(Boolean))]
+    const settingsMap = {}
+    if (authorIds.length) {
+      const { data: authors } = await supabaseAdmin
+        .from('profiles')
+        .select('id, settings')
+        .in('id', authorIds)
+      for (const a of authors || []) {
+        settingsMap[a.id] = a.settings?.privacy?.profilePublic !== false
+      }
+    }
+
+    const visible = candidates.filter((row) => {
+      if (row.user_id === req.user.id) return true
+      if (followingSet.has(row.user_id)) return true
+      return settingsMap[row.user_id] !== false
+    })
+
+    const hasMore = visible.length > limit
+    const page = hasMore ? visible.slice(0, limit) : visible
     const enriched = await enrichPosts(page, req.user.id, { lite: true })
+    const withFlags = enriched.map((post) => {
+      const aid = post.user?._id || post.user?.id || post.user
+      const isSelf = aid === req.user.id
+      const profilePublic = settingsMap[aid] !== false
+      const isFollowing = followingSet.has(aid)
+      const hasPendingRequest = pendingSet.has(aid)
+      return {
+        ...post,
+        profilePublic,
+        isFollowing,
+        hasPendingRequest,
+        canFollow: !isSelf && profilePublic && !isFollowing && !hasPendingRequest
+      }
+    })
     const nextCursor = page.length ? page[page.length - 1].created_at : null
 
     res.setHeader('Server-Timing', `feed;dur=${Date.now() - started};desc="lite"`)
     res.json({
-      posts: enriched,
+      posts: withFlags,
       hasMore,
       nextCursor
     })
@@ -1254,7 +1295,7 @@ router.post('/:id/share', authenticate, async (req, res) => {
   }
 })
 
-// Request to follow user
+// Follow user — public profiles follow instantly; private require approval
 router.post('/:id/follow', authenticate, async (req, res) => {
   try {
     const targetUserId = req.params.id
@@ -1266,7 +1307,7 @@ router.post('/:id/follow', authenticate, async (req, res) => {
 
     const { data: targetUser } = await supabaseAdmin
       .from('profiles')
-      .select('id, name')
+      .select('id, name, settings')
       .eq('id', targetUserId)
       .maybeSingle()
 
@@ -1276,13 +1317,45 @@ router.post('/:id/follow', authenticate, async (req, res) => {
 
     const { data: existingFollow } = await supabaseAdmin
       .from('follows')
-      .select('*')
+      .select('id')
       .eq('follower_id', currentUserId)
       .eq('following_id', targetUserId)
       .maybeSingle()
 
     if (existingFollow) {
       return res.status(400).json({ message: 'Ya sigues a este usuario' })
+    }
+
+    const isPublic = targetUser.settings?.privacy?.profilePublic !== false
+
+    // Public → follow instantly (no request backlog)
+    if (isPublic) {
+      await supabaseAdmin
+        .from('follow_requests')
+        .delete()
+        .eq('from_user_id', currentUserId)
+        .eq('to_user_id', targetUserId)
+
+      const { error } = await supabaseAdmin.from('follows').upsert({
+        follower_id: currentUserId,
+        following_id: targetUserId
+      })
+      if (error) throw error
+
+      await notifyUser({
+        userId: targetUserId,
+        type: 'new_follower',
+        title: 'Nuevo seguidor',
+        body: `${req.user.name} empezó a seguirte`,
+        icon: '👤',
+        relatedUserId: currentUserId,
+        priority: 'normal'
+      })
+
+      return res.json({
+        message: 'Ahora sigues a este usuario',
+        status: 'following'
+      })
     }
 
     const { data: pending } = await supabaseAdmin

@@ -22,14 +22,18 @@ router.get('/conversations', authenticate, async (req, res) => {
     for (const msg of messages || []) {
       const partnerId = msg.from_user_id === userId ? msg.to_user_id : msg.from_user_id
       const preview = decodeChatContent(msg.content).preview
+      const isInboundUnread =
+        msg.to_user_id === userId && msg.from_user_id !== userId && msg.read !== true
+
       if (!conversationMap.has(partnerId)) {
         conversationMap.set(partnerId, {
           otherId: partnerId,
           lastMessage: preview,
           lastMessageTime: msg.created_at,
-          unread: msg.to_user_id === userId && !msg.read ? 1 : 0
+          lastFromMe: msg.from_user_id === userId,
+          unread: isInboundUnread ? 1 : 0
         })
-      } else if (msg.to_user_id === userId && !msg.read) {
+      } else if (isInboundUnread) {
         conversationMap.get(partnerId).unread++
       }
     }
@@ -48,6 +52,8 @@ router.get('/conversations', authenticate, async (req, res) => {
         const user = profileMap[otherId]
         const conv = conversationMap.get(otherId)
         if (!user || !conv) return null
+        // Unread = only inbound messages not yet read (never outbound)
+        const unread = Number(conv.unread) || 0
         return {
           id: otherId,
           otherId,
@@ -55,7 +61,8 @@ router.get('/conversations', authenticate, async (req, res) => {
           avatar: user.avatar || user.name?.charAt(0) || '👤',
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
-          unread: conv.unread
+          lastFromMe: Boolean(conv.lastFromMe),
+          unread
         }
       })
       .filter(Boolean)
@@ -81,7 +88,6 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
     if (error) throw error
 
-    // Mark inbound as delivered + read (WhatsApp style when opening chat)
     const now = new Date().toISOString()
     await supabaseAdmin
       .from('messages')
@@ -97,7 +103,6 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       return formatChatMessage(m, myId)
     }))
   } catch (error) {
-    // Fallback if delivered columns missing
     try {
       const myId = req.user.id
       const otherId = req.params.userId
@@ -121,7 +126,6 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
   }
 })
 
-// Mark messages as delivered (recipient device ack)
 router.post('/delivered/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
@@ -140,7 +144,6 @@ router.post('/delivered/:userId', authenticate, async (req, res) => {
   }
 })
 
-// Mark inbound as read while thread is open
 router.post('/read/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id

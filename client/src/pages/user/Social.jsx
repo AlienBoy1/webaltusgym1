@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   FiHeart, FiMessageCircle, FiShare2, FiImage, FiSend, FiTrash2, FiX, 
-  FiSmile, FiBarChart2, FiCheckCircle, FiAward, FiActivity, FiClock
+  FiSmile, FiBarChart2, FiCheckCircle, FiAward, FiActivity, FiClock, FiUserPlus
 } from 'react-icons/fi'
 import { Link, useSearchParams } from 'react-router-dom'
 import api from '../../utils/api'
@@ -513,6 +513,42 @@ export default function Social() {
     }
   }
 
+  const handleFollowFromFeed = async (authorId) => {
+    if (!authorId) return
+    setPosts((prev) =>
+      prev.map((p) => {
+        const uid = p.user?._id || p.user?.id
+        if (uid !== authorId) return p
+        return { ...p, hasPendingRequest: true, canFollow: false }
+      })
+    )
+    try {
+      const { data } = await api.post(`/social/${authorId}/follow`)
+      setPosts((prev) =>
+        prev.map((p) => {
+          const uid = p.user?._id || p.user?.id
+          if (uid !== authorId) return p
+          if (data.status === 'following') {
+            return { ...p, isFollowing: true, hasPendingRequest: false, canFollow: false }
+          }
+          return { ...p, isFollowing: false, hasPendingRequest: true, canFollow: false }
+        })
+      )
+      toast.success(
+        data.status === 'following' ? 'Ahora sigues a este usuario' : 'Solicitud enviada'
+      )
+    } catch (error) {
+      setPosts((prev) =>
+        prev.map((p) => {
+          const uid = p.user?._id || p.user?.id
+          if (uid !== authorId) return p
+          return { ...p, hasPendingRequest: false, canFollow: Boolean(p.profilePublic !== false) }
+        })
+      )
+      toast.error(error.response?.data?.message || 'No se pudo seguir')
+    }
+  }
+
   const getLevelBadge = (level) => {
     if (level >= 10) return { class: 'bg-accent-purple/20 text-accent-purple', label: 'Elite' }
     if (level >= 5) return { class: 'bg-accent-cyan/20 text-accent-cyan', label: 'Pro' }
@@ -823,14 +859,32 @@ export default function Social() {
                   </Link>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <Link to={`/user/${post.user?.username || post.user?._id}`} className="min-w-0" data-no-post-open>
-                        <div className="font-semibold hover:text-primary-500 transition-colors truncate text-sm sm:text-base">
-                          {post.user?.name || 'Usuario'}
-                        </div>
-                        {post.user?.username && (
-                          <div className="text-xs text-primary-500 truncate">@{post.user.username}</div>
+                      <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                        <Link to={`/user/${post.user?.username || post.user?._id}`} className="min-w-0" data-no-post-open>
+                          <div className="font-semibold hover:text-primary-500 transition-colors truncate text-sm sm:text-base">
+                            {post.user?.name || 'Usuario'}
+                          </div>
+                          {post.user?.username && (
+                            <div className="text-xs text-primary-500 truncate">@{post.user.username}</div>
+                          )}
+                        </Link>
+                        {!isOwner && post.canFollow && (
+                          <button
+                            type="button"
+                            data-no-post-open
+                            onClick={() => handleFollowFromFeed(post.user?._id || post.user?.id)}
+                            className="inline-flex items-center gap-1 rounded-full border border-primary-500/40 bg-primary-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary-500 transition hover:bg-primary-500/20"
+                          >
+                            <FiUserPlus size={12} />
+                            Seguir
+                          </button>
                         )}
-                      </Link>
+                        {!isOwner && post.hasPendingRequest && !post.isFollowing && (
+                          <span className="inline-flex items-center rounded-full border border-app bg-elevated px-2.5 py-0.5 text-[11px] font-medium text-app-secondary">
+                            Solicitado
+                          </span>
+                        )}
+                      </div>
                       {isOwner && (
                         <button
                           onClick={() => handleDelete(post._id)}
