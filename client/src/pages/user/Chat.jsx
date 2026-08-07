@@ -24,9 +24,10 @@ import {
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
-import { onChatEvent, sendTyping, showNotification, requestNotificationPermission } from '../../utils/socket'
+import { onChatEvent, sendTyping, sendReceipt, showNotification, requestNotificationPermission } from '../../utils/socket'
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
+import { mergeReceipt } from '../../utils/chatReceipts'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import PresenceDot from '../../components/PresenceDot'
 import { getPresenceMeta, PRESENCE_STATUS, usePresenceStatus } from '../../utils/presence'
@@ -477,11 +478,37 @@ export default function Chat() {
     const handleNewMessage = (data) => {
       // Ack delivery; mark read if this thread is open
       if (data.from) {
-        if (selectedChatRef.current?.otherId === data.from) {
-          api.post(`/chat/read/${data.from}`).catch(() => {})
-        } else {
-          api.post(`/chat/delivered/${data.from}`).catch(() => {})
+        const me = user?._id || user?.id
+        const ack = async () => {
+          try {
+            if (selectedChatRef.current?.otherId === data.from) {
+              const { data: res } = await api.post(`/chat/read/${data.from}`)
+              if (me) {
+                sendReceipt({
+                  to: data.from,
+                  from: me,
+                  delivered: true,
+                  read: true,
+                  messageIds: res?.messageIds || (data.id ? [data.id] : [])
+                })
+              }
+            } else {
+              const { data: res } = await api.post(`/chat/delivered/${data.from}`)
+              if (me) {
+                sendReceipt({
+                  to: data.from,
+                  from: me,
+                  delivered: true,
+                  read: false,
+                  messageIds: res?.messageIds || (data.id ? [data.id] : [])
+                })
+              }
+            }
+          } catch {
+            /* ignore */
+          }
         }
+        ack()
       }
       showNotification(`${data.fromName}`, data.message, {
         tag: `msg-${data.from}`,
@@ -494,7 +521,7 @@ export default function Chat() {
 
       if (selectedChatRef.current?.otherId === data.from) {
         setMessages((prev) => {
-          if (data.id && prev.some((m) => m.id === data.id)) return prev
+          if (data.id && prev.some((m) => String(m.id) === String(data.id))) return prev
           return [
             ...prev,
             {
@@ -553,13 +580,14 @@ export default function Chat() {
       setMessages((prev) =>
         prev.map((m) => {
           if (String(m.id) !== targetId) return m
-          const delivered = data.delivered !== undefined ? data.delivered : m.delivered
-          const read = data.read !== undefined ? data.read : m.read
+          const receipt = mergeReceipt(m, {
+            delivered: data.delivered,
+            read: data.read,
+            status: data.status
+          })
           const next = {
             ...m,
-            delivered,
-            read,
-            status: read ? 'read' : delivered ? 'delivered' : data.status || m.status || 'sent'
+            ...receipt
           }
           if (data.contentUpdated || data.contentSync) {
             if (data.text !== undefined) next.text = data.text
@@ -577,8 +605,33 @@ export default function Chat() {
       )
     }
 
+    const handleMessageReceipt = (data) => {
+      // Peer marked my messages delivered/read
+      const peerId = data?.from
+      if (!peerId) return
+      const ids = (data.messageIds || []).map(String)
+      const openPeer = selectedChatRef.current?.otherId
+      // Only mutate the open thread (messages state is for current chat)
+      if (openPeer && String(openPeer) !== String(peerId)) return
+
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.sender !== 'me') return m
+          if (ids.length && !ids.includes(String(m.id))) return m
+          return {
+            ...m,
+            ...mergeReceipt(m, {
+              delivered: data.delivered,
+              read: data.read
+            })
+          }
+        })
+      )
+    }
+
     const unsubMessage = onChatEvent('newMessage', handleNewMessage)
     const unsubStatus = onChatEvent('messageStatus', handleMessageStatus)
+    const unsubReceipt = onChatEvent('messageReceipt', handleMessageReceipt)
 
     const handleTyping = (payload) => {
       const from = payload?.from
@@ -610,6 +663,7 @@ export default function Chat() {
     return () => {
       unsubMessage()
       unsubStatus()
+      unsubReceipt()
       unsubTyping()
       if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
       typingTimersRef.current.forEach((id) => window.clearTimeout(id))
@@ -663,18 +717,11 @@ export default function Chat() {
           const merged = data.map((server) => {
             const local = prevById.get(String(server.id))
             if (!local) return server
+            const receipt = mergeReceipt(local, server)
             return {
               ...local,
               ...server,
-              // Prefer higher receipt status from either side
-              delivered: Boolean(server.delivered || local.delivered),
-              read: Boolean(server.read || local.read),
-              status:
-                server.read || local.read
-                  ? 'read'
-                  : server.delivered || local.delivered
-                    ? 'delivered'
-                    : server.status || local.status || 'sent'
+              ...receipt
             }
           })
           return temps.length ? [...merged, ...temps] : merged
@@ -761,6 +808,23 @@ export default function Chat() {
       setConversations((convs) =>
         convs.map((c) => (c.otherId === otherId ? { ...c, unread: 0 } : c))
       )
+
+      // Notify peer that we read (broadcast path — realtime UPDATE often filtered by RLS)
+      const me = user?._id || user?.id
+      if (me && otherId) {
+        try {
+          const { data: res } = await api.post(`/chat/read/${otherId}`)
+          sendReceipt({
+            to: otherId,
+            from: me,
+            delivered: true,
+            read: true,
+            messageIds: res?.messageIds || []
+          })
+        } catch {
+          sendReceipt({ to: otherId, from: me, delivered: true, read: true, messageIds: [] })
+        }
+      }
 
       const pending = pendingStoryReply.current
       if (pending && pending.to === otherId) {
@@ -889,7 +953,7 @@ export default function Chat() {
         attachment: attachment || undefined,
         reply: activeReply || undefined
       })
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...data } : m)))
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...data, ...mergeReceipt({ status: 'sent' }, data) } : m)))
       setConversations((convs) =>
         convs.map((c) =>
           c.otherId === selectedChat.otherId

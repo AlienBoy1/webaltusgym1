@@ -6,6 +6,7 @@ let presenceChannel = null
 const listeners = {
   newMessage: new Set(),
   messageStatus: new Set(),
+  messageReceipt: new Set(),
   userTyping: new Set(),
   userOnline: new Set(),
   userOffline: new Set(),
@@ -178,6 +179,16 @@ export function initSocket(userId) {
     .on('broadcast', { event: 'typing' }, ({ payload }) => {
       if (payload?.to === userId) emit('userTyping', { from: payload.from })
     })
+    .on('broadcast', { event: 'receipt' }, ({ payload }) => {
+      if (payload?.to === userId) {
+        emit('messageReceipt', {
+          from: payload.from,
+          delivered: Boolean(payload.delivered || payload.read),
+          read: Boolean(payload.read),
+          messageIds: Array.isArray(payload.messageIds) ? payload.messageIds : []
+        })
+      }
+    })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await presenceChannel.track({
@@ -283,6 +294,22 @@ export function sendTyping(to, from) {
   })
 }
 
+/** Peer receipts (entregado / leído) — reliable path when postgres UPDATE realtime is filtered. */
+export function sendReceipt({ to, from, delivered = false, read = false, messageIds = [] }) {
+  if (!presenceChannel || !to || !from) return Promise.resolve()
+  return presenceChannel.send({
+    type: 'broadcast',
+    event: 'receipt',
+    payload: {
+      to: String(to),
+      from: String(from),
+      delivered: Boolean(delivered || read),
+      read: Boolean(read),
+      messageIds: (messageIds || []).map(String)
+    }
+  })
+}
+
 export const requestNotificationPermission = async () => {
   if (!('Notification' in window)) return false
   if (Notification.permission === 'granted') return true
@@ -336,6 +363,7 @@ export default {
   onChatEvent,
   offChatEvent,
   sendTyping,
+  sendReceipt,
   trackPresence,
   getPresenceChannel,
   requestNotificationPermission,

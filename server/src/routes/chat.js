@@ -180,16 +180,17 @@ router.post('/delivered/:userId', authenticate, async (req, res) => {
     const myId = req.user.id
     const fromId = req.params.userId
     const now = new Date().toISOString()
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('messages')
       .update({ delivered: true, delivered_at: now })
       .eq('from_user_id', fromId)
       .eq('to_user_id', myId)
       .eq('delivered', false)
+      .select('id')
     if (error) throw error
-    res.json({ ok: true })
+    res.json({ ok: true, messageIds: (data || []).map((r) => r.id) })
   } catch (error) {
-    res.json({ ok: false })
+    res.json({ ok: false, messageIds: [] })
   }
 })
 
@@ -198,16 +199,17 @@ router.post('/read/:userId', authenticate, async (req, res) => {
     const myId = req.user.id
     const fromId = req.params.userId
     const now = new Date().toISOString()
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('messages')
       .update({ read: true, delivered: true, delivered_at: now })
       .eq('from_user_id', fromId)
       .eq('to_user_id', myId)
-      .eq('read', false)
+      .or('read.eq.false,delivered.eq.false')
+      .select('id')
     if (error) throw error
-    res.json({ ok: true })
+    res.json({ ok: true, messageIds: (data || []).map((r) => r.id) })
   } catch (error) {
-    res.json({ ok: false })
+    res.json({ ok: false, messageIds: [] })
   }
 })
 
