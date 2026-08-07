@@ -203,12 +203,23 @@ function membershipNoticeFor(membership) {
 }
 
 async function prepareAuthProfile(profile) {
-  const synced = await syncUserMembershipOnProfile(profile)
-  syncMembershipPlansLifecycle().catch(() => {})
-  const mapped = mapProfile(synced)
-  return {
-    mapped,
-    membershipNotice: membershipNoticeFor(mapped.membership)
+  try {
+    const synced = await syncUserMembershipOnProfile(profile)
+    syncMembershipPlansLifecycle().catch((err) => {
+      console.warn('syncMembershipPlansLifecycle:', err?.message || err)
+    })
+    const mapped = mapProfile(synced)
+    return {
+      mapped,
+      membershipNotice: membershipNoticeFor(mapped.membership)
+    }
+  } catch (err) {
+    // Never block login/session because of membership sync
+    console.error('prepareAuthProfile:', err?.message || err)
+    return {
+      mapped: mapProfile(profile),
+      membershipNotice: membershipNoticeFor(profile?.membership)
+    }
   }
 }
 

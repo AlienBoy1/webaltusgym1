@@ -10,7 +10,7 @@ import {
   resolvePlanLifecycle,
   stripPlanMetaFromFeatures,
   withPlanMeta
-} from './membershipLifecycle.js'
+} from '../utils/membershipLifecycle.js'
 
 export function mapMembershipPlanRow(row) {
   if (!row) return null
