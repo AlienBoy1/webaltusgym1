@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiAward, FiClock } from 'react-icons/fi'
@@ -16,7 +16,7 @@ function noticeStorageKey(userId) {
   return userId ? `${NOTICE_KEY}:${userId}:2026` : null
 }
 
-function hasDismissed(userId) {
+function hasOptedOut(userId) {
   const key = noticeStorageKey(userId)
   if (!key) return true
   try {
@@ -26,7 +26,7 @@ function hasDismissed(userId) {
   }
 }
 
-function markDismissed(userId) {
+function markOptedOut(userId) {
   const key = noticeStorageKey(userId)
   if (!key) return
   try {
@@ -37,14 +37,23 @@ function markDismissed(userId) {
 }
 
 /**
- * Native premium notice: free membership ends Dec 31, 2026 23:59.
- * Shown after login / session restore when gates allow.
+ * Free membership ends Dec 31, 2026 23:59 (Mexico City).
+ * Shows on every login unless the user taps "No volver a recordar".
+ * "Entendido" only closes it for the current session.
  */
 export default function MembershipExpiryNotice() {
   const user = useAuthStore((s) => s.user)
   const membershipNotice = useAuthStore((s) => s.membershipNotice)
   const clearMembershipNotice = useAuthStore((s) => s.clearMembershipNotice)
   const [open, setOpen] = useState(false)
+  const closedThisSessionRef = useRef(false)
+
+  // New login notice → allow showing again this session
+  useEffect(() => {
+    if (membershipNotice) {
+      closedThisSessionRef.current = false
+    }
+  }, [membershipNotice])
 
   useEffect(() => {
     const tryOpen = () => {
@@ -53,9 +62,10 @@ export default function MembershipExpiryNotice() {
       if (!u.username) return
       if (!canStartTutorials()) return
       if (document.body.dataset.qyntraTutorial === '1') return
+      if (closedThisSessionRef.current) return
 
       const uid = u.id || u._id
-      if (hasDismissed(uid)) return
+      if (hasOptedOut(uid)) return
 
       const membership = u.membership
       const isLegacy =
@@ -63,9 +73,8 @@ export default function MembershipExpiryNotice() {
         membership?.era !== 'paid' &&
         membership?.__paidEra !== true
 
-      if (!isLegacy && !membershipNotice) return
+      if (!isLegacy && !useAuthStore.getState().membershipNotice) return
 
-      // Always inform while free era (or if already expired)
       setOpen(true)
     }
 
@@ -78,17 +87,27 @@ export default function MembershipExpiryNotice() {
     }
   }, [user?.id, user?._id, user?.username, user?.membership?.endDate, membershipNotice])
 
-  const dismiss = () => {
+  const endsLabel = freeEraEndLabel()
+  const expired = isPastFreeEra() || membershipNotice?.type === 'expired'
+
+  const bodyText = expired
+    ? `El acceso gratuito concluyó el ${endsLabel}. Pronto se habilitarán los planes de pago.`
+    : `Tu membresía gratuita vence el ${endsLabel}. A partir de enero 2027 se habilitarán los planes de pago en Qyntra.`
+
+  const closeForSession = () => {
+    closedThisSessionRef.current = true
+    setOpen(false)
+  }
+
+  const dontRemindAgain = () => {
     const uid = user?.id || user?._id
-    markDismissed(uid)
+    markOptedOut(uid)
+    closedThisSessionRef.current = true
     clearMembershipNotice?.()
     setOpen(false)
   }
 
   if (typeof document === 'undefined' || !open || !user) return null
-
-  const expired = isPastFreeEra() || membershipNotice?.type === 'expired'
-  const endsLabel = freeEraEndLabel()
 
   return createPortal(
     <AnimatePresence>
@@ -103,7 +122,7 @@ export default function MembershipExpiryNotice() {
             type="button"
             className="absolute inset-0 bg-black/55 backdrop-blur-sm"
             aria-label="Cerrar"
-            onClick={dismiss}
+            onClick={closeForSession}
           />
           <motion.div
             initial={{ y: 40, opacity: 0, scale: 0.98 }}
@@ -142,10 +161,7 @@ export default function MembershipExpiryNotice() {
                       : 'Tu membresía gratuita tiene fecha límite'}
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-[color:var(--text-secondary)]">
-                    {membershipNotice?.body ||
-                      (expired
-                        ? `El acceso gratuito concluyó el ${endsLabel}. Pronto se habilitarán los planes de pago.`
-                        : `Tu membresía gratuita se vencerá el ${endsLabel}. Hasta entonces puedes usar Qyntra con normalidad.`)}
+                    {bodyText}
                   </p>
                 </div>
               </div>
@@ -163,9 +179,18 @@ export default function MembershipExpiryNotice() {
                 </div>
               </div>
 
-              <button type="button" onClick={dismiss} className="btn-primary mt-5 w-full py-3">
-                Entendido
-              </button>
+              <div className="mt-5 flex flex-col gap-2">
+                <button type="button" onClick={closeForSession} className="btn-primary w-full py-3">
+                  Entendido
+                </button>
+                <button
+                  type="button"
+                  onClick={dontRemindAgain}
+                  className="w-full rounded-xl border border-[color:var(--border-subtle)] px-4 py-3 text-sm font-medium text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-muted)] hover:text-[color:var(--text-primary)]"
+                >
+                  No volver a recordar
+                </button>
+              </div>
               <p className="mt-3 text-center text-[11px] text-[color:var(--text-muted)]">
                 Puedes revisar los detalles en Inicio → Ver más o en tu perfil.
               </p>

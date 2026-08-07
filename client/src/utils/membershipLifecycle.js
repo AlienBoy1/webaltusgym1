@@ -17,21 +17,25 @@ export function isPaidEraLive(at = Date.now()) {
 
 export function freeEraEndLabel(locale = 'es-MX') {
   return FREE_ERA_END.toLocaleString(locale, {
+    timeZone: 'America/Mexico_City',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: true
   })
 }
 
 export function paidEraStartLabel(locale = 'es-MX') {
   return PAID_ERA_START.toLocaleString(locale, {
+    timeZone: 'America/Mexico_City',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: true
   })
 }
 

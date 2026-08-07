@@ -165,21 +165,25 @@ export function formatMembershipDate(iso, locale = 'es-MX') {
 }
 
 export function freeEraEndLabel(locale = 'es-MX') {
-  return new Date(FREE_ERA_END_ISO).toLocaleString(locale, {
+  return FREE_ERA_END.toLocaleString(locale, {
+    timeZone: 'America/Mexico_City',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: true
   })
 }
 
 export function paidEraStartLabel(locale = 'es-MX') {
-  return new Date(PAID_ERA_START_ISO).toLocaleString(locale, {
+  return PAID_ERA_START.toLocaleString(locale, {
+    timeZone: 'America/Mexico_City',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: true
   })
 }
