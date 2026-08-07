@@ -246,16 +246,19 @@ export function ensureSocketAlive(userId, { force = false } = {}) {
   if (force) return initSocket(id)
   const msgState = messageChannel?.state
   const presenceState = presenceChannel?.state
+  const receiptsState = receiptsChannel?.state
+  const channelOk = (s) => s === 'joined' || s === 'joining' || s === 'subscribed'
   const healthy =
     messageChannel &&
     presenceChannel &&
     receiptsChannel &&
     trackedUserId === String(id) &&
-    (msgState === 'joined' || msgState === 'joining') &&
-    (presenceState === 'joined' || presenceState === 'joining')
+    channelOk(msgState) &&
+    channelOk(presenceState) &&
+    channelOk(receiptsState)
   if (healthy) {
     trackPresence({ user_id: id, status: 'online' }).catch(() => {})
-    return { messageChannel, presenceChannel }
+    return { messageChannel, presenceChannel, receiptsChannel }
   }
   return initSocket(id)
 }

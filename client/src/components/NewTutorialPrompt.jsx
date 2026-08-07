@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FiBookOpen, FiClock } from 'react-icons/fi'
+import { FiBookOpen } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import { TUTORIAL_IDS, hasCompletedTutorial } from '../tutorials/registry'
 import { getUnnotifiedTutorials, markTutorialsKnown } from '../tutorials/spotlight'
@@ -9,8 +9,8 @@ import { canStartTutorials, subscribeAppGate } from '../utils/appGate'
 import { openTutorialHub, TUTORIAL_CLOSED_EVENT } from './AppTutorial'
 
 /**
- * After updates / gate settle: if catalog has tutorials the user hasn't been
- * notified about, open a premium prompt then the tutorials mailbox highlighting them.
+ * After updates / gate settle: list EVERY catalog tutorial the user hasn't
+ * been notified about since they last acknowledged (seeded on first run).
  */
 export default function NewTutorialPrompt() {
   const user = useAuthStore((s) => s.user)
@@ -85,8 +85,11 @@ export default function NewTutorialPrompt() {
 
   if (typeof document === 'undefined' || !payload) return null
 
-  const primary = payload.items[0]
-  const extra = Math.max(0, payload.items.length - 1)
+  const count = payload.items.length
+  const title =
+    count === 1
+      ? payload.items[0]?.title || 'Nuevo tutorial'
+      : `${count} tutoriales nuevos`
 
   return createPortal(
     <AnimatePresence>
@@ -123,32 +126,38 @@ export default function NewTutorialPrompt() {
                 </span>
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-primary)]">
-                    Nuevo tutorial
+                    {count === 1 ? 'Nuevo tutorial' : 'Nuevos tutoriales'}
                   </p>
                   <h2 className="mt-1 font-display text-2xl tracking-wide text-[color:var(--text-primary)]">
-                    {primary?.title || 'Hay algo nuevo para ti'}
+                    {title}
                   </h2>
                   <p className="mt-1.5 text-sm leading-relaxed text-[color:var(--text-secondary)]">
-                    {primary?.description ||
-                      'Hay un tutorial nuevo en tu buzón. Puedes verlo ahora o más tarde.'}
-                    {extra > 0
-                      ? ` También hay ${extra} tutorial${extra === 1 ? '' : 'es'} más nuevo${extra === 1 ? '' : 's'}.`
-                      : ''}
+                    {count === 1
+                      ? 'Hay un tutorial nuevo desde tu última visita. Ábrelo ahora o más tarde desde el menú.'
+                      : 'Estos tutoriales se agregaron desde tu última visita. Revísalos todos en el centro de tutoriales.'}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center gap-2 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/50 px-3.5 py-3">
-                <span className="text-2xl" aria-hidden>
-                  {primary?.icon || '⏱️'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
-                    {primary?.title}
-                  </p>
-                  <p className="truncate text-xs text-[color:var(--text-muted)]">{primary?.short}</p>
-                </div>
-                <FiClock className="shrink-0 text-[color:var(--text-muted)]" size={16} />
+              <div className="mt-4 max-h-[40vh] space-y-2 overflow-y-auto overscroll-contain pr-0.5">
+                {payload.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2.5 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/50 px-3.5 py-3"
+                  >
+                    <span className="text-2xl" aria-hidden>
+                      {item.icon || '📘'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
+                        {item.title}
+                      </p>
+                      <p className="truncate text-xs text-[color:var(--text-muted)]">
+                        {item.short || item.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">
@@ -157,7 +166,7 @@ export default function NewTutorialPrompt() {
                   onClick={() => dismiss(true)}
                   className="btn-primary flex-1 py-3"
                 >
-                  Ver ahora
+                  {count === 1 ? 'Ver ahora' : 'Ver todos'}
                 </button>
                 <button
                   type="button"

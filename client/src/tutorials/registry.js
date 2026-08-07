@@ -16,6 +16,7 @@ export const TUTORIAL_IDS = {
   WORKOUTS: 'workouts',
   COMMUNITY: 'community',
   CHAT: 'chat',
+  STORIES: 'stories',
   CHALLENGES: 'challenges',
   CLASSES: 'classes',
   INVITES: 'invites',
@@ -87,6 +88,16 @@ export const TUTORIAL_CATALOG = [
       'Bandeja con tipado en vivo, adjuntos, mensajes de voz, emojis grandes, reacciones, ver una vez, respuestas, estilos y archivos compartidos.',
     completionKey: 'qyntra_tutorial_chat_done',
     settingsKey: 'tutorialChatCompleted'
+  },
+  {
+    id: TUTORIAL_IDS.STORIES,
+    title: 'Historias',
+    short: 'Estados, vistas y compartir',
+    icon: '📖',
+    description:
+      'Crea y ve historias, reacciona, responde, guarda favoritos, edita portadas de álbum y comparte en IG/FB.',
+    completionKey: 'qyntra_tutorial_stories_done',
+    settingsKey: 'tutorialStoriesCompleted'
   },
   {
     id: TUTORIAL_IDS.CHALLENGES,
@@ -229,6 +240,14 @@ const QUICK_START_STEPS = [
     target: 'menu-settings',
     title: 'Configuración',
     body: 'Privacidad, apariencia, notificaciones y preferencias de la app. Todo centralizado aquí.',
+    openAvatarMenu: true
+  },
+  {
+    id: 'menu-tutorials',
+    path: '/dashboard',
+    target: 'menu-tutorials',
+    title: 'Centro de tutoriales',
+    body: 'Desde el menú de tu foto abres «Tutoriales de la app». Ahí están todas las guías para repasar cuando quieras.',
     openAvatarMenu: true
   },
   {
@@ -766,12 +785,75 @@ const PRIVACY_PERMISSIONS_STEPS = [
   }
 ]
 
+const STORIES_STEPS = [
+  {
+    id: 'st-rail',
+    path: '/social',
+    target: 'tour-stories-rail',
+    title: 'Fila de historias',
+    body: 'En Comunidad, arriba del feed, ves los estados de quienes sigues. El círculo con + crea el tuyo.'
+  },
+  {
+    id: 'st-create',
+    path: '/social',
+    target: 'tour-stories-create-demo',
+    demo: 'stories-create',
+    forceDemo: true,
+    title: 'Crear una historia',
+    body: 'Sube foto o video (máx. ~30 s), añade descripción con @menciones y publícala. Dura 24 horas.'
+  },
+  {
+    id: 'st-view',
+    path: '/social',
+    target: 'tour-stories-viewer-demo',
+    demo: 'stories-viewer',
+    forceDemo: true,
+    title: 'Ver y navegar',
+    body: 'Toca una burbuja para abrir. Desliza o toca izquierda/derecha para cambiar. La barra superior marca el tiempo.'
+  },
+  {
+    id: 'st-react-reply',
+    path: '/social',
+    target: 'tour-stories-react-demo',
+    demo: 'stories-react',
+    forceDemo: true,
+    title: 'Reaccionar y responder',
+    body: 'En historias ajenas usa las reacciones rápidas o escribe para responder en el chat con la historia adjunta.'
+  },
+  {
+    id: 'st-own',
+    path: '/social',
+    target: 'tour-stories-own-demo',
+    demo: 'stories-own',
+    forceDemo: true,
+    title: 'Tu estado y vistas',
+    body: 'En «Mi estado» ves el ojo con cuántas personas miraron. Ábrelo para la lista, reacciones y mensajes.'
+  },
+  {
+    id: 'st-share',
+    path: '/social',
+    target: 'tour-stories-share-demo',
+    demo: 'stories-share',
+    forceDemo: true,
+    title: 'Compartir y menú',
+    body: 'Desde ⋮ puedes reenviar en chat, guardar, compartir a Facebook/Instagram, meter en favoritos o eliminar.'
+  },
+  {
+    id: 'st-favorites',
+    path: '/profile',
+    target: 'tour-profile-favorites',
+    title: 'Álbumes favoritos',
+    body: 'En tu perfil, Favoritos guarda historias destacadas. Mantén pulsada una burbuja propia para editar la portada.'
+  }
+]
+
 export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.QUICK_START]: QUICK_START_STEPS,
   [TUTORIAL_IDS.PROFILE_EDIT]: PROFILE_STEPS,
   [TUTORIAL_IDS.WORKOUTS]: WORKOUT_STEPS,
   [TUTORIAL_IDS.COMMUNITY]: COMMUNITY_STEPS,
   [TUTORIAL_IDS.CHAT]: CHAT_STEPS,
+  [TUTORIAL_IDS.STORIES]: STORIES_STEPS,
   [TUTORIAL_IDS.CHALLENGES]: CHALLENGE_STEPS,
   [TUTORIAL_IDS.CLASSES]: CLASS_STEPS,
   [TUTORIAL_IDS.INVITES]: INVITE_STEPS,

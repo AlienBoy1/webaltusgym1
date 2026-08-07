@@ -929,7 +929,11 @@ export default function Profile() {
       </motion.div>
 
       {/* Story favorites / highlights */}
-      {user?._id && <StoryHighlights userId={user._id} isOwner />}
+      {user?._id && (
+        <div data-tour="tour-profile-favorites">
+          <StoryHighlights userId={user._id} isOwner />
+        </div>
+      )}
 
       {/* Badges */}
       <motion.div

@@ -580,6 +580,11 @@ export default function Social() {
               size="sm"
               message="Esta pantalla tiene un tutorial para publicar, reaccionar, comentar y compartir historias."
             />
+            <TutorialHelpButton
+              tutorialId={TUTORIAL_IDS.STORIES}
+              size="sm"
+              message="Guía completa de historias: crear, ver, reaccionar, vistas, favoritos y compartir."
+            />
           </div>
           <p className="text-gray-500 text-xs sm:text-sm mt-0.5 hidden sm:block">
             Comparte tu progreso con quienes sigues

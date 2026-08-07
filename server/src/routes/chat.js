@@ -5,6 +5,57 @@ import { notifyNewMessage } from '../services/notificationService.js'
 import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment, CHAT_REACTIONS } from '../utils/chatMessage.js'
 import { broadcastChatReceipt } from '../utils/broadcastReceipt.js'
 
+/** Mark peer→me messages as delivered/read. Falls back if `delivered` column missing. */
+async function markInboundReceipts({ fromId, myId, mode }) {
+  const now = new Date().toISOString()
+  if (mode === 'delivered') {
+    const full = await supabaseAdmin
+      .from('messages')
+      .update({ delivered: true, delivered_at: now })
+      .eq('from_user_id', fromId)
+      .eq('to_user_id', myId)
+      .eq('delivered', false)
+      .select('id')
+    if (!full.error) {
+      return { messageIds: (full.data || []).map((r) => r.id), delivered: true, read: false }
+    }
+    // Column missing / schema lag — cannot express "delivered" without column
+    console.error('markInboundReceipts delivered:', full.error.message)
+    return { messageIds: [], delivered: false, read: false, error: full.error.message }
+  }
+
+  // read (+ delivered)
+  const full = await supabaseAdmin
+    .from('messages')
+    .update({ read: true, delivered: true, delivered_at: now })
+    .eq('from_user_id', fromId)
+    .eq('to_user_id', myId)
+    .or('read.eq.false,delivered.eq.false')
+    .select('id')
+  if (!full.error) {
+    return { messageIds: (full.data || []).map((r) => r.id), delivered: true, read: true }
+  }
+
+  // Fallback: only `read` column (legacy schema)
+  const legacy = await supabaseAdmin
+    .from('messages')
+    .update({ read: true })
+    .eq('from_user_id', fromId)
+    .eq('to_user_id', myId)
+    .eq('read', false)
+    .select('id')
+  if (legacy.error) {
+    console.error('markInboundReceipts read:', full.error.message, legacy.error.message)
+    return { messageIds: [], delivered: false, read: false, error: legacy.error.message }
+  }
+  return {
+    messageIds: (legacy.data || []).map((r) => r.id),
+    delivered: true,
+    read: true,
+    legacy: true
+  }
+}
+
 const router = express.Router()
 
 const SHARED_ATTACHMENT_TYPES = new Set(['image', 'file', 'post'])
@@ -51,7 +102,7 @@ router.get('/conversations', authenticate, async (req, res) => {
     // Cap scan — enough for inbox preview without loading full history
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
-      .select('id, from_user_id, to_user_id, content, created_at, read')
+      .select('id, from_user_id, to_user_id, content, created_at, read, delivered')
       .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
       .order('created_at', { ascending: false })
       .limit(200)
@@ -67,14 +118,23 @@ router.get('/conversations', authenticate, async (req, res) => {
       const preview = decodeChatContent(msg.content).preview
       const isInboundUnread =
         msg.to_user_id === userId && msg.from_user_id !== userId && msg.read !== true
+      const lastFromMe = String(msg.from_user_id) === String(userId)
+      const lastReceipt = lastFromMe
+        ? msg.read
+          ? { status: 'read', delivered: true, read: true }
+          : msg.delivered
+            ? { status: 'delivered', delivered: true, read: false }
+            : { status: 'sent', delivered: false, read: false }
+        : { status: null, delivered: false, read: false }
 
       if (!conversationMap.has(partnerId)) {
         conversationMap.set(partnerId, {
           otherId: partnerId,
           lastMessage: preview,
           lastMessageTime: msg.created_at,
-          lastFromMe: msg.from_user_id === userId,
-          unread: isInboundUnread ? 1 : 0
+          lastFromMe,
+          unread: isInboundUnread ? 1 : 0,
+          ...lastReceipt
         })
       } else if (isInboundUnread) {
         conversationMap.get(partnerId).unread++
@@ -104,7 +164,10 @@ router.get('/conversations', authenticate, async (req, res) => {
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
           lastFromMe: Boolean(conv.lastFromMe),
-          unread: Number(conv.unread) || 0
+          unread: Number(conv.unread) || 0,
+          status: conv.status || null,
+          delivered: Boolean(conv.delivered),
+          read: Boolean(conv.read)
         }
       })
       .filter(Boolean)
@@ -120,7 +183,16 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
     const otherId = req.params.userId
-    const clearedAt = await getChatClear(myId, otherId)
+    const shouldMarkRead = !['0', 'false', 'no'].includes(
+      String(req.query.markRead || '1').toLowerCase()
+    )
+
+    let clearedAt = null
+    try {
+      clearedAt = await getChatClear(myId, otherId)
+    } catch (clearErr) {
+      console.warn('getChatClear:', clearErr?.message || clearErr)
+    }
 
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
@@ -135,52 +207,50 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
     const visible = (messages || []).filter((m) => isAfterClear(m, clearedAt))
 
-    const now = new Date().toISOString()
-    const { data: marked } = await supabaseAdmin
-      .from('messages')
-      .update({ read: true, delivered: true, delivered_at: now })
-      .eq('from_user_id', otherId)
-      .eq('to_user_id', myId)
-      .or('read.eq.false,delivered.eq.false')
-      .select('id')
-
-    broadcastChatReceipt(otherId, {
-      from: myId,
-      delivered: true,
-      read: true,
-      messageIds: (marked || []).map((r) => r.id)
-    }).catch(() => {})
-
-    res.json(visible.map((m) => {
-      if (m.from_user_id === otherId && m.to_user_id === myId) {
-        return formatChatMessage({ ...m, read: true, delivered: true }, myId)
+    if (shouldMarkRead) {
+      try {
+        const marked = await markInboundReceipts({ fromId: otherId, myId, mode: 'read' })
+        broadcastChatReceipt(otherId, {
+          from: myId,
+          delivered: true,
+          read: true,
+          messageIds: marked.messageIds || []
+        }).catch(() => {})
+      } catch (markErr) {
+        console.warn('GET /messages markRead:', markErr?.message || markErr)
       }
-      return formatChatMessage(m, myId)
-    }))
-  } catch (error) {
-    try {
-      const myId = req.user.id
-      const otherId = req.params.userId
-      const clearedAt = await getChatClear(myId, otherId)
-      const { data: messages } = await supabaseAdmin
-        .from('messages')
-        .select('*')
-        .or(
-          `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
-        )
-        .order('created_at', { ascending: true })
-        .limit(300)
-      const visible = (messages || []).filter((m) => isAfterClear(m, clearedAt))
-      await supabaseAdmin
-        .from('messages')
-        .update({ read: true })
-        .eq('from_user_id', otherId)
-        .eq('to_user_id', myId)
-        .eq('read', false)
-      res.json(visible.map((m) => formatChatMessage(m, myId)))
-    } catch (err2) {
-      res.status(500).json({ message: 'Error', error: error.message })
     }
+
+    const payload = visible.map((m) => {
+      try {
+        if (
+          shouldMarkRead &&
+          String(m.from_user_id) === String(otherId) &&
+          String(m.to_user_id) === String(myId)
+        ) {
+          return formatChatMessage({ ...m, read: true, delivered: true }, myId)
+        }
+        return formatChatMessage(m, myId)
+      } catch (fmtErr) {
+        console.warn('formatChatMessage:', fmtErr?.message || fmtErr)
+        return {
+          id: m.id,
+          sender: String(m.from_user_id) === String(myId) ? 'me' : 'other',
+          text: typeof m.content === 'string' ? m.content : '',
+          attachment: null,
+          reply: null,
+          status: 'sent',
+          read: Boolean(m.read),
+          delivered: Boolean(m.delivered),
+          time: ''
+        }
+      }
+    })
+
+    res.json(payload)
+  } catch (error) {
+    console.error('GET /messages error:', error?.message || error)
+    res.status(500).json({ message: 'Error', error: error?.message || String(error) })
   }
 })
 
@@ -188,27 +258,63 @@ router.post('/delivered/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
     const fromId = req.params.userId
+    const marked = await markInboundReceipts({ fromId, myId, mode: 'delivered' })
+    broadcastChatReceipt(fromId, {
+      from: myId,
+      delivered: true,
+      read: false,
+      messageIds: marked.messageIds
+    }).catch(() => {})
+    res.json({ ok: !marked.error, messageIds: marked.messageIds, error: marked.error || undefined })
+  } catch (error) {
+    console.error('delivered error:', error?.message || error)
+    res.json({ ok: false, messageIds: [] })
+  }
+})
+
+router.post('/ack-delivered', authenticate, async (req, res) => {
+  try {
+    const myId = req.user.id
     const now = new Date().toISOString()
     const { data, error } = await supabaseAdmin
       .from('messages')
       .update({ delivered: true, delivered_at: now })
-      .eq('from_user_id', fromId)
       .eq('to_user_id', myId)
       .eq('delivered', false)
-      .select('id')
-    if (error) throw error
-    const messageIds = (data || []).map((r) => r.id)
-    if (messageIds.length) {
-      broadcastChatReceipt(fromId, {
-        from: myId,
-        delivered: true,
-        read: false,
-        messageIds
-      }).catch(() => {})
+      .select('id, from_user_id')
+
+    if (error) {
+      // Legacy DB without delivered column — treat "unread inbound" as needing peer notify only via read path
+      console.error('ack-delivered schema:', error.message)
+      return res.json({ ok: false, count: 0, peers: [], error: error.message })
     }
-    res.json({ ok: true, messageIds })
+
+    const byFrom = new Map()
+    for (const row of data || []) {
+      const fid = row.from_user_id
+      if (!byFrom.has(fid)) byFrom.set(fid, [])
+      byFrom.get(fid).push(row.id)
+    }
+
+    await Promise.all(
+      [...byFrom.entries()].map(([fromId, messageIds]) =>
+        broadcastChatReceipt(fromId, {
+          from: myId,
+          delivered: true,
+          read: false,
+          messageIds
+        }).catch(() => {})
+      )
+    )
+
+    res.json({
+      ok: true,
+      count: (data || []).length,
+      peers: [...byFrom.keys()]
+    })
   } catch (error) {
-    res.json({ ok: false, messageIds: [] })
+    console.error('ack-delivered error:', error?.message || error)
+    res.json({ ok: false, count: 0, peers: [] })
   }
 })
 
@@ -216,26 +322,44 @@ router.post('/read/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
     const fromId = req.params.userId
-    const now = new Date().toISOString()
-    const { data, error } = await supabaseAdmin
-      .from('messages')
-      .update({ read: true, delivered: true, delivered_at: now })
-      .eq('from_user_id', fromId)
-      .eq('to_user_id', myId)
-      .or('read.eq.false,delivered.eq.false')
-      .select('id')
-    if (error) throw error
-    const messageIds = (data || []).map((r) => r.id)
-    // Always notify peer (even if already marked — ids may be empty after GET /messages)
+    const marked = await markInboundReceipts({ fromId, myId, mode: 'read' })
     broadcastChatReceipt(fromId, {
       from: myId,
       delivered: true,
       read: true,
-      messageIds
+      messageIds: marked.messageIds
     }).catch(() => {})
-    res.json({ ok: true, messageIds })
+    res.json({ ok: !marked.error, messageIds: marked.messageIds })
   } catch (error) {
+    console.error('read error:', error?.message || error)
     res.json({ ok: false, messageIds: [] })
+  }
+})
+
+/** Lightweight outbound receipt snapshot for the open thread (sender-side poll). */
+router.get('/receipts/:userId', authenticate, async (req, res) => {
+  try {
+    const myId = req.user.id
+    const otherId = req.params.userId
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .select('id, delivered, read')
+      .eq('from_user_id', myId)
+      .eq('to_user_id', otherId)
+      .order('created_at', { ascending: false })
+      .limit(80)
+    if (error) throw error
+    res.json(
+      (data || []).map((row) => ({
+        id: row.id,
+        delivered: Boolean(row.delivered || row.read),
+        read: Boolean(row.read),
+        status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent'
+      }))
+    )
+  } catch (error) {
+    console.error('receipts error:', error?.message || error)
+    res.status(500).json({ message: 'Error', error: error.message })
   }
 })
 

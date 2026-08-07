@@ -102,7 +102,7 @@ function summarizeReactions(reactions, myId) {
 
 export function formatChatMessage(row, myId) {
   const decoded = decodeChatContent(row.content)
-  const isMine = row.from_user_id === myId
+  const isMine = String(row.from_user_id) === String(myId)
   let status = 'sent'
   if (isMine) {
     if (row.read) status = 'read'

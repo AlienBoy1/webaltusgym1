@@ -649,5 +649,147 @@ export default function TutorialDemoSurface({ demoId }) {
     )
   }
 
+  if (demoId === 'stories-create') {
+    return (
+      <div data-tour="tour-stories-create-demo" className={`${shell} overflow-hidden`}>
+        <p className="px-4 pt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Nueva historia
+        </p>
+        <div className="mt-3 flex items-center gap-3 px-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-[color:var(--color-primary)] text-2xl text-[color:var(--color-primary)]">
+            +
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-[color:var(--text-primary)]">Tu historia</p>
+            <p className="text-xs text-[color:var(--text-muted)]">Foto o video · 24 h</p>
+          </div>
+        </div>
+        <div
+          className="mx-4 mt-3 h-24 rounded-xl"
+          style={{
+            background:
+              'linear-gradient(145deg, rgba(var(--color-primary-rgb),0.4), rgba(var(--color-accent-rgb),0.2))'
+          }}
+        />
+        <p className="px-4 py-3 text-xs text-[color:var(--text-secondary)]">
+          Añade descripción y @menciones antes de publicar.
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'stories-viewer') {
+    return (
+      <div
+        data-tour="tour-stories-viewer-demo"
+        className={`${shell} relative aspect-[9/14] max-h-[360px] overflow-hidden bg-black p-0`}
+      >
+        <div className="absolute inset-x-3 top-3 z-10 flex gap-1">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30">
+              <div
+                className="h-full rounded-full bg-white"
+                style={{ width: i === 1 ? '70%' : i === 2 ? '0%' : '0%' }}
+              />
+            </div>
+          ))}
+        </div>
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(0,0,0,0.45) 0%, transparent 28%, transparent 55%, rgba(0,0,0,0.65) 100%), linear-gradient(135deg, #3d4f6f, #1a1f2e)'
+          }}
+        />
+        <div className="absolute inset-x-0 bottom-4 px-4 text-center text-xs text-white/80">
+          Toca lados · desliza para cambiar
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'stories-react') {
+    return (
+      <div data-tour="tour-stories-react-demo" className={`${shell} overflow-hidden p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Responder
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {['❤️', '🔥', '💪', '👏'].map((e) => (
+            <span
+              key={e}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--bg-muted)] text-lg"
+            >
+              {e}
+            </span>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/60 px-3 py-2">
+          <span className="flex-1 text-xs text-[color:var(--text-muted)]">Responder…</span>
+          <FiMessageCircle className="text-[color:var(--color-primary)]" size={16} />
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'stories-own') {
+    return (
+      <div data-tour="tour-stories-own-demo" className={`${shell} overflow-hidden`}>
+        <div className="flex items-center justify-between px-4 pt-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+              Mi estado
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-[color:var(--text-primary)]">Hace 2 h</p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--color-primary-rgb),0.14)] px-2.5 py-1 text-xs font-semibold text-[color:var(--color-primary)]">
+            <FiEye size={12} /> 12
+          </span>
+        </div>
+        <div className="mx-4 mt-3 space-y-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/40 p-3">
+          <p className="text-xs font-semibold text-[color:var(--text-primary)]">Visto por 12</p>
+          <div className="flex -space-x-2">
+            {['A', 'B', 'C', 'D'].map((l) => (
+              <div
+                key={l}
+                className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[color:var(--bg-elevated)] bg-[rgba(var(--color-primary-rgb),0.25)] text-[10px] font-bold"
+              >
+                {l}
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="px-4 py-3 text-xs text-[color:var(--text-muted)]">
+          Abre el ojo para ver quién miró y cómo reaccionó.
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'stories-share') {
+    return (
+      <div data-tour="tour-stories-share-demo" className={`${shell} p-3`}>
+        <p className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+          Ejemplo · Menú
+        </p>
+        {[
+          'Reenviar en chat',
+          'Guardar',
+          'Compartir en Facebook',
+          'Compartir en Instagram',
+          'Añadir a favoritos',
+          'Eliminar'
+        ].map((label) => (
+          <div
+            key={label}
+            className="rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)]"
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return null
 }

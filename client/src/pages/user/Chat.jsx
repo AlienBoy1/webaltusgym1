@@ -168,6 +168,8 @@ function MessageTicks({ status, isMe, muted = false }) {
 
 function PostAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   if (!attachment || attachment.type !== 'post') return null
+  const image = attachment.image
+  const label = isMe ? 'Publicación' : 'Publicación'
   return (
     <button
       type="button"
@@ -175,35 +177,47 @@ function PostAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
         e.stopPropagation()
         onOpen?.(attachment)
       }}
-      className={`w-full overflow-hidden rounded-xl text-left transition hover:opacity-95 active:scale-[0.99] ${
+      className={`group block w-[min(228px,72vw)] overflow-hidden rounded-2xl text-left shadow-md transition hover:opacity-95 active:scale-[0.99] ${
         hasText ? 'mb-2' : ''
-      } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
+      } ${
+        isMe
+          ? 'ring-1 ring-white/25'
+          : 'border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
+      }`}
     >
-      <div className="flex items-stretch gap-0">
-        <div
-          data-protected-media="1"
-          className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-gradient-to-br from-primary-500/40 to-black sm:h-20 sm:w-[60px]"
-        >
-          {attachment.image ? (
-            <ProtectedMedia src={attachment.image} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-lg">📝</div>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center px-2.5 py-2">
-          <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${isMe ? 'text-white/65' : 'text-gray-400'}`}>
-            {isMe ? 'Compartiste una publicación' : 'Te compartió una publicación'}
-          </p>
-          <p className={`mt-0.5 text-xs font-medium ${isMe ? 'text-white/90' : 'text-gray-200'}`}>
+      <div
+        data-protected-media="1"
+        className="relative aspect-[4/5] w-full overflow-hidden bg-gradient-to-br from-neutral-800 to-neutral-950"
+      >
+        {image ? (
+          <ProtectedMedia src={image} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center">
+            <span className="text-3xl">📝</span>
+            <p className="line-clamp-4 text-xs leading-snug text-white/80">
+              {attachment.snippet || 'Publicación de Qyntra'}
+            </p>
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-2.5 pb-2.5 pt-10">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">{label}</p>
+          <p className="truncate text-sm font-semibold text-white">
             {attachment.authorName || 'Usuario'}
           </p>
-          <p className={`mt-0.5 line-clamp-2 text-xs leading-snug ${isMe ? 'text-white/75' : 'text-gray-300'}`}>
-            {attachment.snippet || 'Publicación de Qyntra'}
-          </p>
-          <p className={`mt-1 text-[10px] font-medium ${isMe ? 'text-white/80' : 'text-primary-400'}`}>
-            Tocar para ver →
-          </p>
+          {image && attachment.snippet ? (
+            <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-white/80">
+              {attachment.snippet}
+            </p>
+          ) : null}
         </div>
+      </div>
+      <div
+        className={`flex items-center justify-between px-2.5 py-2 text-[11px] font-medium ${
+          isMe ? 'bg-black/25 text-white/85' : 'bg-[color:var(--bg-muted)] text-[color:var(--color-primary)]'
+        }`}
+      >
+        <span>Ver publicación</span>
+        <span aria-hidden>→</span>
       </div>
     </button>
   )
@@ -214,11 +228,13 @@ function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   const isReply = attachment.kind === 'reply' || hasText
   const label = isMe
     ? isReply
-      ? 'Respondiste a un estado'
-      : 'Compartiste un estado'
+      ? 'Respuesta a estado'
+      : 'Estado'
     : isReply
-      ? 'Respondió a tu estado'
-      : 'Te compartió un estado'
+      ? 'Respondió a un estado'
+      : 'Estado'
+  const mediaUrl = attachment.mediaUrl
+  const isVideo = attachment.mediaType === 'video'
   return (
     <button
       type="button"
@@ -226,48 +242,60 @@ function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
         e.stopPropagation()
         onOpen?.(attachment)
       }}
-      className={`w-full overflow-hidden rounded-xl text-left transition hover:opacity-95 active:scale-[0.99] ${
-        hasText ? 'mb-2' : ''
-      } ${isMe ? 'bg-black/15' : 'bg-black/30'}`}
+      className={`group relative block w-[132px] overflow-visible text-left transition hover:opacity-95 active:scale-[0.99] sm:w-[148px] ${
+        hasText ? 'mb-0.5' : ''
+      }`}
     >
-      <div className="flex items-stretch gap-0">
-        <div
-          data-protected-media="1"
-          className="relative h-[72px] w-[54px] shrink-0 overflow-hidden bg-black sm:h-20 sm:w-[60px]"
-        >
-          {attachment.mediaType === 'video' ? (
-            <>
-              <ProtectedMedia
-                as="video"
-                src={attachment.mediaUrl}
-                muted
-                playsInline
-                preload="metadata"
-                className="h-full w-full object-cover"
-              />
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25 text-[10px] font-bold text-white">
-                ▶
-              </span>
-            </>
+      {/* Instagram-like story ring */}
+      <span
+        className="absolute -inset-[3px] rounded-[1.15rem] bg-gradient-to-tr from-amber-400 via-[color:var(--color-primary)] to-fuchsia-500 opacity-95"
+        aria-hidden
+      />
+      <span
+        className={`absolute -inset-px rounded-[1.05rem] ${
+          isMe ? 'bg-[color:var(--color-primary)]' : 'bg-[color:var(--bg-card)]'
+        }`}
+        aria-hidden
+      />
+      <div className="relative overflow-hidden rounded-[1rem] bg-neutral-950 shadow-lg">
+        <div data-protected-media="1" className="relative aspect-[9/16] w-full">
+          {mediaUrl ? (
+            isVideo ? (
+              <>
+                <ProtectedMedia
+                  as="video"
+                  src={mediaUrl}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  className="h-full w-full object-cover"
+                />
+                <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-sm text-white ring-1 ring-white/40">
+                  ▶
+                </span>
+              </>
+            ) : (
+              <ProtectedMedia src={mediaUrl} alt="" className="h-full w-full object-cover" />
+            )
           ) : (
-            <ProtectedMedia
-              src={attachment.mediaUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-neutral-800 to-neutral-950 text-3xl">
+              📖
+            </div>
           )}
-          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/20" />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center px-2.5 py-2">
-          <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${isMe ? 'text-white/65' : 'text-gray-400'}`}>
-            {label}
-          </p>
-          <p className={`mt-0.5 line-clamp-2 text-xs leading-snug ${isMe ? 'text-white/90' : 'text-gray-200'}`}>
-            {attachment.caption?.trim() || 'Estado de Qyntra'}
-          </p>
-          <p className={`mt-1 text-[10px] ${isMe ? 'text-white/50' : 'text-primary-300'}`}>
-            Toca para ver el estado
-          </p>
+          <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/55 to-transparent px-2 pb-6 pt-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/85">
+              {label}
+            </p>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-2 pb-2 pt-8">
+            {attachment.caption?.trim() ? (
+              <p className="line-clamp-2 text-[11px] leading-snug text-white/95">
+                {attachment.caption.trim()}
+              </p>
+            ) : (
+              <p className="text-[11px] font-medium text-white/85">Toca para ver</p>
+            )}
+          </div>
         </div>
       </div>
     </button>
@@ -717,14 +745,52 @@ export default function Chat() {
     }
   }, [selectedChat?.otherId])
 
-  // Safety net while a thread is open: merge server messages if realtime hiccups (common on PWA)
+  // Safety net while a thread is open: merge receipts (+ body) if realtime hiccups
   useEffect(() => {
     const otherId = selectedChat?.otherId
     if (!otherId) return undefined
-    const poll = window.setInterval(async () => {
+
+    const applyReceipts = (rows) => {
+      if (!Array.isArray(rows) || !rows.length) return
+      const byId = new Map(rows.map((r) => [String(r.id), r]))
+      setMessages((prev) => {
+        let changed = false
+        const next = prev.map((m) => {
+          if (m.sender !== 'me') return m
+          const server = byId.get(String(m.id))
+          if (!server) return m
+          const receipt = mergeReceipt(m, server)
+          if (
+            receipt.status === m.status &&
+            Boolean(receipt.delivered) === Boolean(m.delivered) &&
+            Boolean(receipt.read) === Boolean(m.read)
+          ) {
+            return m
+          }
+          changed = true
+          return { ...m, ...receipt }
+        })
+        return changed ? next : prev
+      })
+    }
+
+    let fullTicks = 0
+    const tick = async () => {
       if (document.visibilityState !== 'visible') return
       try {
-        const { data } = await api.get(`/chat/messages/${otherId}`, { timeout: 10000 })
+        const { data: receipts } = await api.get(`/chat/receipts/${otherId}`, { timeout: 8000 })
+        applyReceipts(receipts)
+      } catch {
+        /* ignore */
+      }
+      // Full sync less often and never re-mark as read (avoids stampede / 500s)
+      fullTicks += 1
+      if (fullTicks % 4 !== 0) return
+      try {
+        const { data } = await api.get(`/chat/messages/${otherId}`, {
+          params: { markRead: 0 },
+          timeout: 10000
+        })
         if (!Array.isArray(data)) return
         setMessages((prev) => {
           const temps = prev.filter((m) => String(m.id).startsWith('temp-'))
@@ -744,7 +810,10 @@ export default function Chat() {
       } catch {
         /* ignore */
       }
-    }, 7000)
+    }
+
+    tick()
+    const poll = window.setInterval(tick, 2000)
     return () => window.clearInterval(poll)
   }, [selectedChat?.otherId])
 
@@ -2040,12 +2109,16 @@ export default function Chat() {
                   const showTail = !prev || prev.sender !== msg.sender
                   const viewOnce = Boolean(msg.attachment?.viewOnce)
                   const hideBodyText = viewOnce // caption only inside viewer, not in bubble
+                  const shareCard =
+                    msg.attachment?.type === 'story' || msg.attachment?.type === 'post'
                   const emojiOnly =
                     !msg.attachment &&
                     !msg.reply &&
                     !viewOnce &&
                     isEmojiOnlyText(msg.text)
                   const reactionChips = Array.isArray(msg.reactionSummary) ? msg.reactionSummary : []
+                  // Media-first IG cards sit outside the colored bubble
+                  const bareCard = shareCard && !msg.reply
                   return (
                     <motion.div
                       key={msg.id}
@@ -2067,6 +2140,10 @@ export default function Chat() {
                               ? `bg-transparent px-1 py-0.5 shadow-none ${
                                   isMe ? 'text-white' : 'text-[color:var(--text-primary)]'
                                 }`
+                              : bareCard
+                                ? `bg-transparent px-0 py-0 shadow-none ${
+                                    isMe ? 'text-white' : 'text-[color:var(--text-primary)]'
+                                  }`
                               : `px-3.5 py-2.5 shadow-sm ${
                                   isMe
                                     ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)] text-white'
@@ -2143,7 +2220,13 @@ export default function Chat() {
                             className={
                               emojiOnly
                                 ? `select-none whitespace-pre-wrap break-words ${emojiOnlySizeClass(msg.text)}`
-                                : 'whitespace-pre-wrap break-words text-[15px] leading-relaxed'
+                                : bareCard
+                                  ? `mt-1.5 whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[15px] leading-relaxed shadow-sm ${
+                                      isMe
+                                        ? 'rounded-br-md bg-[color:var(--color-primary)] text-white'
+                                        : 'rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)]'
+                                    }`
+                                  : 'whitespace-pre-wrap break-words text-[15px] leading-relaxed'
                             }
                           >
                             {msg.text}
@@ -2154,7 +2237,7 @@ export default function Chat() {
                         ) : null}
                         <p
                           className={`mt-1 flex items-center justify-end gap-0.5 text-[10px] ${
-                            emojiOnly
+                            emojiOnly || bareCard
                               ? 'text-[color:var(--text-muted)]'
                               : isMe
                                 ? 'text-white/70'
@@ -2165,7 +2248,7 @@ export default function Chat() {
                           {isMe && (
                             <MessageTicks
                               isMe
-                              muted={emojiOnly}
+                              muted={emojiOnly || bareCard}
                               status={msg.status || (msg.read ? 'read' : msg.delivered ? 'delivered' : 'sent')}
                             />
                           )}

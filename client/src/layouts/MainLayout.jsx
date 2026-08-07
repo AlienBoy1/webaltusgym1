@@ -11,7 +11,7 @@ import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
-import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification } from '../utils/socket'
+import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification, sendReceipt } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -165,10 +165,42 @@ export default function MainLayout() {
     const me = user?.id || user?._id
     const recentPushTags = new Set()
 
-    const alertMessage = (data, { fromPush = false } = {}) => {
-      if (data?.from && me) {
-        api.post(`/chat/delivered/${data.from}`).catch(() => {})
+    const ackDelivered = async (fromUserId) => {
+      if (!fromUserId || !me) return
+      try {
+        const { data: res } = await api.post(`/chat/delivered/${fromUserId}`)
+        sendReceipt({
+          to: fromUserId,
+          from: me,
+          delivered: true,
+          read: false,
+          messageIds: res?.messageIds || []
+        })
+      } catch {
+        /* ignore */
       }
+    }
+
+    const sweepUndelivered = () => {
+      if (document.visibilityState !== 'visible') return
+      api
+        .post('/chat/ack-delivered')
+        .then(({ data }) => {
+          for (const fromId of data?.peers || []) {
+            sendReceipt({
+              to: fromId,
+              from: me,
+              delivered: true,
+              read: false,
+              messageIds: []
+            })
+          }
+        })
+        .catch(() => {})
+    }
+
+    const alertMessage = (data) => {
+      if (data?.from) ackDelivered(data.from)
       if (location.pathname.startsWith('/chat')) return
       const tag = data.tag || `msg-${data.from}`
       if (recentPushTags.has(tag)) return
@@ -183,11 +215,11 @@ export default function MainLayout() {
       })
     }
 
-    const unsub = onChatEvent('newMessage', (data) => alertMessage(data, { fromPush: false }))
+    const unsub = onChatEvent('newMessage', (data) => alertMessage(data))
 
     const onSwMessage = (event) => {
       if (event.data?.type === 'CHAT_DELIVERED_ACK' && event.data.fromUserId) {
-        api.post(`/chat/delivered/${event.data.fromUserId}`).catch(() => {})
+        ackDelivered(event.data.fromUserId)
         return
       }
       if (event.data?.type !== 'PUSH_INBOX') return
@@ -197,20 +229,22 @@ export default function MainLayout() {
         }
         return
       }
-      alertMessage(
-        {
-          from: event.data.fromUserId,
-          fromName: event.data.title,
-          message: event.data.body,
-          tag: event.data.tag
-        },
-        { fromPush: true }
-      )
+      alertMessage({
+        from: event.data.fromUserId,
+        fromName: event.data.title,
+        message: event.data.body,
+        tag: event.data.tag
+      })
     }
     navigator.serviceWorker?.addEventListener('message', onSwMessage)
 
+    // Keep sweeping while the app is open — covers missed INSERT realtime events
+    sweepUndelivered()
+    const sweepTimer = window.setInterval(sweepUndelivered, 8000)
+
     return () => {
       unsub()
+      window.clearInterval(sweepTimer)
       navigator.serviceWorker?.removeEventListener('message', onSwMessage)
     }
   }, [user?.id, user?._id, location.pathname, navigate])
@@ -221,6 +255,7 @@ export default function MainLayout() {
     if (!id) return undefined
 
     let busy = false
+    let lastHiddenAt = 0
     const revive = async ({ force = false } = {}) => {
       if (busy || document.visibilityState === 'hidden') return
       busy = true
@@ -240,6 +275,22 @@ export default function MainLayout() {
         ensureSocketAlive(id, { force })
         subscribeRealtime(id)
         fetchUnreadCount()
+        // Sweep undelivered inbound so sender ticks advance after reopen
+        api
+          .post('/chat/ack-delivered')
+          .then(({ data }) => {
+            const peers = data?.peers || []
+            for (const fromId of peers) {
+              sendReceipt({
+                to: fromId,
+                from: id,
+                delivered: true,
+                read: false,
+                messageIds: []
+              })
+            }
+          })
+          .catch(() => {})
         if (Notification.permission === 'granted') {
           try {
             const { isPushSupported, subscribeToPush } = await import('../utils/push')
@@ -254,15 +305,27 @@ export default function MainLayout() {
     }
 
     const onVis = () => {
-      if (document.visibilityState === 'visible') revive({ force: true })
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAt = Date.now()
+        return
+      }
+      // Force only after a real background stretch (silent WS death on mobile)
+      const awayMs = lastHiddenAt ? Date.now() - lastHiddenAt : 0
+      revive({ force: awayMs > 15000 })
     }
     const onOnline = () => revive({ force: true })
     const onPageShow = (e) => {
-      if (e.persisted || document.visibilityState === 'visible') revive({ force: true })
+      if (e.persisted || document.visibilityState === 'visible') {
+        const awayMs = lastHiddenAt ? Date.now() - lastHiddenAt : 0
+        revive({ force: Boolean(e.persisted) || awayMs > 15000 })
+      }
     }
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('online', onOnline)
-    window.addEventListener('focus', onVis)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') revive({ force: false })
+    }
+    window.addEventListener('focus', onFocus)
     window.addEventListener('pageshow', onPageShow)
 
     // Soft heartbeat — only resubscribe if channel looks dead (no force teardown)
@@ -270,10 +333,13 @@ export default function MainLayout() {
       if (document.visibilityState === 'visible') revive({ force: false })
     }, 45000)
 
+    // Initial sweep once mounted
+    revive({ force: false })
+
     return () => {
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('online', onOnline)
-      window.removeEventListener('focus', onVis)
+      window.removeEventListener('focus', onFocus)
       window.removeEventListener('pageshow', onPageShow)
       window.clearInterval(heartbeat)
     }
@@ -648,6 +714,7 @@ export default function MainLayout() {
                       </button>
                       <button
                         type="button"
+                        data-tour="menu-tutorials"
                         onClick={() => {
                           setAvatarMenuOpen(false)
                           openTutorialHub()
