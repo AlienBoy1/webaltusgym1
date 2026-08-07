@@ -481,6 +481,79 @@ html.light .force-dark .ring-\[color\:var\(--bg-app\)\] {
   color: #fff;
 }
 
+/*
+ * Adaptive sheets nested inside the story viewer (options menu, viewers list).
+ * Escape force-dark lock-in so they follow html.light / html.dark tokens.
+ */
+.story-viewer .story-adaptive-panel,
+.force-dark .story-adaptive-panel {
+  color-scheme: inherit;
+  color: var(--text-primary);
+  background-color: var(--bg-elevated);
+  border-color: var(--border-subtle);
+}
+
+html.light .story-viewer .story-adaptive-panel,
+html.light .force-dark .story-adaptive-panel {
+  color-scheme: light;
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+
+html.light .story-viewer .story-adaptive-panel .text-white,
+html.light .force-dark .story-adaptive-panel .text-white,
+html.light .story-viewer .story-adaptive-panel .text-gray-100,
+html.light .story-viewer .story-adaptive-panel .text-gray-200,
+html.light .force-dark .story-adaptive-panel .text-gray-100,
+html.light .force-dark .story-adaptive-panel .text-gray-200 {
+  color: var(--text-primary) !important;
+}
+
+html.light .story-viewer .story-adaptive-panel .text-gray-300,
+html.light .story-viewer .story-adaptive-panel .text-gray-400,
+html.light .force-dark .story-adaptive-panel .text-gray-300,
+html.light .force-dark .story-adaptive-panel .text-gray-400 {
+  color: var(--text-secondary) !important;
+}
+
+html.light .story-viewer .story-adaptive-panel .text-gray-500,
+html.light .story-viewer .story-adaptive-panel .text-gray-600,
+html.light .force-dark .story-adaptive-panel .text-gray-500,
+html.light .force-dark .story-adaptive-panel .text-gray-600 {
+  color: var(--text-muted) !important;
+}
+
+html.light .story-viewer .story-adaptive-panel .border-white\/5,
+html.light .story-viewer .story-adaptive-panel .border-white\/8,
+html.light .story-viewer .story-adaptive-panel .border-white\/10,
+html.light .force-dark .story-adaptive-panel .border-white\/5,
+html.light .force-dark .story-adaptive-panel .border-white\/8,
+html.light .force-dark .story-adaptive-panel .border-white\/10 {
+  border-color: var(--border-subtle) !important;
+}
+
+html.light .story-viewer .story-adaptive-panel .border-white\/15,
+html.light .story-viewer .story-adaptive-panel .border-white\/20,
+html.light .force-dark .story-adaptive-panel .border-white\/15,
+html.light .force-dark .story-adaptive-panel .border-white\/20 {
+  border-color: var(--border-strong) !important;
+}
+
+html.light .story-viewer .story-adaptive-panel .bg-white\/5,
+html.light .story-viewer .story-adaptive-panel .hover\:bg-white\/5:hover,
+html.light .story-viewer .story-adaptive-panel .bg-white\/10,
+html.light .force-dark .story-adaptive-panel .bg-white\/5,
+html.light .force-dark .story-adaptive-panel .hover\:bg-white\/5:hover,
+html.light .force-dark .story-adaptive-panel .bg-white\/10 {
+  background-color: rgba(15, 15, 20, 0.05) !important;
+}
+
+html.dark .story-viewer .story-adaptive-panel,
+html:not(.light) .story-viewer .story-adaptive-panel {
+  color-scheme: dark;
+}
+
 .story-composer input,
 .story-composer textarea,
 .story-viewer .story-chrome-input {

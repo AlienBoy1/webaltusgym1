@@ -1121,22 +1121,27 @@ export default function StoriesRail({
                 </div>
               </div>
 
-              {/* Story options — always dark chrome (WhatsApp-like) */}
+              {/* Story options — follows app light/dark theme */}
               <AnimatePresence>
                 {menuOpen && (
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    className="absolute right-4 top-16 z-40 w-56 overflow-hidden rounded-2xl border border-white/15 shadow-2xl backdrop-blur-xl"
-                    style={{ background: 'rgba(20,20,28,0.97)', color: '#fff' }}
+                    className="story-adaptive-panel absolute right-4 top-16 z-40 w-56 overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl"
+                    style={{
+                      background: 'var(--glass-bg)',
+                      color: 'var(--text-primary)',
+                      borderColor: 'var(--border-subtle)',
+                      boxShadow: '0 18px 48px var(--shadow-color)'
+                    }}
                   >
                     {isOwnStory && (
                       <button
                         type="button"
                         onClick={openFavorites}
-                        className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm hover:bg-white/5"
-                        style={{ color: '#fff' }}
+                        className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm transition-colors hover:bg-white/5"
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         <FiStar className="text-accent-yellow" /> Agregar a favoritos
                       </button>
@@ -1146,8 +1151,8 @@ export default function StoriesRail({
                         <button
                           type="button"
                           onClick={openShare}
-                          className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-3.5 text-left text-sm hover:bg-white/5"
-                          style={{ color: '#fff' }}
+                          className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm transition-colors hover:bg-white/5"
+                          style={{ color: 'var(--text-primary)', borderColor: 'var(--border-subtle)' }}
                         >
                           <FiShare2 style={{ color: 'var(--color-primary)' }} /> Compartir
                         </button>
@@ -1155,14 +1160,15 @@ export default function StoriesRail({
                           type="button"
                           disabled={deleting}
                           onClick={deleteStory}
-                          className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-3.5 text-left text-sm text-red-400 hover:bg-white/5 disabled:opacity-50"
+                          className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm text-red-500 transition-colors hover:bg-white/5 disabled:opacity-50"
+                          style={{ borderColor: 'var(--border-subtle)' }}
                         >
                           <FiTrash2 /> {deleting ? 'Eliminando…' : 'Eliminar'}
                         </button>
                       </>
                     )}
                     {!isOwnStory && (
-                      <p className="px-4 py-3.5 text-sm text-white/70">
+                      <p className="px-4 py-3.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
                         Solo puedes guardar tus propias historias en favoritos
                       </p>
                     )}
@@ -1233,11 +1239,11 @@ export default function StoriesRail({
                   <button
                     type="button"
                     onClick={openViewers}
-                    className="mx-auto flex items-center gap-2 rounded-full bg-white/10 px-4 py-2.5 text-sm text-white backdrop-blur-sm hover:bg-white/20"
+                    className="mx-auto flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-sm font-medium tabular-nums text-white backdrop-blur-sm hover:bg-white/20"
+                    aria-label={`${currentStory.viewCount || 0} ${(currentStory.viewCount || 0) === 1 ? 'vista' : 'vistas'}`}
                   >
                     <FiEye size={16} />
-                    {currentStory.viewCount || 0}{' '}
-                    {(currentStory.viewCount || 0) === 1 ? 'vista' : 'vistas'}
+                    <span>{currentStory.viewCount || 0}</span>
                   </button>
                 ) : (
                   <>
@@ -1371,14 +1377,14 @@ export default function StoriesRail({
               )}
             </AnimatePresence>
 
-            {/* Viewers inbox — WhatsApp style with reactions */}
+            {/* Viewers inbox — follows app light/dark theme */}
             <AnimatePresence>
               {viewersOpen && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-50 flex items-end bg-black/70 sm:items-center sm:justify-center sm:p-4"
+                  className="absolute inset-0 z-50 flex items-end bg-black/55 sm:items-center sm:justify-center sm:p-4"
                   onClick={() => setViewersOpen(false)}
                 >
                   <motion.div
@@ -1386,26 +1392,44 @@ export default function StoriesRail({
                     animate={{ y: 0 }}
                     exit={{ y: 40 }}
                     onClick={(e) => e.stopPropagation()}
-                    className="force-dark flex max-h-[75vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-dark-200 sm:rounded-3xl"
+                    className="story-adaptive-panel app-bottom-sheet-panel flex max-h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border shadow-2xl sm:rounded-3xl"
+                    style={{
+                      background: 'var(--bg-elevated)',
+                      color: 'var(--text-primary)',
+                      borderColor: 'var(--border-subtle)',
+                      boxShadow: '0 24px 64px var(--shadow-color)'
+                    }}
                   >
-                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                      <div>
-                        <p className="font-semibold">Vistas</p>
-                        <p className="text-xs text-gray-500">
-                          {viewers.length} {(viewers.length === 1 ? 'persona' : 'personas')}
+                    <div
+                      className="flex items-center justify-between border-b px-4 py-3"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FiEye size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <p className="font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                          {viewers.length}
                         </p>
                       </div>
-                      <button type="button" onClick={() => setViewersOpen(false)} className="p-2 text-gray-400">
+                      <button
+                        type="button"
+                        onClick={() => setViewersOpen(false)}
+                        className="rounded-full p-2 transition-colors hover:bg-white/5"
+                        style={{ color: 'var(--text-secondary)' }}
+                        aria-label="Cerrar"
+                      >
                         <FiX />
                       </button>
                     </div>
                     <div className="flex-1 overflow-y-auto px-2 py-2">
                       {loadingViewers ? (
                         <div className="flex justify-center py-10">
-                          <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/10 border-t-primary-500" />
+                          <div
+                            className="h-7 w-7 animate-spin rounded-full border-2 border-t-primary-500"
+                            style={{ borderColor: 'var(--border-subtle)', borderTopColor: 'var(--color-primary)' }}
+                          />
                         </div>
                       ) : viewers.length === 0 ? (
-                        <p className="py-10 text-center text-sm text-gray-500">
+                        <p className="py-10 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                           Todavía nadie ha visto esta historia
                         </p>
                       ) : (
@@ -1416,9 +1440,14 @@ export default function StoriesRail({
                           >
                             <Avatar avatar={v.user?.avatar} name={v.user?.name} size="md" />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-white">{v.user?.name}</p>
+                              <p
+                                className="truncate text-sm font-medium"
+                                style={{ color: 'var(--text-primary)' }}
+                              >
+                                {v.user?.name}
+                              </p>
                               {v.viewedAt && (
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                                   {new Date(v.viewedAt).toLocaleString('es', {
                                     hour: '2-digit',
                                     minute: '2-digit',
@@ -1429,7 +1458,10 @@ export default function StoriesRail({
                               )}
                             </div>
                             {v.reaction && (
-                              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl">
+                              <span
+                                className="flex h-10 w-10 items-center justify-center rounded-full text-xl"
+                                style={{ background: 'var(--bg-muted)' }}
+                              >
                                 {v.reaction}
                               </span>
                             )}
