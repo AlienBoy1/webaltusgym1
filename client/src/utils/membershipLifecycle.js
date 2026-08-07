@@ -15,6 +15,14 @@ export function isPaidEraLive(at = Date.now()) {
   return at >= PAID_ERA_START.getTime()
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** Whole days remaining until free era end (Mexico City). */
+export function freeEraDaysRemaining(at = Date.now()) {
+  if (at > FREE_ERA_END.getTime()) return 0
+  return Math.max(0, Math.ceil((FREE_ERA_END.getTime() - at) / DAY_MS))
+}
+
 export function freeEraEndLabel(locale = 'es-MX') {
   return FREE_ERA_END.toLocaleString(locale, {
     timeZone: 'America/Mexico_City',

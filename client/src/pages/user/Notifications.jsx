@@ -57,6 +57,8 @@ function getDeepLink(notification) {
     case 'level_up':
     case 'achievement':
       return '/profile'
+    case 'membership':
+      return data.kind === 'free_era_days' ? '/profile' : '/profile'
     default:
       return related ? `/user/${related}` : null
   }

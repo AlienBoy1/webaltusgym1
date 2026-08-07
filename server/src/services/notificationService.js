@@ -1,6 +1,13 @@
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapNotification } from '../lib/mappers.js'
 import { sendPushNotification, sendPushToMany } from './pushService.js'
+import {
+  FREE_ERA_END_ISO,
+  freeEraDaysRemaining,
+  freeEraEndLabel,
+  isPastFreeEra,
+  mexicoCityDayKey
+} from '../utils/membershipLifecycle.js'
 
 function inboxUrl(notificationId) {
   return `/notifications?highlight=${notificationId}`
@@ -124,6 +131,79 @@ export async function notifyNewMessage({ toUserId, fromUserId, fromName, content
     priority: 'high',
     pushTag: `msg-${fromUserId}`,
     pushUrl: null // inbox highlight
+  })
+}
+
+export async function notifyFreeMembershipCountdown(userId, membership = {}) {
+  if (!userId) return null
+  if (membership?.__paidEra === true || membership?.era === 'paid') return null
+
+  // Replace prior free-era countdown rows so each login refreshes one unread item
+  try {
+    const { data: existing } = await supabaseAdmin
+      .from('notifications')
+      .select('id, related_data')
+      .eq('user_id', userId)
+      .eq('type', 'membership')
+
+    const staleIds = (existing || [])
+      .filter((row) => row.related_data?.kind === 'free_era_days')
+      .map((row) => row.id)
+
+    if (staleIds.length) {
+      await supabaseAdmin.from('notifications').delete().in('id', staleIds)
+    }
+  } catch (err) {
+    console.warn('notifyFreeMembershipCountdown cleanup:', err?.message || err)
+  }
+
+  if (isPastFreeEra()) {
+    return notifyUser({
+      userId,
+      type: 'membership',
+      title: 'Periodo gratuito finalizado',
+      body: `Tu membresía gratuita venció el ${freeEraEndLabel()}. Pronto se habilitarán los planes de pago.`,
+      icon: '💳',
+      priority: 'high',
+      relatedData: {
+        kind: 'free_era_days',
+        daysLeft: 0,
+        freeEndsAt: FREE_ERA_END_ISO,
+        dayKey: mexicoCityDayKey(),
+        expired: true
+      },
+      pushTag: 'membership-free-era',
+      pushUrl: '/profile'
+    })
+  }
+
+  const daysLeft = freeEraDaysRemaining()
+  const dayWord = daysLeft === 1 ? 'día' : 'días'
+  const title =
+    daysLeft <= 0
+      ? 'Periodo gratuito por vencer'
+      : `Membresía gratuita: ${daysLeft} ${dayWord} restantes`
+  const body =
+    daysLeft <= 0
+      ? `Tu acceso gratuito vence hoy (${freeEraEndLabel()}).`
+      : `Te quedan ${daysLeft} ${dayWord} de membresía gratuita. Vence el ${freeEraEndLabel()}.`
+
+  return notifyUser({
+    userId,
+    type: 'membership',
+    title,
+    body,
+    icon: '💳',
+    priority: daysLeft <= 30 ? 'high' : 'normal',
+    relatedData: {
+      kind: 'free_era_days',
+      daysLeft,
+      freeEndsAt: FREE_ERA_END_ISO,
+      dayKey: mexicoCityDayKey(),
+      expired: false
+    },
+    pushTag: 'membership-free-era',
+    pushUrl: '/profile'
   })
 }
 

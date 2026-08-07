@@ -32,6 +32,23 @@ export function isPaidEraLive(at = nowMs()) {
   return at >= PAID_ERA_START.getTime()
 }
 
+/** Whole days remaining until free era end (Mexico City wall clock). */
+export function freeEraDaysRemaining(at = nowMs()) {
+  if (at > FREE_ERA_END.getTime()) return 0
+  const ms = FREE_ERA_END.getTime() - at
+  return Math.max(0, Math.ceil(ms / DAY_MS))
+}
+
+/** YYYY-MM-DD in America/Mexico_City */
+export function mexicoCityDayKey(at = nowMs()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(at))
+}
+
 export function getPlanMeta(features = {}) {
   const meta = features?.__meta && typeof features.__meta === 'object' ? features.__meta : null
   return {

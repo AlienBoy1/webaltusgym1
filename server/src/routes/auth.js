@@ -202,13 +202,23 @@ function membershipNoticeFor(membership) {
   }
 }
 
-async function prepareAuthProfile(profile) {
+async function prepareAuthProfile(profile, { notifyMembership = false } = {}) {
   try {
     const synced = await syncUserMembershipOnProfile(profile)
     syncMembershipPlansLifecycle().catch((err) => {
       console.warn('syncMembershipPlansLifecycle:', err?.message || err)
     })
     const mapped = mapProfile(synced)
+
+    if (notifyMembership) {
+      const uid = synced?.id || mapped?.id || mapped?._id
+      import('../services/notificationService.js')
+        .then(({ notifyFreeMembershipCountdown }) =>
+          notifyFreeMembershipCountdown(uid, mapped.membership || synced?.membership)
+        )
+        .catch((err) => console.warn('membership countdown notify:', err?.message || err))
+    }
+
     return {
       mapped,
       membershipNotice: membershipNoticeFor(mapped.membership)
@@ -663,7 +673,9 @@ router.post('/google', async (req, res) => {
       .then(() => {})
       .catch(() => {})
 
-    const { mapped, membershipNotice } = await prepareAuthProfile(profileById)
+    const { mapped, membershipNotice } = await prepareAuthProfile(profileById, {
+      notifyMembership: true
+    })
 
     const token = accessToken
     let nextRefresh = refreshToken || null
@@ -710,7 +722,9 @@ router.post('/login', async (req, res) => {
       .then(() => {})
       .catch(() => {})
 
-    const { mapped, membershipNotice } = await prepareAuthProfile(profile)
+    const { mapped, membershipNotice } = await prepareAuthProfile(profile, {
+      notifyMembership: true
+    })
 
     res.json({
       message: 'Login exitoso',
