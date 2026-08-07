@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -31,8 +31,18 @@ import { getPresenceMeta, PRESENCE_STATUS, usePresenceStatus } from '../../utils
 import { useAppDialog } from '../../components/AppDialog'
 import ChatEmojiPicker from '../../components/ChatEmojiPicker'
 import ProtectedMedia from '../../components/ProtectedMedia'
-import ChatWallpaper, { CHAT_WALLPAPER_STYLES, getChatWallpaper, setChatWallpaper } from '../../components/ChatWallpaper'
+import ChatWallpaper, {
+  CHAT_WALLPAPER_NONE,
+  CHAT_WALLPAPER_STYLES,
+  getChatWallpaper,
+  isStyledWallpaper,
+  setChatWallpaper
+} from '../../components/ChatWallpaper'
 import UserNoteBadge from '../../components/UserNoteBadge'
+import VoiceNotePlayer from '../../components/VoiceNotePlayer'
+import ChatVoiceComposer from '../../components/ChatVoiceComposer'
+import ChatImageComposer from '../../components/ChatImageComposer'
+import { ViewOnceAttachmentBubble } from '../../components/ViewOnceMedia'
 import { useChatStore } from '../../store/chatStore'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
@@ -76,6 +86,12 @@ function formatRecordingTime(sec) {
 
 function attachmentPreviewLabel(attachment) {
   if (!attachment) return ''
+  if (attachment.viewOnce) {
+    if (attachment.opened || !attachment.url) {
+      return attachment.type === 'audio' ? '🎤 Audio abierto' : '📷 Foto abierta'
+    }
+    return attachment.type === 'audio' ? '🎤 Audio · 1 vista' : '📷 Foto · 1 vista'
+  }
   if (attachment.type === 'image') return '📷 Imagen'
   if (attachment.type === 'file') return attachment.name ? `📎 ${attachment.name}` : '📎 Archivo'
   if (attachment.type === 'audio') return '🎤 Audio'
@@ -212,7 +228,9 @@ function StoryAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
 }
 
 function ImageAttachmentBubble({ attachment, isMe, hasText }) {
-  if (!attachment || attachment.type !== 'image' || !attachment.url) return null
+  if (!attachment || attachment.type !== 'image') return null
+  if (attachment.viewOnce) return null
+  if (!attachment.url) return null
   return (
     <div className={`overflow-hidden rounded-xl ${hasText ? 'mb-2' : ''} ${isMe ? 'bg-black/10' : 'bg-black/20'}`}>
       {String(attachment.url).startsWith('data:') ? (
@@ -251,16 +269,19 @@ function FileAttachmentBubble({ attachment, isMe, hasText }) {
   )
 }
 
-function AudioAttachmentBubble({ attachment, isMe, hasText }) {
-  if (!attachment || attachment.type !== 'audio' || !attachment.url) return null
+function AudioAttachmentBubble({ attachment, isMe, hasText, avatar, name }) {
+  if (!attachment || attachment.type !== 'audio') return null
+  if (attachment.viewOnce) return null
+  if (!attachment.url) return null
   return (
-    <div className={`${hasText ? 'mb-2' : ''} ${isMe ? 'text-white' : 'text-[color:var(--text-primary)]'}`}>
-      <audio controls preload="metadata" src={attachment.url} className="h-9 max-w-[min(100%,16rem)]" />
-      {attachment.durationSec ? (
-        <p className={`mt-1 text-[10px] ${isMe ? 'text-white/60' : 'text-[color:var(--text-muted)]'}`}>
-          {formatRecordingTime(attachment.durationSec)}
-        </p>
-      ) : null}
+    <div className={hasText ? 'mb-2' : ''}>
+      <VoiceNotePlayer
+        src={attachment.url}
+        durationSec={attachment.durationSec}
+        isMe={isMe}
+        avatar={avatar}
+        name={name}
+      />
     </div>
   )
 }
@@ -329,7 +350,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [peerTyping, setPeerTyping] = useState(false)
-  const [wallpaperId, setWallpaperId] = useState('nebula')
+  const [wallpaperId, setWallpaperId] = useState(CHAT_WALLPAPER_NONE)
   const [showThreadMenu, setShowThreadMenu] = useState(false)
   const [showSharedSheet, setShowSharedSheet] = useState(false)
   const [showRoutinesSheet, setShowRoutinesSheet] = useState(false)
@@ -339,8 +360,14 @@ export default function Chat() {
   const [publicRoutines, setPublicRoutines] = useState([])
   const [routinesLoading, setRoutinesLoading] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState(null)
+  const [imageDraft, setImageDraft] = useState(null)
+  const [voiceSession, setVoiceSession] = useState(false)
+  const [voiceMode, setVoiceMode] = useState('recording') // recording | paused
+  const [voiceViewOnce, setVoiceViewOnce] = useState(false)
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState(null)
   const [recording, setRecording] = useState(false)
   const [recordingSec, setRecordingSec] = useState(0)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const imageInputRef = useRef(null)
@@ -354,6 +381,11 @@ export default function Chat() {
   const recordingTimerRef = useRef(null)
   const recordingChunksRef = useRef([])
   const recordingSecRef = useRef(0)
+  const durationAtStopRef = useRef(0)
+  const streamRef = useRef(null)
+  const mimeRef = useRef('')
+  const stopActionRef = useRef('preview') // preview | send | discard
+  const voiceViewOnceRef = useRef(false)
   const selectedPresence = usePresenceStatus(selectedChat?.otherId)
 
   useEffect(() => {
@@ -463,9 +495,15 @@ export default function Chat() {
           m.id === data.id
             ? {
                 ...m,
-                delivered: data.delivered,
-                read: data.read,
-                status: data.status || (data.read ? 'read' : data.delivered ? 'delivered' : 'sent')
+                delivered: data.delivered ?? m.delivered,
+                read: data.read ?? m.read,
+                status: data.status || (data.read ? 'read' : data.delivered ? 'delivered' : m.status || 'sent'),
+                ...(data.contentUpdated
+                  ? {
+                      text: data.text ?? m.text,
+                      attachment: data.attachment !== undefined ? data.attachment : m.attachment
+                    }
+                  : null)
               }
             : m
         )
@@ -494,6 +532,27 @@ export default function Chat() {
       if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
     }
   }, [user?._id, navigate])
+
+  useEffect(() => {
+    if (selectedChat?.otherId) {
+      document.body.dataset.chatThread = '1'
+      if (isStyledWallpaper(wallpaperId)) {
+        document.body.dataset.chatStyled = '1'
+      } else {
+        delete document.body.dataset.chatStyled
+      }
+      window.dispatchEvent(new CustomEvent('qyntra:chat-thread'))
+    } else {
+      delete document.body.dataset.chatThread
+      delete document.body.dataset.chatStyled
+      window.dispatchEvent(new CustomEvent('qyntra:chat-thread'))
+    }
+    return () => {
+      delete document.body.dataset.chatThread
+      delete document.body.dataset.chatStyled
+      window.dispatchEvent(new CustomEvent('qyntra:chat-thread'))
+    }
+  }, [selectedChat?.otherId, wallpaperId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -634,6 +693,7 @@ export default function Chat() {
 
   const handleBack = () => {
     setShowEmoji(false)
+    setShowAttachMenu(false)
     setPeerTyping(false)
     setSelectedChat(null)
   }
@@ -658,15 +718,22 @@ export default function Chat() {
   }
 
   const handleSend = async (e) => {
-    e.preventDefault()
+    e?.preventDefault?.()
     const msgText = newMessage.trim()
     const attachment = pendingAttachment
-    if ((!msgText && !attachment) || !selectedChat || sending || recording) return
+    if ((!msgText && !attachment) || !selectedChat || sending || recording || voiceSession) return
+    await sendChatPayload({ text: msgText, attachment })
+  }
+
+  const sendChatPayload = async ({ text = '', attachment = null } = {}) => {
+    const msgText = String(text || '').trim()
+    if ((!msgText && !attachment) || !selectedChat || sending) return false
 
     const tempId = `temp-${Date.now()}`
     setNewMessage('')
     setShowEmoji(false)
     setPendingAttachment(null)
+    setImageDraft(null)
     setSending(true)
 
     const previewText = msgText || attachmentPreviewLabel(attachment)
@@ -699,10 +766,12 @@ export default function Chat() {
             : c
         )
       )
+      return true
     } catch (error) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId))
-      setNewMessage(msgText)
-      if (attachment) setPendingAttachment(attachment)
+      if (!attachment) setNewMessage(msgText)
+      if (attachment?.type === 'image') setImageDraft(attachment)
+      else if (attachment) setPendingAttachment(attachment)
       const apiMsg = error.response?.data?.message || ''
       const messagingBlocked =
         error.response?.status === 403 ||
@@ -717,9 +786,35 @@ export default function Chat() {
       } else {
         toast.error(apiMsg || 'Error al enviar mensaje')
       }
+      return false
     } finally {
       setSending(false)
       inputRef.current?.focus()
+    }
+  }
+
+  const openViewOnce = async (messageId) => {
+    try {
+      const { data } = await api.post(`/chat/view-once/${messageId}`)
+      if (data?.message) {
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...data.message } : m)))
+      }
+      return data?.media || null
+    } catch (error) {
+      const status = error.response?.status
+      if (status === 410) {
+        toast.error('Este contenido ya fue abierto')
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId && m.attachment
+              ? { ...m, attachment: { ...m.attachment, opened: true, url: null } }
+              : m
+          )
+        )
+      } else {
+        toast.error(error.response?.data?.message || 'No se pudo abrir')
+      }
+      return null
     }
   }
 
@@ -729,85 +824,233 @@ export default function Chat() {
     }
   }
 
-  const stopRecording = useCallback(() => {
+  const clearVoiceTimer = () => {
     if (recordingTimerRef.current) {
       window.clearInterval(recordingTimerRef.current)
       recordingTimerRef.current = null
     }
-    const recorder = mediaRecorderRef.current
-    if (recorder && recorder.state !== 'inactive') {
-      try {
-        recorder.stop()
-      } catch {
-        /* ignore */
-      }
-    }
+  }
+
+  const releaseMicStream = () => {
+    streamRef.current?.getTracks?.().forEach((t) => t.stop())
+    streamRef.current = null
+  }
+
+  const resetVoiceUi = () => {
+    clearVoiceTimer()
     mediaRecorderRef.current = null
+    recordingChunksRef.current = []
     recordingSecRef.current = 0
+    durationAtStopRef.current = 0
     setRecording(false)
     setRecordingSec(0)
-  }, [])
+    setVoiceSession(false)
+    setVoiceMode('recording')
+    setVoicePreviewUrl(null)
+    setVoiceViewOnce(false)
+    voiceViewOnceRef.current = false
+    releaseMicStream()
+  }
+
+  const buildRecorder = (stream) => {
+    const mimeType =
+      mimeRef.current ||
+      (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '')
+    mimeRef.current = mimeType
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+    recorder.ondataavailable = (e) => {
+      if (e.data?.size) recordingChunksRef.current.push(e.data)
+    }
+    recorder.onstop = async () => {
+      const action = stopActionRef.current
+      const durationSec = Math.max(1, durationAtStopRef.current || recordingSecRef.current || 1)
+      const blob = new Blob(recordingChunksRef.current, {
+        type: recorder.mimeType || mimeRef.current || 'audio/webm'
+      })
+
+      if (action === 'discard') {
+        resetVoiceUi()
+        return
+      }
+
+      if (!blob.size) {
+        if (action === 'send') toast.error('No se capturó audio')
+        resetVoiceUi()
+        return
+      }
+
+      try {
+        const url = await fileToDataUrl(blob)
+        if (action === 'send') {
+          const ok = await sendChatPayload({
+            attachment: {
+              type: 'audio',
+              url,
+              mime: blob.type || 'audio/webm',
+              durationSec,
+              viewOnce: Boolean(voiceViewOnceRef.current)
+            }
+          })
+          resetVoiceUi()
+          if (!ok) {
+            /* sendChatPayload already restored UI for images; for audio keep silent */
+          }
+          return
+        }
+
+        // preview / paused
+        setVoicePreviewUrl(url)
+        setVoiceMode('paused')
+        setRecording(false)
+        mediaRecorderRef.current = null
+      } catch {
+        toast.error('No se pudo procesar el audio')
+        resetVoiceUi()
+      }
+    }
+    return recorder
+  }
+
+  const startVoiceTimer = () => {
+    clearVoiceTimer()
+    recordingTimerRef.current = window.setInterval(() => {
+      setRecordingSec((prev) => {
+        const next = prev + 1
+        recordingSecRef.current = next
+        if (next >= MAX_AUDIO_SEC) {
+          finalizeVoiceSend()
+        }
+        return next
+      })
+    }, 1000)
+  }
 
   const startRecording = async () => {
-    if (recording || pendingAttachment || !selectedChat) return
+    if (recording || voiceSession || pendingAttachment || imageDraft || !selectedChat) return
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error('Tu navegador no soporta grabación de audio')
       return
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : ''
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      streamRef.current = stream
       recordingChunksRef.current = []
-      recorder.ondataavailable = (e) => {
-        if (e.data?.size) recordingChunksRef.current.push(e.data)
-      }
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(recordingChunksRef.current, {
-          type: recorder.mimeType || 'audio/webm'
-        })
-        recordingChunksRef.current = []
-        if (!blob.size) return
-        try {
-          const url = await fileToDataUrl(blob)
-          setPendingAttachment({
-            type: 'audio',
-            url,
-            mime: blob.type || 'audio/webm',
-            durationSec: recordingSecRef.current || 1
-          })
-        } catch {
-          toast.error('No se pudo procesar el audio')
-        }
-      }
+      const recorder = buildRecorder(stream)
       mediaRecorderRef.current = recorder
-      recorder.start()
+      stopActionRef.current = 'preview'
+      recorder.start(250)
+      setVoiceSession(true)
+      setVoiceMode('recording')
+      setVoicePreviewUrl(null)
       setRecording(true)
       setRecordingSec(0)
       recordingSecRef.current = 0
-      recordingTimerRef.current = window.setInterval(() => {
-        setRecordingSec((prev) => {
-          const next = prev + 1
-          recordingSecRef.current = next
-          if (next >= MAX_AUDIO_SEC) {
-            stopRecording()
-          }
-          return next
-        })
-      }, 1000)
+      durationAtStopRef.current = 0
+      startVoiceTimer()
     } catch {
       toast.error('No se pudo acceder al micrófono')
+      resetVoiceUi()
     }
   }
 
+  const pauseVoice = () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state !== 'recording') return
+    clearVoiceTimer()
+    durationAtStopRef.current = Math.max(1, recordingSecRef.current)
+    stopActionRef.current = 'preview'
+    try {
+      recorder.requestData?.()
+      recorder.stop()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const resumeVoice = () => {
+    if (!streamRef.current || voiceMode !== 'paused') return
+    try {
+      const recorder = buildRecorder(streamRef.current)
+      mediaRecorderRef.current = recorder
+      stopActionRef.current = 'preview'
+      recorder.start(250)
+      setVoiceMode('recording')
+      setRecording(true)
+      setVoicePreviewUrl(null)
+      startVoiceTimer()
+    } catch {
+      toast.error('No se pudo continuar la grabación')
+    }
+  }
+
+  const discardVoice = () => {
+    clearVoiceTimer()
+    const recorder = mediaRecorderRef.current
+    stopActionRef.current = 'discard'
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.stop()
+      } catch {
+        resetVoiceUi()
+      }
+    } else {
+      resetVoiceUi()
+    }
+  }
+
+  const finalizeVoiceSend = () => {
+    clearVoiceTimer()
+    durationAtStopRef.current = Math.max(1, recordingSecRef.current)
+    voiceViewOnceRef.current = voiceViewOnce
+    const recorder = mediaRecorderRef.current
+    stopActionRef.current = 'send'
+
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.requestData?.()
+        recorder.stop()
+      } catch {
+        toast.error('No se pudo enviar el audio')
+        resetVoiceUi()
+      }
+      return
+    }
+
+    // Already paused with chunks ready
+    ;(async () => {
+      const blob = new Blob(recordingChunksRef.current, {
+        type: mimeRef.current || 'audio/webm'
+      })
+      if (!blob.size) {
+        toast.error('Graba al menos un segundo')
+        return
+      }
+      try {
+        const url = await fileToDataUrl(blob)
+        await sendChatPayload({
+          attachment: {
+            type: 'audio',
+            url,
+            mime: blob.type || 'audio/webm',
+            durationSec: Math.max(1, durationAtStopRef.current),
+            viewOnce: Boolean(voiceViewOnce)
+          }
+        })
+      } catch {
+        toast.error('No se pudo enviar el audio')
+      } finally {
+        resetVoiceUi()
+      }
+    })()
+  }
+
   const handleMicClick = () => {
-    if (recording) stopRecording()
-    else startRecording()
+    if (voiceSession) return
+    startRecording()
   }
 
   const handleImagePick = async (e) => {
@@ -823,7 +1066,8 @@ export default function Chat() {
         url = await fileToDataUrl(file)
         mime = file.type || 'image/jpeg'
       }
-      setPendingAttachment({ type: 'image', url, mime })
+      setPendingAttachment(null)
+      setImageDraft({ type: 'image', url, mime })
     } catch {
       toast.error('No se pudo cargar la imagen')
     }
@@ -924,7 +1168,11 @@ export default function Chat() {
     setWallpaperId(styleId)
     setShowWallpaperSheet(false)
     setShowThreadMenu(false)
-    toast.success('Estilo del chat actualizado')
+    toast.success(
+      styleId === CHAT_WALLPAPER_NONE || !styleId
+        ? 'Estilo del chat restaurado'
+        : 'Estilo del chat actualizado'
+    )
   }
 
   const openSharedSheet = () => {
@@ -948,16 +1196,19 @@ export default function Chat() {
     if (selectedChat?.otherId) {
       setWallpaperId(getChatWallpaper(selectedChat.otherId))
       setPendingAttachment(null)
+      setImageDraft(null)
       setShowThreadMenu(false)
-      stopRecording()
+      discardVoice()
     }
-  }, [selectedChat?.otherId, stopRecording])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.otherId])
 
   useEffect(() => {
     return () => {
-      stopRecording()
+      discardVoice()
     }
-  }, [stopRecording])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const searchUsers = async () => {
     setSearching(true)
@@ -1086,9 +1337,23 @@ export default function Chat() {
   })
 
   const selectedPresenceMeta = getPresenceMeta(selectedPresence || PRESENCE_STATUS.OFFLINE)
+  const hasStyledWall = isStyledWallpaper(wallpaperId)
+  const presenceStatusClass = peerTyping
+    ? hasStyledWall
+      ? 'text-cyan-300'
+      : 'text-[color:var(--color-primary)]'
+    : hasStyledWall && selectedPresenceMeta.textClass === 'text-gray-500'
+      ? 'text-white/65'
+      : selectedPresenceMeta.textClass
 
   return (
-    <div className="h-[calc(100dvh-10.5rem)] md:h-[calc(100dvh-8.5rem)] flex gap-0 md:gap-3 -mx-3 sm:-mx-1 md:mx-0">
+    <div
+      className={
+        selectedChat
+          ? 'fixed inset-x-0 top-16 bottom-0 z-40 flex gap-0 overflow-hidden md:static md:inset-auto md:z-auto md:h-[calc(100dvh-8.5rem)] md:gap-3 md:-mx-0'
+          : 'flex h-[calc(100dvh-10.5rem)] gap-0 -mx-3 sm:-mx-1 md:mx-0 md:h-[calc(100dvh-8.5rem)] md:gap-3'
+      }
+    >
       {/* Conversation list */}
       <div
         data-tour="tour-chat-inbox"
@@ -1292,16 +1557,28 @@ export default function Chat() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -12 }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-            className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-none md:rounded-2xl border-0 md:border border-[color:var(--border-subtle)] bg-transparent shadow-none md:shadow-[0_12px_40px_var(--shadow-color)]"
+            className={`relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-none md:rounded-2xl border-0 md:border border-[color:var(--border-subtle)] bg-transparent shadow-none md:shadow-[0_12px_40px_var(--shadow-color)] ${
+              hasStyledWall ? 'chat-thread-chrome force-dark' : ''
+            }`}
           >
             {/* chat wallpaper */}
             <ChatWallpaper styleId={wallpaperId} />
 
-            <header className="relative z-10 flex items-center gap-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/90 px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-4">
+            <header
+              className={`relative z-10 flex items-center gap-2 border-b px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-4 ${
+                hasStyledWall
+                  ? 'border-white/10 bg-black/55'
+                  : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/90'
+              }`}
+            >
               <button
                 type="button"
                 onClick={handleBack}
-                className="rounded-xl p-2 text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)] md:hidden"
+                className={`rounded-xl p-2 md:hidden ${
+                  hasStyledWall
+                    ? 'text-white/85 hover:bg-white/10'
+                    : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
+                }`}
                 aria-label="Volver"
               >
                 <FiArrowLeft size={20} />
@@ -1324,17 +1601,25 @@ export default function Chat() {
                         : ''
                     }
                   >
-                    <span className="rounded-full bg-[color:var(--bg-elevated)] p-[1px]">
+                    <span
+                      className={`rounded-full p-[1px] ${
+                        hasStyledWall ? 'bg-black/40' : 'bg-[color:var(--bg-elevated)]'
+                      }`}
+                    >
                       <Avatar avatar={selectedChat.avatar} name={selectedChat.name} size="sm" />
                     </span>
                   </span>
                   <PresenceDot userId={selectedChat.otherId} size="sm" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-[color:var(--text-primary)]">
+                  <div
+                    className={`truncate font-semibold ${
+                      hasStyledWall ? 'text-white' : 'text-[color:var(--text-primary)]'
+                    }`}
+                  >
                     {selectedChat.name}
                   </div>
-                  <div className={`truncate text-xs ${peerTyping ? 'text-[color:var(--color-primary)]' : selectedPresenceMeta.textClass}`}>
+                  <div className={`truncate text-xs ${presenceStatusClass}`}>
                     {peerTyping ? 'escribiendo…' : selectedPresenceMeta.label}
                   </div>
                 </span>
@@ -1343,7 +1628,11 @@ export default function Chat() {
                 <button
                   type="button"
                   onClick={() => setShowThreadMenu((v) => !v)}
-                  className="rounded-xl p-2 text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]"
+                  className={`rounded-xl p-2 ${
+                    hasStyledWall
+                      ? 'text-white/85 hover:bg-white/10'
+                      : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
+                  }`}
                   aria-label="Opciones del chat"
                   aria-expanded={showThreadMenu}
                 >
@@ -1451,6 +1740,15 @@ export default function Chat() {
                             navigate(`/social?post=${encodeURIComponent(id)}`)
                           }}
                         />
+                        <ViewOnceAttachmentBubble
+                          messageId={msg.id}
+                          attachment={msg.attachment}
+                          isMe={isMe}
+                          hasText={Boolean(msg.text?.trim())}
+                          avatar={isMe ? user?.avatar : selectedChat?.avatar}
+                          name={isMe ? user?.name : selectedChat?.name}
+                          onOpenOnce={openViewOnce}
+                        />
                         <ImageAttachmentBubble
                           attachment={msg.attachment}
                           isMe={isMe}
@@ -1465,6 +1763,8 @@ export default function Chat() {
                           attachment={msg.attachment}
                           isMe={isMe}
                           hasText={Boolean(msg.text?.trim())}
+                          avatar={isMe ? user?.avatar : selectedChat?.avatar}
+                          name={isMe ? user?.name : selectedChat?.name}
                         />
                         {msg.text ? (
                           <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{msg.text}</p>
@@ -1516,129 +1816,156 @@ export default function Chat() {
 
             <form
               onSubmit={handleSend}
-              className="relative z-20 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-2.5 py-2.5 sm:px-4 sm:py-3"
-              style={{ paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom))' }}
+              className={`relative z-20 border-t px-2 pt-2 sm:px-3 sm:pt-2.5 ${
+                voiceSession ? 'hidden' : ''
+              } ${
+                hasStyledWall
+                  ? 'border-white/10 bg-black/60 backdrop-blur-md'
+                  : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
+              }`}
+              style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
             >
               <input
                 ref={imageInputRef}
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={handleImagePick}
+                onChange={(e) => {
+                  setShowAttachMenu(false)
+                  handleImagePick(e)
+                }}
               />
               <input
                 ref={fileInputRef}
                 type="file"
                 className="hidden"
-                onChange={handleFilePick}
+                onChange={(e) => {
+                  setShowAttachMenu(false)
+                  handleFilePick(e)
+                }}
               />
               <ChatEmojiPicker
                 open={showEmoji}
                 onClose={() => setShowEmoji(false)}
                 onPick={insertEmoji}
               />
-              {pendingAttachment && (
-                <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2">
-                  {pendingAttachment.type === 'image' ? (
-                    <img
-                      src={pendingAttachment.url}
-                      alt=""
-                      className="h-12 w-12 shrink-0 rounded-lg object-cover"
-                    />
-                  ) : pendingAttachment.type === 'audio' ? (
-                    <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--color-primary-rgb),0.12)] text-[color:var(--color-primary)]">
-                      <FiMic size={20} />
-                    </span>
-                  ) : (
-                    <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[color:var(--bg-elevated)] text-[color:var(--text-secondary)]">
-                      <FiFile size={20} />
-                    </span>
-                  )}
+              {pendingAttachment && pendingAttachment.type !== 'image' && pendingAttachment.type !== 'audio' && (
+                <div
+                  className={`mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-2xl border px-3 py-2 ${
+                    hasStyledWall
+                      ? 'border-white/12 bg-white/10'
+                      : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]'
+                  }`}
+                >
+                  <span
+                    className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${
+                      hasStyledWall
+                        ? 'bg-white/10 text-white/80'
+                        : 'bg-[color:var(--bg-elevated)] text-[color:var(--text-secondary)]'
+                    }`}
+                  >
+                    <FiFile size={20} />
+                  </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                      {pendingAttachment.type === 'image'
-                        ? 'Imagen lista para enviar'
-                        : pendingAttachment.type === 'audio'
-                          ? `Audio · ${formatRecordingTime(pendingAttachment.durationSec)}`
-                          : pendingAttachment.name || 'Archivo'}
+                    <p
+                      className={`truncate text-sm font-medium ${
+                        hasStyledWall ? 'text-white' : 'text-[color:var(--text-primary)]'
+                      }`}
+                    >
+                      {pendingAttachment.name || 'Archivo'}
                     </p>
-                    <p className="text-xs text-[color:var(--text-muted)]">Toca enviar para compartir</p>
+                    <p className={`text-xs ${hasStyledWall ? 'text-white/55' : 'text-[color:var(--text-muted)]'}`}>
+                      Toca enviar para compartir
+                    </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setPendingAttachment(null)}
-                    className="rounded-xl p-2 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-elevated)]"
+                    className={`rounded-xl p-2 ${
+                      hasStyledWall
+                        ? 'text-white/70 hover:bg-white/10'
+                        : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-elevated)]'
+                    }`}
                     aria-label="Quitar adjunto"
                   >
                     <FiX size={18} />
                   </button>
                 </div>
               )}
-              {recording && (
-                <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-                    </span>
-                    <span className="text-sm font-medium text-red-500">Grabando {formatRecordingTime(recordingSec)}</span>
-                  </div>
+
+              <div className="relative mx-auto flex max-w-3xl items-end gap-2">
+                <AnimatePresence>
+                  {showAttachMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                      className={`absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-44 overflow-hidden rounded-2xl border py-1 shadow-xl ${
+                        hasStyledWall
+                          ? 'border-white/12 bg-[#16161c] text-white'
+                          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => imageInputRef.current?.click()}
+                        disabled={voiceSession || !!pendingAttachment || !!imageDraft}
+                        className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm disabled:opacity-40 ${
+                          hasStyledWall
+                            ? 'text-white hover:bg-white/10'
+                            : 'text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)]'
+                        }`}
+                      >
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
+                          <FiImage size={18} />
+                        </span>
+                        Foto
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={voiceSession || !!pendingAttachment || !!imageDraft}
+                        className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm disabled:opacity-40 ${
+                          hasStyledWall
+                            ? 'text-white hover:bg-white/10'
+                            : 'text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)]'
+                        }`}
+                      >
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
+                          <FiPaperclip size={18} />
+                        </span>
+                        Archivo
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* WhatsApp-style field: emoji + text + attach inside one pill */}
+                <div
+                  className={`flex min-w-0 flex-1 items-end rounded-[1.65rem] border pl-1.5 pr-1.5 shadow-sm focus-within:border-[color:var(--color-primary)]/50 focus-within:ring-2 focus-within:ring-[rgba(var(--color-primary-rgb),0.12)] ${
+                    hasStyledWall
+                      ? 'border-white/15 bg-white/10'
+                      : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]'
+                  }`}
+                >
                   <button
                     type="button"
-                    onClick={stopRecording}
-                    className="rounded-full bg-red-500 px-3 py-1.5 text-xs font-semibold text-white"
+                    onClick={() => {
+                      setShowAttachMenu(false)
+                      setShowEmoji((v) => !v)
+                    }}
+                    className={`mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${
+                      showEmoji
+                        ? 'text-[color:var(--color-primary)]'
+                        : hasStyledWall
+                          ? 'text-white/75 hover:bg-white/10'
+                          : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-elevated)]'
+                    }`}
+                    aria-label="Emojis"
+                    aria-pressed={showEmoji}
                   >
-                    Detener
+                    <FiSmile size={22} />
                   </button>
-                </div>
-              )}
-              <div className="mx-auto flex max-w-3xl items-end gap-1 sm:gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowEmoji((v) => !v)}
-                  className={`mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition sm:h-11 sm:w-11 ${
-                    showEmoji
-                      ? 'bg-[rgba(var(--color-primary-rgb),0.16)] text-[color:var(--color-primary)]'
-                      : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
-                  }`}
-                  aria-label="Emojis"
-                  aria-pressed={showEmoji}
-                >
-                  <FiSmile size={20} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={recording || !!pendingAttachment}
-                  className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-muted)] disabled:opacity-40 sm:h-11 sm:w-11"
-                  aria-label="Adjuntar imagen"
-                >
-                  <FiImage size={19} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={recording || !!pendingAttachment}
-                  className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-muted)] disabled:opacity-40 sm:h-11 sm:w-11"
-                  aria-label="Adjuntar archivo"
-                >
-                  <FiPaperclip size={19} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleMicClick}
-                  disabled={!!pendingAttachment}
-                  className={`mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition sm:h-11 sm:w-11 ${
-                    recording
-                      ? 'bg-red-500/15 text-red-500'
-                      : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)]'
-                  }`}
-                  aria-label={recording ? 'Detener grabación' : 'Grabar audio'}
-                  aria-pressed={recording}
-                >
-                  <FiMic size={19} />
-                </button>
-                <div className="min-w-0 flex-1 rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3.5 py-1 focus-within:border-[color:var(--color-primary)] transition">
                   <input
                     ref={inputRef}
                     type="text"
@@ -1647,24 +1974,64 @@ export default function Chat() {
                       setNewMessage(e.target.value)
                       handleTyping()
                     }}
-                    onFocus={() => setShowEmoji(false)}
-                    placeholder="Escribe un mensaje…"
-                    className="w-full bg-transparent py-2.5 text-[15px] text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]"
+                    onFocus={() => {
+                      setShowEmoji(false)
+                      setShowAttachMenu(false)
+                    }}
+                    placeholder="Mensaje"
+                    className={`min-w-0 flex-1 bg-transparent py-2.5 text-[15.5px] leading-snug outline-none ${
+                      hasStyledWall
+                        ? 'text-white placeholder:text-white/45'
+                        : 'text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)]'
+                    }`}
                     autoComplete="off"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEmoji(false)
+                      setShowAttachMenu((v) => !v)
+                    }}
+                    disabled={voiceSession}
+                    className={`mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 ${
+                      showAttachMenu
+                        ? 'text-[color:var(--color-primary)]'
+                        : hasStyledWall
+                          ? 'text-white/75 hover:bg-white/10'
+                          : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-elevated)]'
+                    }`}
+                    aria-label="Adjuntar"
+                    aria-expanded={showAttachMenu}
+                  >
+                    <FiPlus size={22} className={showAttachMenu ? 'rotate-45 transition' : 'transition'} />
+                  </button>
                 </div>
-                <button
-                  type="submit"
-                  disabled={(!newMessage.trim() && !pendingAttachment) || sending || recording}
-                  className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white shadow-lg shadow-[rgba(var(--color-primary-rgb),0.28)] transition enabled:hover:brightness-110 enabled:active:scale-95 disabled:opacity-40 sm:h-11 sm:w-11"
-                  aria-label="Enviar"
-                >
-                  {sending ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  ) : (
-                    <FiSend size={18} />
-                  )}
-                </button>
+
+                {/* Outside: mic when empty, send when content (WhatsApp pattern) */}
+                {newMessage.trim() || pendingAttachment ? (
+                  <button
+                    type="submit"
+                    disabled={sending || voiceSession}
+                    className="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white shadow-[0_6px_16px_rgba(var(--color-primary-rgb),0.32)] transition enabled:active:scale-95 disabled:opacity-40"
+                    aria-label="Enviar"
+                  >
+                    {sending ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    ) : (
+                      <FiSend size={18} />
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleMicClick}
+                    disabled={!!pendingAttachment || !!imageDraft || voiceSession}
+                    className="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white shadow-[0_6px_16px_rgba(var(--color-primary-rgb),0.32)] transition enabled:active:scale-95 disabled:opacity-40"
+                    aria-label="Grabar audio"
+                  >
+                    <FiMic size={20} />
+                  </button>
+                )}
               </div>
             </form>
           </motion.div>
@@ -1915,7 +2282,42 @@ export default function Chat() {
       </ChatBottomSheet>
 
       <ChatBottomSheet open={showWallpaperSheet} onClose={() => setShowWallpaperSheet(false)} title="Estilo del chat">
+        <p className="px-4 pt-1 text-xs text-[color:var(--text-muted)]">
+          Por defecto el chat se adapta a tu tema claro u oscuro. Elige un estilo solo si quieres una atmósfera premium en esta conversación.
+        </p>
         <div className="grid grid-cols-2 gap-2.5 p-3 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => handleWallpaperSelect(CHAT_WALLPAPER_NONE)}
+            className={`relative overflow-hidden rounded-2xl border text-left transition ${
+              !hasStyledWall
+                ? 'border-[color:var(--color-primary)] ring-2 ring-[rgba(var(--color-primary-rgb),0.28)]'
+                : 'border-[color:var(--border-subtle)] hover:border-[color:var(--color-primary)]/45'
+            }`}
+          >
+            <div className="relative h-28 overflow-hidden bg-[color:var(--bg-muted)] sm:h-32">
+              <div className="absolute inset-3 rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]" />
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-[color:var(--text-secondary)]">
+                Adaptativo
+              </span>
+            </div>
+            <div className="px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-[color:var(--text-primary)]">Sin estilo</span>
+                <span
+                  className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/10"
+                  style={{ background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-muted))' }}
+                  aria-hidden
+                />
+              </div>
+              <p className="mt-0.5 text-[11px] text-[color:var(--text-muted)]">Tema claro / oscuro</p>
+            </div>
+            {!hasStyledWall && (
+              <span className="absolute right-2 top-2 rounded-full bg-[color:var(--color-primary)] px-2 py-0.5 text-[10px] font-semibold text-white">
+                Activo
+              </span>
+            )}
+          </button>
           {CHAT_WALLPAPER_STYLES.map((style) => {
             const active = wallpaperId === style.id
             return (
@@ -1929,19 +2331,26 @@ export default function Chat() {
                     : 'border-[color:var(--border-subtle)] hover:border-[color:var(--color-primary)]/45'
                 }`}
               >
-                <div className={`relative h-24 overflow-hidden sm:h-28 chat-wallpaper ${style.className}`}>
+                <div className={`relative h-28 overflow-hidden sm:h-32 chat-wallpaper ${style.className}`}>
                   <span className="chat-wall-layer chat-wall-base" />
                   <span className="chat-wall-layer chat-wall-a" />
                   <span className="chat-wall-layer chat-wall-b" />
                   <span className="chat-wall-layer chat-wall-c" />
+                  <span className="chat-wall-layer chat-wall-motif" />
+                  <span className="chat-wall-layer chat-wall-vignette" />
                 </div>
-                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <span className="text-sm font-medium text-[color:var(--text-primary)]">{style.name}</span>
-                  <span
-                    className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/10"
-                    style={{ background: style.swatch }}
-                    aria-hidden
-                  />
+                <div className="px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-[color:var(--text-primary)]">{style.name}</span>
+                    <span
+                      className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/10"
+                      style={{ background: style.swatch }}
+                      aria-hidden
+                    />
+                  </div>
+                  {style.subtitle ? (
+                    <p className="mt-0.5 text-[11px] text-[color:var(--text-muted)]">{style.subtitle}</p>
+                  ) : null}
                 </div>
                 {active && (
                   <span className="absolute right-2 top-2 rounded-full bg-[color:var(--color-primary)] px-2 py-0.5 text-[10px] font-semibold text-white">
@@ -1953,6 +2362,44 @@ export default function Chat() {
           })}
         </div>
       </ChatBottomSheet>
+
+      <ChatVoiceComposer
+        open={voiceSession}
+        mode={voiceMode}
+        seconds={recordingSec}
+        previewUrl={voicePreviewUrl}
+        viewOnce={voiceViewOnce}
+        sending={sending}
+        onToggleViewOnce={() => {
+          setVoiceViewOnce((v) => {
+            const next = !v
+            voiceViewOnceRef.current = next
+            return next
+          })
+        }}
+        onDelete={discardVoice}
+        onPause={pauseVoice}
+        onResume={resumeVoice}
+        onSend={finalizeVoiceSend}
+      />
+
+      <ChatImageComposer
+        open={Boolean(imageDraft?.url)}
+        imageUrl={imageDraft?.url}
+        recipientName={selectedChat?.name}
+        sending={sending}
+        onClose={() => setImageDraft(null)}
+        onSend={async ({ caption, viewOnce }) => {
+          if (!imageDraft) return
+          await sendChatPayload({
+            text: caption,
+            attachment: {
+              ...imageDraft,
+              viewOnce: Boolean(viewOnce)
+            }
+          })
+        }}
+      />
     </div>
   )
 }

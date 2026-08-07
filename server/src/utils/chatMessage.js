@@ -1,5 +1,31 @@
 const MSG_PREFIX = '__QMSG__'
 
+function previewLabel(text, attachment) {
+  if (attachment?.viewOnce) {
+    if (attachment.opened || !attachment.url) {
+      return attachment.type === 'audio' ? '🎤 Audio abierto' : '📷 Foto abierta'
+    }
+    return attachment.type === 'audio' ? '🎤 Audio · 1 vista' : '📷 Foto · 1 vista'
+  }
+  if (attachment?.type === 'story') {
+    return text?.trim() || '📸 Estado de Qyntra'
+  }
+  if (attachment?.type === 'post') {
+    return text?.trim() || `📝 ${attachment.authorName || 'Publicación'} · ${attachment.snippet || 'Qyntra Gym'}`
+  }
+  if (attachment?.type === 'image') {
+    return text?.trim() || '📷 Foto'
+  }
+  if (attachment?.type === 'file') {
+    const fileName = attachment.name || attachment.fileName || 'Archivo'
+    return text?.trim() || `📎 ${fileName}`
+  }
+  if (attachment?.type === 'audio') {
+    return text?.trim() || '🎤 Mensaje de voz'
+  }
+  return text || ''
+}
+
 export function encodeChatContent({ text = '', attachment = null } = {}) {
   if (!attachment) return String(text || '')
   return `${MSG_PREFIX}${JSON.stringify({ text: String(text || ''), attachment })}`
@@ -23,24 +49,16 @@ export function decodeChatContent(raw) {
   return { text: raw || '', attachment: null, preview: raw || '' }
 }
 
-function previewLabel(text, attachment) {
-  if (attachment?.type === 'story') {
-    return text?.trim() || '📸 Estado de Qyntra'
+export function scrubViewOnceAttachment(attachment) {
+  if (!attachment || !attachment.viewOnce) return attachment
+  return {
+    type: attachment.type,
+    viewOnce: true,
+    opened: true,
+    openedAt: new Date().toISOString(),
+    durationSec: attachment.durationSec || undefined,
+    mime: attachment.mime || undefined
   }
-  if (attachment?.type === 'post') {
-    return text?.trim() || `📝 ${attachment.authorName || 'Publicación'} · ${attachment.snippet || 'Qyntra Gym'}`
-  }
-  if (attachment?.type === 'image') {
-    return text?.trim() || '📷 Foto'
-  }
-  if (attachment?.type === 'file') {
-    const fileName = attachment.name || attachment.fileName || 'Archivo'
-    return text?.trim() || `📎 ${fileName}`
-  }
-  if (attachment?.type === 'audio') {
-    return text?.trim() || '🎤 Mensaje de voz'
-  }
-  return text || ''
 }
 
 export function formatChatMessage(row, myId) {

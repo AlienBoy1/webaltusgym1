@@ -2,6 +2,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun, FiUserPlus, FiBookOpen } from 'react-icons/fi'
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
@@ -57,6 +58,7 @@ export default function MainLayout() {
   const [searching, setSearching] = useState(false)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [chatThreadOpen, setChatThreadOpen] = useState(false)
   const [themeMode, setThemeMode] = useState(() => {
     const id = user?.id || user?._id
     const cached = id ? loadCachedSettings(id) : loadCachedSettings(null)
@@ -67,18 +69,36 @@ export default function MainLayout() {
     return 'light'
   })
   const avatarMenuRef = useRef(null)
+  const avatarMenuPanelRef = useRef(null)
   
   const isDashboard = location.pathname === '/dashboard'
   const canGoBack = !isDashboard && location.pathname !== '/'
+
+  useEffect(() => {
+    const sync = () => setChatThreadOpen(document.body.dataset.chatThread === '1')
+    sync()
+    window.addEventListener('qyntra:chat-thread', sync)
+    return () => window.removeEventListener('qyntra:chat-thread', sync)
+  }, [])
+
+  useEffect(() => {
+    if (location.pathname !== '/chat') {
+      setChatThreadOpen(false)
+      delete document.body.dataset.chatThread
+      delete document.body.dataset.chatStyled
+      window.dispatchEvent(new CustomEvent('qyntra:chat-thread'))
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     if (!avatarMenuOpen) return
     const onDoc = (e) => {
       // Keep menu open while the product tour is controlling it
       if (document.body.dataset.qyntraTutorial === '1') return
-      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target)) {
-        setAvatarMenuOpen(false)
-      }
+      const t = e.target
+      if (avatarMenuRef.current?.contains(t)) return
+      if (avatarMenuPanelRef.current?.contains(t)) return
+      setAvatarMenuOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('touchstart', onDoc)
@@ -295,7 +315,7 @@ export default function MainLayout() {
     <PresenceManager />
     <div className="min-h-screen bg-dark-500">
       {/* Header — keep under tutorial overlay (z-200) so tip text never hides behind the avatar menu */}
-      <header className="glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
+      <header className="chat-app-bar glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {canGoBack && (
@@ -368,7 +388,7 @@ export default function MainLayout() {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-full left-0 right-0 mt-2 bg-dark-200 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
+                    className="chat-escape-panel absolute top-full left-0 right-0 z-50 mt-2 max-h-96 overflow-y-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] shadow-xl"
                     onBlur={() => setTimeout(() => setShowSearch(false), 200)}
                   >
                     {searching ? (
@@ -451,16 +471,27 @@ export default function MainLayout() {
               </button>
 
               <AnimatePresence>
-                {avatarMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                    data-tour="tour-avatar-menu-panel"
-                    className="absolute right-0 top-full mt-2 w-64 z-[60] rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden"
-                  >
+                {avatarMenuOpen &&
+                  typeof document !== 'undefined' &&
+                  createPortal(
+                    <motion.div
+                      ref={avatarMenuPanelRef}
+                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                      data-tour="tour-avatar-menu-panel"
+                      className="chat-escape-panel fixed z-[80] w-64 overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] shadow-2xl"
+                      style={{
+                        top: avatarMenuRef.current
+                          ? avatarMenuRef.current.getBoundingClientRect().bottom + 8
+                          : 56,
+                        right: avatarMenuRef.current
+                          ? Math.max(12, window.innerWidth - avatarMenuRef.current.getBoundingClientRect().right)
+                          : 12
+                      }}
+                    >
                     <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
-                      <p className="font-semibold text-sm truncate">{user?.name}</p>
+                      <p className="font-semibold text-sm truncate text-[color:var(--text-primary)]">{user?.name}</p>
                       <p className="text-xs text-[color:var(--text-muted)] truncate">
                         {user?.username ? `@${user.username}` : user?.email}
                       </p>
@@ -473,7 +504,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           navigate('/profile')
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
                       >
                         <FiUser size={16} className="text-primary-500" />
                         Ver perfil
@@ -485,7 +516,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           navigate('/settings')
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
                       >
                         <FiSettings size={16} className="text-accent-cyan" />
                         Configuración
@@ -497,7 +528,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           setInviteOpen(true)
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
                       >
                         <FiUserPlus size={16} className="text-accent-yellow" />
                         Invitar a amigos
@@ -508,7 +539,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           openTutorialHub()
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-[color:var(--bg-muted)] transition"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
                       >
                         <FiBookOpen size={16} className="text-accent-cyan" />
                         Tutoriales de la app
@@ -516,7 +547,7 @@ export default function MainLayout() {
 
                       <div
                         data-tour="menu-theme"
-                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl"
+                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-[color:var(--text-primary)]"
                       >
                         <span className="flex items-center gap-3 text-sm">
                           {themeMode === 'light' ? (
@@ -563,8 +594,9 @@ export default function MainLayout() {
                         Cerrar sesión
                       </button>
                     </div>
-                  </motion.div>
-                )}
+                    </motion.div>,
+                    document.body
+                  )}
               </AnimatePresence>
 
               {user?.role === 'admin' && (
@@ -644,14 +676,28 @@ export default function MainLayout() {
       </header>
       
       {/* Main Content */}
-      <main className="pt-16 pb-24 md:pb-6 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <main
+        className={`overflow-x-hidden pt-16 ${
+          chatThreadOpen ? 'pb-0 md:pb-6' : 'pb-24 md:pb-6'
+        }`}
+      >
+        <div
+          className={
+            chatThreadOpen
+              ? 'mx-auto max-w-7xl px-0 py-0 md:px-4 md:py-6'
+              : 'mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6'
+          }
+        >
           <Outlet />
         </div>
       </main>
       
-      {/* Bottom Navigation (Mobile) */}
-      <nav className="md:hidden glass fixed bottom-0 left-0 right-0 z-50 px-2 py-2">
+      {/* Bottom Navigation (Mobile) — hide while a chat thread is open */}
+      <nav
+        className={`glass fixed bottom-0 left-0 right-0 z-50 px-2 py-2 md:hidden ${
+          chatThreadOpen ? 'pointer-events-none invisible translate-y-full' : ''
+        }`}
+      >
         <div className="flex justify-around">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path

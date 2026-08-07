@@ -2,7 +2,7 @@
 import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyNewMessage } from '../services/notificationService.js'
-import { encodeChatContent, decodeChatContent, formatChatMessage } from '../utils/chatMessage.js'
+import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment } from '../utils/chatMessage.js'
 
 const router = express.Router()
 
@@ -334,6 +334,68 @@ router.post('/send', authenticate, async (req, res) => {
     }).catch((err) => console.error('Chat notify error:', err?.message || err))
 
     res.status(201).json(formatChatMessage(message, req.user.id))
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+/** Recipient opens a view-once photo/audio — returns media once, then scrubs it from storage. */
+router.post('/view-once/:messageId', authenticate, async (req, res) => {
+  try {
+    const messageId = req.params.messageId
+    const userId = req.user.id
+
+    const { data: message, error } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('id', messageId)
+      .single()
+
+    if (error || !message) {
+      return res.status(404).json({ message: 'Mensaje no encontrado' })
+    }
+
+    if (message.to_user_id !== userId) {
+      return res.status(403).json({ message: 'Solo el destinatario puede abrir este contenido' })
+    }
+
+    const decoded = decodeChatContent(message.content)
+    const attachment = decoded.attachment
+    if (!attachment?.viewOnce) {
+      return res.status(400).json({ message: 'Este mensaje no es de una sola vista' })
+    }
+    if (attachment.opened || !attachment.url) {
+      return res.status(410).json({ message: 'Este contenido ya fue abierto' })
+    }
+    if (attachment.type !== 'image' && attachment.type !== 'audio') {
+      return res.status(400).json({ message: 'Tipo de adjunto no válido' })
+    }
+
+    const payload = {
+      url: attachment.url,
+      type: attachment.type,
+      mime: attachment.mime || null,
+      durationSec: attachment.durationSec || null
+    }
+
+    const scrubbed = encodeChatContent({
+      text: decoded.text,
+      attachment: scrubViewOnceAttachment(attachment)
+    })
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('messages')
+      .update({ content: scrubbed })
+      .eq('id', messageId)
+      .select('*')
+      .single()
+
+    if (updateError) throw updateError
+
+    res.json({
+      media: payload,
+      message: formatChatMessage(updated, userId)
+    })
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
   }

@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -126,7 +126,7 @@ html.dark {
     background-color: rgba(15, 15, 20, 0.45) !important;
   }
 
-  /* Primary accent remaps — follow CSS variable everywhere */
+  /* Primary accent remaps â€” follow CSS variable everywhere */
   .text-primary-500,
   .text-primary-400,
   .text-primary-300,
@@ -648,10 +648,95 @@ input[type="range"]::-moz-range-thumb {
   background: var(--color-primary);
 }
 
-/* ——— Animated chat wallpapers (high contrast, mutually distinct) ——— */
+/* â€”â€”â€” Gym-native chat wallpapers (premium, distinct atmospheres) â€”â€”â€” */
+/* Adaptive default — no decorative wallpaper */
+.chat-wall-none {
+  background: var(--bg-app);
+}
+.chat-wall-none::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 0% 0%, rgba(var(--color-primary-rgb), 0.06), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(var(--color-accent-rgb), 0.04), transparent 50%);
+}
+
+/* Immersive chrome when a styled wallpaper is active (readable on light OR dark app theme) */
+body[data-chat-styled='1'] .chat-thread-chrome {
+  color-scheme: dark;
+}
+
+/* Light theme remaps .text-white → dark; keep chrome readable over wallpapers */
+html.light .chat-thread-chrome .text-white {
+  color: #ffffff !important;
+}
+html.light .chat-thread-chrome .text-white\/85 { color: rgba(255, 255, 255, 0.85) !important; }
+html.light .chat-thread-chrome .text-white\/75 { color: rgba(255, 255, 255, 0.75) !important; }
+html.light .chat-thread-chrome .text-white\/70 { color: rgba(255, 255, 255, 0.7) !important; }
+html.light .chat-thread-chrome .text-white\/65 { color: rgba(255, 255, 255, 0.65) !important; }
+html.light .chat-thread-chrome .text-white\/55 { color: rgba(255, 255, 255, 0.55) !important; }
+html.light .chat-thread-chrome .placeholder\:text-white\/45::placeholder {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+html.light .chat-thread-chrome .bg-black\/55 {
+  background-color: rgba(0, 0, 0, 0.55) !important;
+}
+html.light .chat-thread-chrome .bg-black\/60 {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+body[data-chat-styled='1'] header.chat-app-bar {
+  background: rgba(10, 10, 15, 0.88) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #ffffff;
+}
+body[data-chat-styled='1'] header.chat-app-bar .font-display,
+body[data-chat-styled='1'] header.chat-app-bar > div a,
+body[data-chat-styled='1'] header.chat-app-bar > div button:not(.btn-primary) {
+  color: #ffffff;
+}
+body[data-chat-styled='1'] header.chat-app-bar .text-gray-400,
+body[data-chat-styled='1'] header.chat-app-bar .text-gray-500 {
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+body[data-chat-styled='1'] header.chat-app-bar .hover\:text-white:hover {
+  color: #ffffff !important;
+}
+body[data-chat-styled='1'] header.chat-app-bar input {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+body[data-chat-styled='1'] header.chat-app-bar input::placeholder {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+body[data-chat-styled='1'] header.chat-app-bar .hover\:bg-white\/5:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Adaptive overlays (menus / search results) keep theme tokens */
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-subtle) !important;
+}
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel,
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel button,
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel a,
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel p,
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel span,
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel div {
+  color: var(--text-primary);
+}
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel .text-gray-400,
+body[data-chat-styled='1'] header.chat-app-bar .chat-escape-panel .text-\[color\:var\(--text-muted\)\] {
+  color: var(--text-muted) !important;
+}
+
 .chat-wallpaper {
   isolation: isolate;
-  background: var(--bg-app);
+  background: #0a0a0c;
 }
 .chat-wall-layer {
   position: absolute;
@@ -660,211 +745,286 @@ input[type="range"]::-moz-range-thumb {
   will-change: transform, opacity;
 }
 .chat-wall-noise {
-  opacity: 0.045;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.55) 0.6px, transparent 0.7px);
+  opacity: 0.06;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.7) 0.55px, transparent 0.65px);
   background-size: 3px 3px;
   mix-blend-mode: soft-light;
 }
-
-/* 1 Nebula — deep violet / cyan clouds */
-.chat-wall-nebula {
-  background: #0b1020;
+.chat-wall-vignette {
+  background: radial-gradient(ellipse 85% 75% at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.45) 100%);
 }
+.chat-wall-motif {
+  opacity: 0.14;
+}
+
+/* 1 Voltaje Qyntra */
+.chat-wall-nebula { background: #07090f; }
 .chat-wall-nebula .chat-wall-base {
   background:
-    radial-gradient(ellipse 80% 60% at 15% 20%, rgba(124, 58, 237, 0.55), transparent 60%),
-    radial-gradient(ellipse 70% 55% at 85% 75%, rgba(34, 211, 238, 0.4), transparent 55%),
-    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(var(--color-primary-rgb), 0.22), transparent 70%);
+    radial-gradient(ellipse 90% 70% at 10% 15%, rgba(var(--color-primary-rgb), 0.55), transparent 58%),
+    radial-gradient(ellipse 80% 60% at 90% 80%, rgba(0, 245, 255, 0.38), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(var(--color-primary-rgb), 0.18), transparent 70%);
 }
 .chat-wall-nebula .chat-wall-a {
-  background: radial-gradient(circle at 35% 40%, rgba(167, 139, 250, 0.45), transparent 38%);
-  animation: chat-drift 12s ease-in-out infinite alternate;
+  background: radial-gradient(circle at 30% 35%, rgba(var(--color-primary-rgb), 0.55), transparent 36%);
+  animation: chat-drift 11s ease-in-out infinite alternate;
 }
 .chat-wall-nebula .chat-wall-b {
-  background: radial-gradient(circle at 70% 55%, rgba(56, 189, 248, 0.35), transparent 36%);
-  animation: chat-drift 16s ease-in-out infinite alternate-reverse;
+  background: radial-gradient(circle at 72% 60%, rgba(0, 245, 255, 0.4), transparent 34%);
+  animation: chat-drift 15s ease-in-out infinite alternate-reverse;
+}
+.chat-wall-nebula .chat-wall-motif {
+  background:
+    linear-gradient(115deg, transparent 40%, rgba(0, 245, 255, 0.18) 50%, transparent 60%),
+    linear-gradient(-20deg, transparent 42%, rgba(var(--color-primary-rgb), 0.16) 52%, transparent 62%);
+  animation: chat-bolt 6s ease-in-out infinite;
+  opacity: 0.55;
 }
 
-/* 2 Grid — blueprint lines */
-.chat-wall-grid {
-  background: color-mix(in srgb, var(--bg-app) 88%, #0ea5e9);
-}
+/* 2 Pista de hierro */
+.chat-wall-grid { background: #121212; }
 .chat-wall-grid .chat-wall-base {
-  background-color: color-mix(in srgb, var(--bg-elevated) 92%, #0284c7);
+  background-color: #161616;
   background-image:
-    linear-gradient(rgba(14, 165, 233, 0.22) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(14, 165, 233, 0.22) 1px, transparent 1px),
-    linear-gradient(rgba(14, 165, 233, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(14, 165, 233, 0.08) 1px, transparent 1px);
-  background-size: 48px 48px, 48px 48px, 12px 12px, 12px 12px;
-  animation: chat-grid-shift 18s linear infinite;
+    linear-gradient(rgba(var(--color-primary-rgb), 0.28) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(var(--color-primary-rgb), 0.28) 2px, transparent 2px),
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 72px 72px, 72px 72px, 18px 18px, 18px 18px;
+  animation: chat-grid-shift 22s linear infinite;
 }
 .chat-wall-grid .chat-wall-a {
-  background: radial-gradient(circle at 50% 0%, rgba(var(--color-primary-rgb), 0.35), transparent 55%);
-  animation: chat-pulse 9s ease-in-out infinite;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 28%, rgba(var(--color-primary-rgb), 0.12) 29%, transparent 32%),
+    radial-gradient(circle at 50% 50%, transparent 42%, rgba(255, 255, 255, 0.08) 43%, transparent 46%);
+  animation: chat-pulse 10s ease-in-out infinite;
+}
+.chat-wall-grid .chat-wall-motif {
+  background: linear-gradient(90deg, transparent, rgba(var(--color-primary-rgb), 0.35), transparent);
+  height: 3px;
+  inset: auto 8% 22% 8%;
+  opacity: 0.7;
+  box-shadow: 0 0 24px rgba(var(--color-primary-rgb), 0.45);
+  animation: chat-lane 4.5s ease-in-out infinite;
 }
 
-/* 3 Aurora — sweeping rainbow bands */
-.chat-wall-aurora {
-  background: #07141a;
-}
+/* 3 Afterburn */
+.chat-wall-aurora { background: #050b12; }
 .chat-wall-aurora .chat-wall-base {
   background:
-    linear-gradient(180deg, rgba(16, 185, 129, 0.15), transparent 40%),
-    linear-gradient(0deg, rgba(99, 102, 241, 0.2), transparent 45%);
+    linear-gradient(180deg, rgba(0, 245, 255, 0.12), transparent 45%),
+    linear-gradient(0deg, rgba(var(--color-primary-rgb), 0.22), transparent 50%);
 }
 .chat-wall-aurora .chat-wall-a {
   background: linear-gradient(
     105deg,
-    transparent 10%,
-    rgba(16, 185, 129, 0.55) 30%,
-    rgba(56, 189, 248, 0.45) 48%,
-    rgba(168, 85, 247, 0.5) 66%,
-    rgba(236, 72, 153, 0.4) 82%,
-    transparent 95%
+    transparent 8%,
+    rgba(0, 245, 255, 0.55) 28%,
+    rgba(124, 58, 237, 0.4) 48%,
+    rgba(var(--color-primary-rgb), 0.65) 68%,
+    rgba(251, 191, 36, 0.35) 82%,
+    transparent 96%
   );
-  filter: blur(8px);
-  animation: chat-sweep 10s ease-in-out infinite alternate;
-  opacity: 0.85;
+  filter: blur(10px);
+  animation: chat-sweep 9s ease-in-out infinite alternate;
+  opacity: 0.9;
 }
 .chat-wall-aurora .chat-wall-b {
   background: linear-gradient(
     250deg,
-    transparent 20%,
-    rgba(34, 211, 238, 0.35) 45%,
-    rgba(244, 114, 182, 0.35) 70%,
+    transparent 15%,
+    rgba(0, 245, 255, 0.3) 40%,
+    rgba(var(--color-primary-rgb), 0.4) 65%,
     transparent
   );
-  filter: blur(12px);
-  animation: chat-sweep 14s ease-in-out infinite alternate-reverse;
+  filter: blur(14px);
+  animation: chat-sweep 13s ease-in-out infinite alternate-reverse;
+}
+.chat-wall-aurora .chat-wall-motif {
+  background: repeating-linear-gradient(
+    100deg,
+    transparent,
+    transparent 40px,
+    rgba(255, 255, 255, 0.04) 40px,
+    rgba(255, 255, 255, 0.04) 42px
+  );
+  animation: chat-wave-move 18s linear infinite;
+  opacity: 0.8;
 }
 
-/* 4 Pulse — heartbeat glow from center */
-.chat-wall-pulse {
-  background: color-mix(in srgb, var(--bg-app) 70%, #7c2d12);
-}
+/* 4 Latido athlete */
+.chat-wall-pulse { background: #140808; }
 .chat-wall-pulse .chat-wall-base {
   background:
-    radial-gradient(circle at 50% 55%, rgba(249, 115, 22, 0.55), transparent 42%),
-    radial-gradient(circle at 50% 55%, rgba(var(--color-primary-rgb), 0.35), transparent 65%);
+    radial-gradient(circle at 50% 52%, rgba(239, 68, 68, 0.45), transparent 40%),
+    radial-gradient(circle at 50% 52%, rgba(var(--color-primary-rgb), 0.28), transparent 62%);
 }
 .chat-wall-pulse .chat-wall-a {
-  background: radial-gradient(circle at 50% 55%, rgba(251, 146, 60, 0.55), transparent 35%);
-  animation: chat-heartbeat 2.4s ease-in-out infinite;
+  background: radial-gradient(circle at 50% 52%, rgba(248, 113, 113, 0.55), transparent 32%);
+  animation: chat-heartbeat 2.2s ease-in-out infinite;
 }
 .chat-wall-pulse .chat-wall-b {
-  border: 2px solid rgba(251, 146, 60, 0.35);
+  border: 2px solid rgba(248, 113, 113, 0.4);
   border-radius: 50%;
-  inset: 22%;
-  animation: chat-ring 2.4s ease-out infinite;
+  inset: 24%;
+  animation: chat-ring 2.2s ease-out infinite;
+}
+.chat-wall-pulse .chat-wall-motif {
+  inset: 42% 12% auto 12%;
+  height: 36px;
+  opacity: 0.55;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 18%,
+    #f87171 18%,
+    #f87171 22%,
+    transparent 22%,
+    transparent 35%,
+    #f87171 35%,
+    #f87171 38%,
+    transparent 38%,
+    transparent 48%,
+    #ef4444 48%,
+    #ef4444 52%,
+    transparent 52%,
+    transparent 62%,
+    #f87171 62%,
+    #f87171 70%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+  animation: chat-ecg 2.2s linear infinite;
 }
 
-/* 5 Waves — diagonal ocean bands */
-.chat-wall-waves {
-  background: #042f3a;
-}
+/* 5 HidrataciÃ³n */
+.chat-wall-waves { background: #021c28; }
 .chat-wall-waves .chat-wall-base {
-  background: linear-gradient(160deg, #083344 0%, #0e7490 45%, #164e63 100%);
+  background: linear-gradient(165deg, #032830 0%, #0c4a6e 42%, #164e63 72%, #082f3a 100%);
 }
 .chat-wall-waves .chat-wall-a {
   background: repeating-linear-gradient(
-    -18deg,
+    -16deg,
     transparent,
-    transparent 22px,
-    rgba(103, 232, 249, 0.14) 22px,
-    rgba(103, 232, 249, 0.14) 44px
+    transparent 20px,
+    rgba(103, 232, 249, 0.16) 20px,
+    rgba(103, 232, 249, 0.16) 40px
   );
-  animation: chat-wave-move 14s linear infinite;
+  animation: chat-wave-move 12s linear infinite;
 }
 .chat-wall-waves .chat-wall-b {
   background: repeating-linear-gradient(
-    12deg,
+    14deg,
     transparent,
-    transparent 36px,
-    rgba(14, 165, 233, 0.18) 36px,
-    rgba(14, 165, 233, 0.18) 72px
+    transparent 34px,
+    rgba(14, 165, 233, 0.2) 34px,
+    rgba(14, 165, 233, 0.2) 68px
   );
-  animation: chat-wave-move 22s linear infinite reverse;
-  opacity: 0.7;
+  animation: chat-wave-move 20s linear infinite reverse;
+  opacity: 0.75;
 }
 .chat-wall-waves .chat-wall-c {
-  background: radial-gradient(ellipse at 50% 110%, rgba(34, 211, 238, 0.35), transparent 55%);
-  animation: chat-pulse 8s ease-in-out infinite;
+  background:
+    radial-gradient(ellipse at 50% 115%, rgba(34, 211, 238, 0.45), transparent 52%),
+    radial-gradient(circle at 20% 80%, rgba(125, 211, 252, 0.2), transparent 28%);
+  animation: chat-pulse 7s ease-in-out infinite;
+}
+.chat-wall-waves .chat-wall-motif {
+  background:
+    radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.2), transparent 8%),
+    radial-gradient(circle at 30% 55%, rgba(255, 255, 255, 0.12), transparent 6%);
+  animation: chat-bubble 8s ease-in-out infinite;
+  opacity: 0.7;
 }
 
-/* 6 Ember — warm fire rise */
-.chat-wall-ember {
-  background: #1a0a04;
-}
+/* 6 Forja */
+.chat-wall-ember { background: #140601; }
 .chat-wall-ember .chat-wall-base {
   background:
-    radial-gradient(ellipse 90% 55% at 50% 100%, rgba(234, 88, 12, 0.65), transparent 60%),
-    radial-gradient(ellipse 60% 40% at 30% 90%, rgba(251, 191, 36, 0.4), transparent 50%),
-    radial-gradient(ellipse 50% 35% at 75% 95%, rgba(239, 68, 68, 0.35), transparent 50%);
+    radial-gradient(ellipse 100% 60% at 50% 110%, rgba(234, 88, 12, 0.75), transparent 58%),
+    radial-gradient(ellipse 55% 40% at 25% 95%, rgba(251, 191, 36, 0.5), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 80% 100%, rgba(239, 68, 68, 0.4), transparent 48%),
+    linear-gradient(180deg, #1a0802 0%, transparent 50%);
 }
 .chat-wall-ember .chat-wall-a {
-  background: radial-gradient(circle at 40% 95%, rgba(251, 146, 60, 0.55), transparent 32%);
-  animation: chat-ember-rise 7s ease-in-out infinite;
+  background: radial-gradient(circle at 38% 98%, rgba(251, 146, 60, 0.65), transparent 30%);
+  animation: chat-ember-rise 6.5s ease-in-out infinite;
 }
 .chat-wall-ember .chat-wall-b {
-  background: radial-gradient(circle at 65% 100%, rgba(252, 211, 77, 0.4), transparent 28%);
-  animation: chat-ember-rise 9s ease-in-out infinite 1.2s;
+  background: radial-gradient(circle at 68% 105%, rgba(252, 211, 77, 0.5), transparent 26%);
+  animation: chat-ember-rise 8.5s ease-in-out infinite 1s;
+}
+.chat-wall-ember .chat-wall-motif {
+  background: linear-gradient(180deg, transparent, rgba(251, 146, 60, 0.08));
+  box-shadow: inset 0 -80px 100px rgba(234, 88, 12, 0.25);
+  opacity: 1;
 }
 
-/* 7 Mist — soft silver fog (light/dark adaptive) */
-.chat-wall-mist {
-  background: color-mix(in srgb, var(--bg-elevated) 85%, #94a3b8);
-}
+/* 7 Carbono */
+.chat-wall-mist { background: #0e0e10; }
 .chat-wall-mist .chat-wall-base {
-  background:
-    radial-gradient(ellipse at 0% 40%, rgba(148, 163, 184, 0.45), transparent 50%),
-    radial-gradient(ellipse at 100% 60%, rgba(226, 232, 240, 0.35), transparent 48%),
-    radial-gradient(ellipse at 50% 100%, rgba(var(--color-primary-rgb), 0.12), transparent 55%);
+  background-color: #121214;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 8px),
+    radial-gradient(ellipse at 20% 30%, rgba(var(--color-primary-rgb), 0.14), transparent 45%),
+    radial-gradient(ellipse at 80% 70%, rgba(148, 163, 184, 0.1), transparent 40%);
 }
 .chat-wall-mist .chat-wall-a {
-  background: radial-gradient(ellipse 70% 50% at 20% 50%, rgba(255, 255, 255, 0.22), transparent 55%);
-  filter: blur(20px);
-  animation: chat-drift 14s ease-in-out infinite alternate;
+  background: linear-gradient(125deg, transparent 30%, rgba(255, 255, 255, 0.08) 48%, transparent 66%);
+  animation: chat-sweep 14s ease-in-out infinite alternate;
+  opacity: 0.7;
 }
 .chat-wall-mist .chat-wall-b {
-  background: radial-gradient(ellipse 60% 45% at 80% 45%, rgba(100, 116, 139, 0.28), transparent 50%);
-  filter: blur(18px);
-  animation: chat-drift 11s ease-in-out infinite alternate-reverse;
+  background: radial-gradient(ellipse at 50% 0%, rgba(var(--color-primary-rgb), 0.2), transparent 50%);
+  animation: chat-pulse 11s ease-in-out infinite;
+}
+.chat-wall-mist .chat-wall-motif {
+  background: radial-gradient(circle at 50% 50%, transparent 38%, rgba(255, 255, 255, 0.04) 39%, transparent 42%);
+  opacity: 0.9;
 }
 
-/* 8 Orbit — planetary rings */
-.chat-wall-orbit {
-  background: #0c0a1f;
-}
+/* 8 Medalla PR */
+.chat-wall-orbit { background: #0b1020; }
 .chat-wall-orbit .chat-wall-base {
   background:
-    radial-gradient(circle at 50% 50%, rgba(129, 140, 248, 0.25), transparent 45%),
-    radial-gradient(circle at 50% 50%, rgba(var(--color-primary-rgb), 0.18), transparent 70%);
+    radial-gradient(circle at 50% 48%, rgba(251, 191, 36, 0.22), transparent 42%),
+    radial-gradient(circle at 50% 48%, rgba(var(--color-primary-rgb), 0.16), transparent 68%),
+    linear-gradient(180deg, #0f172a, #020617);
 }
 .chat-wall-orbit .chat-wall-a {
   border-radius: 50%;
-  inset: 12% 18%;
-  border: 2px solid rgba(167, 139, 250, 0.45);
-  box-shadow: 0 0 40px rgba(139, 92, 246, 0.25);
-  animation: chat-spin 26s linear infinite;
+  inset: 14% 20%;
+  border: 2.5px solid rgba(251, 191, 36, 0.55);
+  box-shadow: 0 0 40px rgba(251, 191, 36, 0.2), inset 0 0 30px rgba(251, 191, 36, 0.08);
+  animation: chat-spin 28s linear infinite;
 }
 .chat-wall-orbit .chat-wall-b {
   border-radius: 50%;
-  inset: 26% 30%;
-  border: 1.5px dashed rgba(96, 165, 250, 0.55);
+  inset: 28% 32%;
+  border: 1.5px dashed rgba(var(--color-primary-rgb), 0.55);
   animation: chat-spin 18s linear infinite reverse;
 }
 .chat-wall-orbit .chat-wall-c {
   border-radius: 50%;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   left: 50%;
-  top: 18%;
-  margin-left: -7px;
-  background: radial-gradient(circle, #c4b5fd, #7c3aed);
-  box-shadow: 0 0 16px rgba(167, 139, 250, 0.8);
-  animation: chat-orbit-dot 26s linear infinite;
+  top: 16%;
+  margin-left: -8px;
+  background: radial-gradient(circle, #fde68a, #f59e0b);
+  box-shadow: 0 0 18px rgba(251, 191, 36, 0.85);
+  animation: chat-orbit-dot 28s linear infinite;
   inset: auto;
+}
+.chat-wall-orbit .chat-wall-motif {
+  inset: 42% 38%;
+  border-radius: 50%;
+  border: 2px solid rgba(251, 191, 36, 0.35);
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.2), transparent 65%);
+  opacity: 0.85;
+  animation: chat-pulse 5s ease-in-out infinite;
 }
 
 @keyframes chat-drift {
@@ -885,18 +1045,18 @@ input[type="range"]::-moz-range-thumb {
 }
 @keyframes chat-grid-shift {
   from { background-position: 0 0, 0 0, 0 0, 0 0; }
-  to { background-position: 48px 48px, 48px 48px, 12px 12px, 12px 12px; }
+  to { background-position: 72px 72px, 72px 72px, 18px 18px, 18px 18px; }
 }
 @keyframes chat-heartbeat {
   0%, 100% { transform: scale(0.92); opacity: 0.55; }
-  15% { transform: scale(1.08); opacity: 0.95; }
+  15% { transform: scale(1.1); opacity: 0.95; }
   30% { transform: scale(0.96); opacity: 0.7; }
-  45% { transform: scale(1.12); opacity: 1; }
+  45% { transform: scale(1.14); opacity: 1; }
   60% { transform: scale(1); opacity: 0.75; }
 }
 @keyframes chat-ring {
   0% { transform: scale(0.7); opacity: 0.7; }
-  100% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.4); opacity: 0; }
 }
 @keyframes chat-wave-move {
   from { transform: translateX(0); }
@@ -904,28 +1064,44 @@ input[type="range"]::-moz-range-thumb {
 }
 @keyframes chat-ember-rise {
   0%, 100% { transform: translateY(8%) scale(1); opacity: 0.55; }
-  50% { transform: translateY(-6%) scale(1.15); opacity: 0.95; }
+  50% { transform: translateY(-8%) scale(1.18); opacity: 0.98; }
 }
 @keyframes chat-orbit-dot {
   from { transform: rotate(0deg) translateX(min(38vw, 140px)) rotate(0deg); }
   to { transform: rotate(360deg) translateX(min(38vw, 140px)) rotate(-360deg); }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-wall-layer {
-    animation: none !important;
-  }
+@keyframes chat-bolt {
+  0%, 100% { opacity: 0.35; transform: translateX(-2%); }
+  50% { opacity: 0.85; transform: translateX(2%); }
+}
+@keyframes chat-lane {
+  0%, 100% { opacity: 0.35; transform: scaleX(0.92); }
+  50% { opacity: 0.95; transform: scaleX(1); }
+}
+@keyframes chat-ecg {
+  from { background-position: 0 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes chat-bubble {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(-6%); opacity: 0.9; }
 }
 
-/* Light theme: keep saturated character on pale shells */
-html.light .chat-wall-nebula { background: #1e1b4b; }
-html.light .chat-wall-aurora { background: #134e4a; }
-html.light .chat-wall-waves { background: #155e75; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-wall-layer { animation: none !important; }
+}
+
+audio::-webkit-media-controls-enclosure { overflow: hidden; }
+audio::-webkit-media-controls-panel { width: calc(100% + 32px); }
+
+html.light .chat-wall-nebula { background: #0c1220; }
+html.light .chat-wall-grid { background: #1a1a1a; }
+html.light .chat-wall-aurora { background: #04141c; }
+html.light .chat-wall-pulse { background: #2a0c0c; }
+html.light .chat-wall-waves { background: #0c4a6e; }
 html.light .chat-wall-ember { background: #7c2d12; }
-html.light .chat-wall-orbit { background: #312e81; }
-html.light .chat-wall-pulse { background: color-mix(in srgb, #fff7ed 35%, #9a3412); }
-html.light .chat-wall-mist { background: color-mix(in srgb, var(--bg-elevated) 70%, #cbd5e1); }
-html.light .chat-wall-grid { background: color-mix(in srgb, var(--bg-app) 75%, #bae6fd); }
-
-
-
+html.light .chat-wall-mist { background: #1c1c1f; }
+html.light .chat-wall-orbit { background: #1e293b; }
+html.light .chat-wall-vignette {
+  background: radial-gradient(ellipse 85% 75% at 50% 45%, transparent 40%, rgba(0, 0, 0, 0.28) 100%);
+}

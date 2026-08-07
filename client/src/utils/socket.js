@@ -104,12 +104,16 @@ export function initSocket(userId) {
       (payload) => {
         const row = payload.new
         if (!row?.id) return
+        const decoded = decodeChatContent(row.content)
         emit('messageStatus', {
           id: row.id,
           to: row.to_user_id,
           delivered: Boolean(row.delivered),
           read: Boolean(row.read),
-          status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent'
+          status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent',
+          text: decoded.text,
+          attachment: decoded.attachment,
+          contentUpdated: true
         })
       }
     )
