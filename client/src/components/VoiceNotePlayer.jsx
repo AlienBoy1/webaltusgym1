@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { FiPause, FiPlay } from 'react-icons/fi'
+import { claimVoicePlayback, releaseVoicePlayback } from '../utils/voicePlayback'
 
 function formatTime(sec) {
   const s = Math.max(0, Math.floor(sec || 0))
@@ -19,41 +20,112 @@ function barsFromSeed(seed, count = 28) {
   return bars
 }
 
+function resolveDuration(el, fallbackSec) {
+  const media = el?.duration
+  if (media && Number.isFinite(media) && media > 0 && media !== Infinity) return media
+  const fb = Number(fallbackSec) || 0
+  return fb > 0 ? fb : 0
+}
+
 /**
  * WhatsApp-style voice note: play + scrubber waveform, no download UI.
+ * Only one instance plays at a time app-wide.
  */
 export default function VoiceNotePlayer({ src, durationSec = 0, isMe = false, avatar = null, name = '' }) {
+  const reactId = useId()
   const audioRef = useRef(null)
+  const rafRef = useRef(0)
+  const controllerRef = useRef(null)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [duration, setDuration] = useState(durationSec || 0)
+  const [duration, setDuration] = useState(() => Math.max(0, Number(durationSec) || 0))
   const bars = useMemo(() => barsFromSeed(src, 32), [src])
 
   useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-    const onTime = () => {
-      const d = el.duration && Number.isFinite(el.duration) ? el.duration : durationSec
-      if (d > 0) setProgress(el.currentTime / d)
-      if (d > 0 && (!duration || Math.abs(duration - d) > 0.5)) setDuration(d)
+    const controller = {
+      id: reactId,
+      pause: () => {
+        const el = audioRef.current
+        if (el && !el.paused) {
+          el.pause()
+        }
+        setPlaying(false)
+      }
     }
+    controllerRef.current = controller
+    return () => {
+      releaseVoicePlayback(controller)
+    }
+  }, [reactId])
+
+  useEffect(() => {
+    setPlaying(false)
+    setProgress(0)
+    setDuration(Math.max(0, Number(durationSec) || 0))
+    const el = audioRef.current
+    if (el) {
+      el.pause()
+      el.currentTime = 0
+    }
+    releaseVoicePlayback(controllerRef.current)
+  }, [src, durationSec])
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return undefined
+
+    const syncDuration = () => {
+      const d = resolveDuration(el, durationSec)
+      if (d > 0) setDuration(d)
+    }
+
     const onEnded = () => {
       setPlaying(false)
       setProgress(0)
       el.currentTime = 0
+      releaseVoicePlayback(controllerRef.current)
     }
-    const onMeta = () => {
-      if (el.duration && Number.isFinite(el.duration)) setDuration(el.duration)
-    }
-    el.addEventListener('timeupdate', onTime)
+
+    el.addEventListener('loadedmetadata', syncDuration)
+    el.addEventListener('durationchange', syncDuration)
     el.addEventListener('ended', onEnded)
-    el.addEventListener('loadedmetadata', onMeta)
     return () => {
-      el.removeEventListener('timeupdate', onTime)
+      el.removeEventListener('loadedmetadata', syncDuration)
+      el.removeEventListener('durationchange', syncDuration)
       el.removeEventListener('ended', onEnded)
-      el.removeEventListener('loadedmetadata', onMeta)
     }
-  }, [durationSec, duration])
+  }, [durationSec, src])
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!playing || !el) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = 0
+      }
+      return undefined
+    }
+
+    const tick = () => {
+      const node = audioRef.current
+      if (!node) return
+      const d = resolveDuration(node, durationSec || duration)
+      if (d > 0) {
+        const ratio = Math.min(1, Math.max(0, node.currentTime / d))
+        setProgress(ratio)
+        if (duration <= 0 || Math.abs(duration - d) > 0.35) setDuration(d)
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+
+    rafRef.current = requestAnimationFrame(tick)
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = 0
+      }
+    }
+  }, [playing, durationSec, duration])
 
   const toggle = async () => {
     const el = audioRef.current
@@ -61,13 +133,19 @@ export default function VoiceNotePlayer({ src, durationSec = 0, isMe = false, av
     if (playing) {
       el.pause()
       setPlaying(false)
+      releaseVoicePlayback(controllerRef.current)
       return
     }
     try {
+      claimVoicePlayback(controllerRef.current)
+      if (!(el.duration && Number.isFinite(el.duration) && el.duration > 0) && durationSec > 0) {
+        setDuration(durationSec)
+      }
       await el.play()
       setPlaying(true)
     } catch {
       setPlaying(false)
+      releaseVoicePlayback(controllerRef.current)
     }
   }
 
@@ -76,7 +154,7 @@ export default function VoiceNotePlayer({ src, durationSec = 0, isMe = false, av
     if (!el) return
     const rect = e.currentTarget.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    const d = el.duration && Number.isFinite(el.duration) ? el.duration : duration
+    const d = resolveDuration(el, duration || durationSec)
     if (d > 0) {
       el.currentTime = ratio * d
       setProgress(ratio)
@@ -85,7 +163,8 @@ export default function VoiceNotePlayer({ src, durationSec = 0, isMe = false, av
 
   const tint = isMe ? 'rgba(255,255,255,0.85)' : 'var(--color-primary)'
   const track = isMe ? 'rgba(255,255,255,0.28)' : 'rgba(var(--color-primary-rgb),0.22)'
-  const shown = playing || progress > 0 ? progress * (duration || durationSec || 0) : duration || durationSec || 0
+  const total = duration || durationSec || 0
+  const shown = playing || progress > 0 ? progress * total : total
 
   return (
     <div
@@ -95,7 +174,7 @@ export default function VoiceNotePlayer({ src, durationSec = 0, isMe = false, av
       <audio
         ref={audioRef}
         src={src}
-        preload="metadata"
+        preload="auto"
         playsInline
         controlsList="nodownload noplaybackrate"
         className="hidden"
@@ -117,20 +196,22 @@ export default function VoiceNotePlayer({ src, durationSec = 0, isMe = false, av
         <button
           type="button"
           onClick={seek}
-          className="flex h-8 w-full items-center gap-[2px]"
+          className="relative flex h-8 w-full items-center gap-[2px]"
           aria-label="Posición del audio"
         >
           {bars.map((h, i) => {
-            const filled = i / bars.length <= progress
+            const threshold = (i + 0.5) / bars.length
+            const filled = progress >= threshold
             return (
               <span
                 key={i}
-                className="flex-1 rounded-full transition-colors"
+                className="flex-1 rounded-full"
                 style={{
                   height: `${Math.round(h * 100)}%`,
                   minHeight: 4,
                   maxHeight: 28,
-                  background: filled ? tint : track
+                  background: filled ? tint : track,
+                  transition: playing ? 'none' : 'background-color 120ms ease'
                 }}
               />
             )

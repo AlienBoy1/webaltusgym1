@@ -26,9 +26,15 @@ function previewLabel(text, attachment) {
   return text || ''
 }
 
-export function encodeChatContent({ text = '', attachment = null } = {}) {
-  if (!attachment) return String(text || '')
-  return `${MSG_PREFIX}${JSON.stringify({ text: String(text || ''), attachment })}`
+export function encodeChatContent({ text = '', attachment = null, reply = null } = {}) {
+  const hasAttachment = Boolean(attachment)
+  const hasReply = Boolean(reply?.id)
+  if (!hasAttachment && !hasReply) return String(text || '')
+  return `${MSG_PREFIX}${JSON.stringify({
+    text: String(text || ''),
+    attachment: attachment || null,
+    reply: hasReply ? reply : null
+  })}`
 }
 
 export function decodeChatContent(raw) {
@@ -37,16 +43,18 @@ export function decodeChatContent(raw) {
       const parsed = JSON.parse(raw.slice(MSG_PREFIX.length))
       const text = parsed.text || ''
       const attachment = parsed.attachment || null
+      const reply = parsed.reply || null
       return {
         text,
         attachment,
+        reply,
         preview: previewLabel(text, attachment)
       }
     } catch {
       /* fallthrough */
     }
   }
-  return { text: raw || '', attachment: null, preview: raw || '' }
+  return { text: raw || '', attachment: null, reply: null, preview: raw || '' }
 }
 
 export function scrubViewOnceAttachment(attachment) {
@@ -75,6 +83,7 @@ export function formatChatMessage(row, myId) {
     sender: isMine ? 'me' : 'other',
     text: decoded.text,
     attachment: decoded.attachment,
+    reply: decoded.reply || null,
     status,
     read: Boolean(row.read),
     delivered: Boolean(row.delivered),
@@ -82,5 +91,35 @@ export function formatChatMessage(row, myId) {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+}
+
+/** Compact snippet for reply quotes */
+export function replySnippetFromMessage(msg) {
+  if (!msg) return ''
+  if (msg.text?.trim()) {
+    const t = msg.text.trim()
+    return t.length > 120 ? `${t.slice(0, 117)}…` : t
+  }
+  const a = msg.attachment
+  if (!a) return 'Mensaje'
+  if (a.viewOnce) return a.type === 'audio' ? 'Audio · 1 vista' : 'Foto · 1 vista'
+  if (a.type === 'image') return 'Foto'
+  if (a.type === 'audio') return 'Mensaje de voz'
+  if (a.type === 'file') return a.name || 'Archivo'
+  if (a.type === 'post') return 'Publicación'
+  if (a.type === 'story') return 'Estado'
+  return 'Mensaje'
+}
+
+export function buildReplyPayload(msg, { myName = 'Tú', otherName = 'Usuario' } = {}) {
+  if (!msg?.id || String(msg.id).startsWith('temp-')) return null
+  const isMe = msg.sender === 'me'
+  return {
+    id: msg.id,
+    sender: isMe ? 'me' : 'other',
+    senderName: isMe ? myName : otherName,
+    text: replySnippetFromMessage(msg),
+    attachmentType: msg.attachment?.type || null
   }
 }

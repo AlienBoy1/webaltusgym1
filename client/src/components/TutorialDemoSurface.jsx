@@ -193,11 +193,15 @@ export default function TutorialDemoSurface({ demoId }) {
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
           Ejemplo · Chat
         </p>
-        <div className="mr-auto max-w-[80%] rounded-2xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2 text-sm">
+        <div className="mr-auto max-w-[85%] rounded-2xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2 text-sm">
           ¿Entrenamos juntos mañana?
           <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">10:21</p>
         </div>
-        <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-[color:var(--color-primary)] px-3 py-2 text-sm text-white">
+        <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[color:var(--color-primary)] px-3 py-2 text-sm text-white">
+          <div className="mb-1.5 rounded-lg border-l-2 border-white/80 bg-black/15 px-2 py-1 text-[11px]">
+            <p className="font-semibold">Athlete</p>
+            <p className="truncate text-white/75">¿Entrenamos juntos mañana?</p>
+          </div>
           ¡Dale! A las 7 en el gym.
           <p className="mt-1 text-right text-[10px] text-white/75">10:22 · leído</p>
         </div>
@@ -209,20 +213,101 @@ export default function TutorialDemoSurface({ demoId }) {
     return (
       <div data-tour="tour-chat-compose-demo" className={`${shell} p-4`}>
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
-          Enviar mensaje
+          Composer
         </p>
-        <div className="mt-3 flex items-center gap-2">
-          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">😊</span>
-          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">📷</span>
-          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">📎</span>
-          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">🎤</span>
-        </div>
-        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2.5">
-          <span className="flex-1 text-sm text-[color:var(--text-muted)]">Escribe un mensaje…</span>
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white">
-            <FiShare2 size={14} className="rotate-45" />
+        <div className="mt-3 flex items-end gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[1.65rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-2 py-1.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--text-secondary)]">☺</span>
+            <span className="min-w-0 flex-1 text-sm text-[color:var(--text-muted)]">Mensaje</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-[color:var(--text-secondary)]">+</span>
+          </div>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white">
+            🎤
           </span>
         </div>
+        <p className="mt-2 text-[11px] text-[color:var(--text-muted)]">Micrófono cuando está vacío · Enviar cuando hay texto o adjunto</p>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-voice') {
+    return (
+      <div data-tour="tour-chat-voice-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="bg-[#121218] px-4 py-3 text-white">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Grabación de audio
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="tabular-nums text-sm font-medium">0:08</span>
+            <div className="flex h-7 flex-1 items-center gap-[2px]">
+              {Array.from({ length: 22 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="flex-1 rounded-full bg-white/55"
+                  style={{ height: `${30 + ((i * 17) % 70)}%` }}
+                />
+              ))}
+            </div>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-xs font-bold text-[color:var(--color-primary)]">
+              1
+            </span>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3a1518] text-red-400">🗑</span>
+            <span className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#2a2a32] text-sm font-semibold">
+              ⏸ Pausar
+            </span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ff2d6a]">
+              <FiShare2 size={14} className="rotate-45 text-white" />
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-view-once') {
+    return (
+      <div data-tour="tour-chat-view-once-demo" className={`${shell} space-y-3 p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ver solo una vez
+        </p>
+        <div className="ml-auto flex max-w-[90%] items-center gap-3 rounded-2xl rounded-br-md bg-[color:var(--color-primary)] px-3 py-2.5 text-white">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/18 text-sm font-bold">1</span>
+          <span className="text-[15px] font-semibold">Foto</span>
+        </div>
+        <div className="ml-auto flex max-w-[90%] items-center gap-3 rounded-2xl rounded-br-md bg-[color:var(--color-primary)]/85 px-3 py-2.5 text-white/85">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-sm font-bold opacity-70">1</span>
+          <span className="text-[15px] font-medium capitalize">Abierto</span>
+        </div>
+        <p className="text-[11px] text-[color:var(--text-muted)]">
+          Sin miniatura en el chat · una apertura · luego queda bloqueado
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-reply') {
+    return (
+      <div data-tour="tour-chat-reply-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Responder
+        </p>
+        <div className="relative mt-3">
+          <div className="absolute inset-y-0 left-1 flex items-center opacity-80">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white">
+              ↩
+            </span>
+          </div>
+          <div className="ml-3 translate-x-6 rounded-2xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2 text-sm">
+            Nos vemos en pierna 🔥
+          </div>
+        </div>
+        <div className="mt-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2">
+          <p className="text-xs font-semibold text-[color:var(--color-primary)]">Respondiendo a Athlete</p>
+          <p className="truncate text-sm text-[color:var(--text-secondary)]">Nos vemos en pierna 🔥</p>
+        </div>
+        <p className="mt-2 text-[11px] text-[color:var(--text-muted)]">Desliza o mantén pulsado · también en fotos y audios</p>
       </div>
     )
   }
@@ -250,22 +335,96 @@ export default function TutorialDemoSurface({ demoId }) {
     )
   }
 
+  if (demoId === 'chat-styles') {
+    return (
+      <div data-tour="tour-chat-styles-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Estilo del chat
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 p-3">
+          <div className="rounded-xl border-2 border-[color:var(--color-primary)] p-2">
+            <div className="flex h-14 items-center justify-center rounded-lg bg-[color:var(--bg-muted)] text-[10px] font-medium text-[color:var(--text-secondary)]">
+              Sin estilo
+            </div>
+            <p className="mt-1.5 text-xs font-semibold text-[color:var(--text-primary)]">Adaptativo</p>
+          </div>
+          <div className="rounded-xl border border-[color:var(--border-subtle)] p-2">
+            <div
+              className="h-14 rounded-lg"
+              style={{
+                background: 'linear-gradient(180deg,#1c0802,#ea580c 55%,#fbbf24)'
+              }}
+            />
+            <p className="mt-1.5 text-xs font-semibold text-[color:var(--text-primary)]">Forja</p>
+          </div>
+        </div>
+        <p className="px-3 pb-3 text-[11px] text-[color:var(--text-muted)]">
+          Con estilo activo, la UI del chat se vuelve immersiva y legible
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-shared') {
+    return (
+      <div data-tour="tour-chat-shared-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Archivos y publicaciones
+          </p>
+          <div className="mt-2 flex gap-1.5">
+            {['Publicaciones', 'Archivos', 'Enlaces'].map((label, i) => (
+              <span
+                key={label}
+                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                  i === 0
+                    ? 'bg-[color:var(--color-primary)] text-white'
+                    : 'bg-[color:var(--bg-muted)] text-[color:var(--text-secondary)]'
+                }`}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 p-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="aspect-square rounded-xl bg-[color:var(--bg-muted)] p-2"
+            >
+              <span className="text-base">📝</span>
+              <p className="mt-1 line-clamp-2 text-[9px] text-[color:var(--text-muted)]">Post compartido</p>
+            </div>
+          ))}
+        </div>
+        <p className="px-3 pb-3 text-[11px] text-[color:var(--text-muted)]">Sin audios ni “ver una vez”</p>
+      </div>
+    )
+  }
+
   if (demoId === 'chat-options') {
     return (
       <div data-tour="tour-chat-options-demo" className={`${shell} p-2`}>
         <p className="px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
           Opciones del chat
         </p>
-        {['Archivos y publicaciones', 'Ver entrenamientos', 'Estilo del chat', 'Vaciar chat', 'Crear acceso directo'].map(
-          (label) => (
-            <div
-              key={label}
-              className="rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)]"
-            >
-              {label}
-            </div>
-          )
-        )}
+        {[
+          'Archivos y publicaciones',
+          'Ver entrenamientos',
+          'Estilo del chat',
+          'Vaciar chat',
+          'Crear acceso directo'
+        ].map((label) => (
+          <div
+            key={label}
+            className="rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)]"
+          >
+            {label}
+          </div>
+        ))}
       </div>
     )
   }

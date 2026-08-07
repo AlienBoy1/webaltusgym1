@@ -2,7 +2,6 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun, FiUserPlus, FiBookOpen } from 'react-icons/fi'
 import { useState, useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationPrompt from '../components/NotificationPrompt'
@@ -93,18 +92,19 @@ export default function MainLayout() {
   useEffect(() => {
     if (!avatarMenuOpen) return
     const onDoc = (e) => {
-      // Keep menu open while the product tour is controlling it
       if (document.body.dataset.qyntraTutorial === '1') return
       const t = e.target
       if (avatarMenuRef.current?.contains(t)) return
       if (avatarMenuPanelRef.current?.contains(t)) return
       setAvatarMenuOpen(false)
     }
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('touchstart', onDoc)
+    // Use click (not mousedown) and defer so the toggle click isn't eaten
+    const id = window.setTimeout(() => {
+      document.addEventListener('click', onDoc)
+    }, 0)
     return () => {
-      document.removeEventListener('mousedown', onDoc)
-      document.removeEventListener('touchstart', onDoc)
+      window.clearTimeout(id)
+      document.removeEventListener('click', onDoc)
     }
   }, [avatarMenuOpen])
 
@@ -315,7 +315,7 @@ export default function MainLayout() {
     <PresenceManager />
     <div className="min-h-screen bg-dark-500">
       {/* Header — keep under tutorial overlay (z-200) so tip text never hides behind the avatar menu */}
-      <header className="chat-app-bar glass fixed top-0 left-0 right-0 z-50 px-4 py-3">
+      <header className="chat-app-bar glass fixed top-0 left-0 right-0 z-50 overflow-visible px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {canGoBack && (
@@ -471,28 +471,18 @@ export default function MainLayout() {
               </button>
 
               <AnimatePresence>
-                {avatarMenuOpen &&
-                  typeof document !== 'undefined' &&
-                  createPortal(
-                    <motion.div
-                      ref={avatarMenuPanelRef}
-                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                      data-tour="tour-avatar-menu-panel"
-                      className="chat-escape-panel fixed z-[80] w-64 overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] shadow-2xl"
-                      style={{
-                        top: avatarMenuRef.current
-                          ? avatarMenuRef.current.getBoundingClientRect().bottom + 8
-                          : 56,
-                        right: avatarMenuRef.current
-                          ? Math.max(12, window.innerWidth - avatarMenuRef.current.getBoundingClientRect().right)
-                          : 12
-                      }}
-                    >
-                    <div className="px-4 py-3 border-b border-[color:var(--border-subtle)]">
-                      <p className="font-semibold text-sm truncate text-[color:var(--text-primary)]">{user?.name}</p>
-                      <p className="text-xs text-[color:var(--text-muted)] truncate">
+                {avatarMenuOpen && (
+                  <motion.div
+                    ref={avatarMenuPanelRef}
+                    initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                    data-tour="tour-avatar-menu-panel"
+                    className="chat-escape-panel absolute right-0 top-full z-[80] mt-2 w-64 overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] shadow-2xl"
+                  >
+                    <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+                      <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{user?.name}</p>
+                      <p className="truncate text-xs text-[color:var(--text-muted)]">
                         {user?.username ? `@${user.username}` : user?.email}
                       </p>
                     </div>
@@ -504,7 +494,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           navigate('/profile')
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-muted)]"
                       >
                         <FiUser size={16} className="text-primary-500" />
                         Ver perfil
@@ -516,7 +506,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           navigate('/settings')
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-muted)]"
                       >
                         <FiSettings size={16} className="text-accent-cyan" />
                         Configuración
@@ -528,7 +518,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           setInviteOpen(true)
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-muted)]"
                       >
                         <FiUserPlus size={16} className="text-accent-yellow" />
                         Invitar a amigos
@@ -539,7 +529,7 @@ export default function MainLayout() {
                           setAvatarMenuOpen(false)
                           openTutorialHub()
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)] transition"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-muted)]"
                       >
                         <FiBookOpen size={16} className="text-accent-cyan" />
                         Tutoriales de la app
@@ -547,7 +537,7 @@ export default function MainLayout() {
 
                       <div
                         data-tour="menu-theme"
-                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-[color:var(--text-primary)]"
+                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-[color:var(--text-primary)]"
                       >
                         <span className="flex items-center gap-3 text-sm">
                           {themeMode === 'light' ? (
@@ -588,15 +578,14 @@ export default function MainLayout() {
                           await logout()
                           navigate('/', { replace: true })
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-400 hover:bg-red-500/10 transition"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-400 transition hover:bg-red-500/10"
                       >
                         <FiLogOut size={16} />
                         Cerrar sesión
                       </button>
                     </div>
-                    </motion.div>,
-                    document.body
-                  )}
+                  </motion.div>
+                )}
               </AnimatePresence>
 
               {user?.role === 'admin' && (

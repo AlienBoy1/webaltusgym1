@@ -81,9 +81,10 @@ export const TUTORIAL_CATALOG = [
   {
     id: TUTORIAL_IDS.CHAT,
     title: 'Mensajes y chat',
-    short: 'Conversaciones y compartir',
+    short: 'Conversaciones premium',
     icon: '💬',
-    description: 'Inbox, enviar mensajes, ver respuestas y compartir contenido con otros usuarios.',
+    description:
+      'Chats, adjuntos, audio estilo WhatsApp, ver una vez, respuestas, estilos y archivos compartidos.',
     completionKey: 'qyntra_tutorial_chat_done',
     settingsKey: 'tutorialChatCompleted'
   },
@@ -434,7 +435,7 @@ const CHAT_STEPS = [
     demo: 'chat-thread',
     forceDemo: true,
     title: 'Así se ve un chat',
-    body: 'Los mensajes salientes van a la derecha y los recibidos a la izquierda, con hora y estado de lectura.'
+    body: 'Los mensajes salientes van a la derecha y los recibidos a la izquierda, con hora y estado de lectura. Las respuestas citan el mensaje original arriba de la burbuja.'
   },
   {
     id: 'chat-compose',
@@ -442,8 +443,35 @@ const CHAT_STEPS = [
     target: 'tour-chat-compose-demo',
     demo: 'chat-compose',
     forceDemo: true,
-    title: 'Enviar un mensaje',
-    body: 'Escribe texto, añade emojis, fotos, archivos o un audio. El botón enviar aparece listo cuando hay contenido.'
+    title: 'Escribir y adjuntar',
+    body: 'Escribe texto, abre emojis o el menú + para foto y archivo. Al elegir una foto, la previsualizas a pantalla completa con pie de foto antes de enviar. Con el campo vacío, el micrófono inicia un mensaje de voz.'
+  },
+  {
+    id: 'chat-voice',
+    path: '/chat',
+    target: 'tour-chat-voice-demo',
+    demo: 'chat-voice',
+    forceDemo: true,
+    title: 'Audio estilo WhatsApp',
+    body: 'Al grabar puedes pausar, continuar, previsualizar, eliminar o enviar. Solo un audio se reproduce a la vez en el chat.'
+  },
+  {
+    id: 'chat-view-once',
+    path: '/chat',
+    target: 'tour-chat-view-once-demo',
+    demo: 'chat-view-once',
+    forceDemo: true,
+    title: 'Ver solo una vez',
+    body: 'Fotos y audios pueden enviarse para verse una sola vez: aparecen como Foto/Audio bloqueados, al abrir se ven a pantalla completa y luego quedan como Abierto.'
+  },
+  {
+    id: 'chat-reply',
+    path: '/chat',
+    target: 'tour-chat-reply-demo',
+    demo: 'chat-reply',
+    forceDemo: true,
+    title: 'Responder a un mensaje',
+    body: 'Desliza un mensaje (tuyo o del otro) o mantén pulsado y elige Responder. El siguiente texto, foto o audio queda enlazado a esa cita.'
   },
   {
     id: 'chat-share',
@@ -455,13 +483,31 @@ const CHAT_STEPS = [
     body: 'También puedes enviar publicaciones o estados al chat; llegan como tarjetas para abrir en un toque.'
   },
   {
+    id: 'chat-styles',
+    path: '/chat',
+    target: 'tour-chat-styles-demo',
+    demo: 'chat-styles',
+    forceDemo: true,
+    title: 'Estilo del chat',
+    body: 'Por defecto el chat sigue tu tema claro u oscuro. Si eliges un estilo premium, el encabezado, el composer y la barra superior se adaptan al fondo.'
+  },
+  {
+    id: 'chat-shared',
+    path: '/chat',
+    target: 'tour-chat-shared-demo',
+    demo: 'chat-shared',
+    forceDemo: true,
+    title: 'Archivos y publicaciones',
+    body: 'Desde el menú filtra por Publicaciones, Archivos o Enlaces. Los audios y el contenido “ver una vez” no se guardan ahí.'
+  },
+  {
     id: 'chat-options',
     path: '/chat',
     target: 'tour-chat-options-demo',
     demo: 'chat-options',
     forceDemo: true,
     title: 'Menú del chat',
-    body: 'Los tres puntos abren opciones: archivos compartidos, rutinas públicas, estilo del fondo, vaciar chat y acceso directo.'
+    body: 'Los tres puntos abren: archivos compartidos, entrenamientos públicos, estilo del chat, vaciar (solo para ti) y crear acceso directo en el inicio.'
   }
 ]
 

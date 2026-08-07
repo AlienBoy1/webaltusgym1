@@ -88,6 +88,7 @@ export function initSocket(userId) {
           message: decoded.preview,
           text: decoded.text,
           attachment: decoded.attachment,
+          reply: decoded.reply || null,
           timestamp: row.created_at,
           id: row.id
         })
@@ -113,6 +114,7 @@ export function initSocket(userId) {
           status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent',
           text: decoded.text,
           attachment: decoded.attachment,
+          reply: decoded.reply || null,
           contentUpdated: true
         })
       }

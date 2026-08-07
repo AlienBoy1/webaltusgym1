@@ -6,7 +6,14 @@ import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceA
 
 const router = express.Router()
 
-const SHARED_ATTACHMENT_TYPES = new Set(['image', 'file', 'audio', 'post'])
+const SHARED_ATTACHMENT_TYPES = new Set(['image', 'file', 'post'])
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'{}|\\^`[\]]+/i
+
+function extractFirstUrl(text) {
+  if (!text || typeof text !== 'string') return null
+  const m = text.match(URL_IN_TEXT_RE)
+  return m ? m[0] : null
+}
 
 async function getChatClearsMap(userId) {
   const { data } = await supabaseAdmin
@@ -245,14 +252,44 @@ router.get('/shared/:userId', authenticate, async (req, res) => {
         const decoded = decodeChatContent(m.content)
         return { m, decoded }
       })
-      .filter(({ decoded }) => decoded.attachment && SHARED_ATTACHMENT_TYPES.has(decoded.attachment.type))
-      .map(({ m, decoded }) => ({
-        id: m.id,
-        from: m.from_user_id === myId ? 'me' : 'other',
-        createdAt: m.created_at,
-        text: decoded.text,
-        attachment: decoded.attachment
-      }))
+      .flatMap(({ m, decoded }) => {
+        const items = []
+        const base = {
+          id: m.id,
+          from: m.from_user_id === myId ? 'me' : 'other',
+          createdAt: m.created_at,
+          text: decoded.text || ''
+        }
+        const att = decoded.attachment
+
+        // Never surface view-once or audio in shared media
+        if (att?.viewOnce) return items
+        if (att?.type === 'audio') return items
+
+        if (att && SHARED_ATTACHMENT_TYPES.has(att.type) && (att.url || att.type === 'post')) {
+          items.push({
+            ...base,
+            category: att.type === 'post' ? 'posts' : 'files',
+            attachment: att
+          })
+        }
+
+        const link = extractFirstUrl(decoded.text)
+        if (link && !att?.viewOnce) {
+          items.push({
+            ...base,
+            id: `${m.id}:link`,
+            category: 'links',
+            attachment: {
+              type: 'link',
+              url: link,
+              name: link.replace(/^https?:\/\//i, '').slice(0, 64)
+            }
+          })
+        }
+
+        return items
+      })
 
     res.json(shared)
   } catch (error) {
@@ -289,7 +326,7 @@ router.get('/partner/:userId/public-routines', authenticate, async (req, res) =>
 
 router.post('/send', authenticate, async (req, res) => {
   try {
-    const { to, content, attachment } = req.body
+    const { to, content, attachment, reply } = req.body
     const text = typeof content === 'string' ? content.trim() : ''
     if (!to || (!text && !attachment)) {
       return res.status(400).json({ message: 'Destinatario y contenido requeridos' })
@@ -310,7 +347,22 @@ router.post('/send', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Este usuario no acepta mensajes' })
     }
 
-    const stored = encodeChatContent({ text, attachment: attachment || null })
+    let safeReply = null
+    if (reply && typeof reply === 'object' && reply.id) {
+      safeReply = {
+        id: String(reply.id),
+        sender: reply.sender === 'me' ? 'me' : 'other',
+        senderName: String(reply.senderName || '').slice(0, 80) || 'Usuario',
+        text: String(reply.text || '').slice(0, 160),
+        attachmentType: reply.attachmentType ? String(reply.attachmentType).slice(0, 24) : null
+      }
+    }
+
+    const stored = encodeChatContent({
+      text,
+      attachment: attachment || null,
+      reply: safeReply
+    })
 
     const { data: message, error } = await supabaseAdmin
       .from('messages')
@@ -380,7 +432,8 @@ router.post('/view-once/:messageId', authenticate, async (req, res) => {
 
     const scrubbed = encodeChatContent({
       text: decoded.text,
-      attachment: scrubViewOnceAttachment(attachment)
+      attachment: scrubViewOnceAttachment(attachment),
+      reply: decoded.reply || null
     })
 
     const { data: updated, error: updateError } = await supabaseAdmin

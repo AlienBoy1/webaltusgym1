@@ -17,7 +17,9 @@ import {
   FiTrash2,
   FiBookmark,
   FiFile,
-  FiActivity
+  FiActivity,
+  FiCornerUpLeft,
+  FiLink
 } from 'react-icons/fi'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -43,6 +45,8 @@ import VoiceNotePlayer from '../../components/VoiceNotePlayer'
 import ChatVoiceComposer from '../../components/ChatVoiceComposer'
 import ChatImageComposer from '../../components/ChatImageComposer'
 import { ViewOnceAttachmentBubble } from '../../components/ViewOnceMedia'
+import SwipeToReply from '../../components/SwipeToReply'
+import { buildReplyPayload } from '../../utils/chatMessage'
 import { useChatStore } from '../../store/chatStore'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
@@ -96,6 +100,46 @@ function attachmentPreviewLabel(attachment) {
   if (attachment.type === 'file') return attachment.name ? `📎 ${attachment.name}` : '📎 Archivo'
   if (attachment.type === 'audio') return '🎤 Audio'
   return ''
+}
+
+function ReplyQuote({ reply, isMe, compact = false, onClick }) {
+  if (!reply?.id) return null
+  const typeHint =
+    reply.attachmentType === 'image'
+      ? '📷 Foto'
+      : reply.attachmentType === 'audio'
+        ? '🎤 Audio'
+        : reply.attachmentType === 'file'
+          ? '📎 Archivo'
+          : reply.attachmentType === 'post'
+            ? '📝 Publicación'
+            : reply.attachmentType === 'story'
+              ? '📸 Estado'
+              : null
+  return (
+    <button
+      type="button"
+      data-no-swipe
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.(reply.id)
+      }}
+      className={`mb-2 w-full overflow-hidden rounded-lg border-l-[3px] px-2.5 py-1.5 text-left transition ${
+        compact ? 'text-[12px]' : 'text-[13px]'
+      } ${
+        isMe
+          ? 'border-white/80 bg-black/15 text-white/90 hover:bg-black/20'
+          : 'border-[color:var(--color-primary)] bg-black/5 text-[color:var(--text-primary)] hover:bg-black/10'
+      }`}
+    >
+      <span className={`block truncate font-semibold ${isMe ? 'text-white' : 'text-[color:var(--color-primary)]'}`}>
+        {reply.senderName || 'Usuario'}
+      </span>
+      <span className={`block truncate ${isMe ? 'text-white/75' : 'text-[color:var(--text-secondary)]'}`}>
+        {reply.text || typeHint || 'Mensaje'}
+      </span>
+    </button>
+  )
 }
 
 function MessageTicks({ status, isMe }) {
@@ -357,6 +401,7 @@ export default function Chat() {
   const [showWallpaperSheet, setShowWallpaperSheet] = useState(false)
   const [sharedItems, setSharedItems] = useState([])
   const [sharedLoading, setSharedLoading] = useState(false)
+  const [sharedFilter, setSharedFilter] = useState('posts') // posts | files | links
   const [publicRoutines, setPublicRoutines] = useState([])
   const [routinesLoading, setRoutinesLoading] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState(null)
@@ -368,7 +413,11 @@ export default function Chat() {
   const [recording, setRecording] = useState(false)
   const [recordingSec, setRecordingSec] = useState(0)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [replyTo, setReplyTo] = useState(null)
+  const replyToRef = useRef(null)
+  const [msgAction, setMsgAction] = useState(null) // { msg, x, y } for long-press
   const messagesEndRef = useRef(null)
+  const messagesScrollRef = useRef(null)
   const inputRef = useRef(null)
   const imageInputRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -387,6 +436,10 @@ export default function Chat() {
   const stopActionRef = useRef('preview') // preview | send | discard
   const voiceViewOnceRef = useRef(false)
   const selectedPresence = usePresenceStatus(selectedChat?.otherId)
+
+  useEffect(() => {
+    replyToRef.current = replyTo
+  }, [replyTo])
 
   useEffect(() => {
     selectedChatRef.current = selectedChat
@@ -445,6 +498,7 @@ export default function Chat() {
               sender: 'other',
               text: data.text ?? data.message ?? '',
               attachment: data.attachment || null,
+              reply: data.reply || null,
               time: new Date(data.timestamp || Date.now()).toLocaleTimeString('es', {
                 hour: '2-digit',
                 minute: '2-digit'
@@ -501,7 +555,8 @@ export default function Chat() {
                 ...(data.contentUpdated
                   ? {
                       text: data.text ?? m.text,
-                      attachment: data.attachment !== undefined ? data.attachment : m.attachment
+                      attachment: data.attachment !== undefined ? data.attachment : m.attachment,
+                      reply: data.reply !== undefined ? data.reply : m.reply
                     }
                   : null)
               }
@@ -722,18 +777,21 @@ export default function Chat() {
     const msgText = newMessage.trim()
     const attachment = pendingAttachment
     if ((!msgText && !attachment) || !selectedChat || sending || recording || voiceSession) return
-    await sendChatPayload({ text: msgText, attachment })
+    await sendChatPayload({ text: msgText, attachment, reply: replyToRef.current || replyTo })
   }
 
-  const sendChatPayload = async ({ text = '', attachment = null } = {}) => {
+  const sendChatPayload = async ({ text = '', attachment = null, reply = null } = {}) => {
     const msgText = String(text || '').trim()
     if ((!msgText && !attachment) || !selectedChat || sending) return false
 
+    const activeReply = reply || replyToRef.current || replyTo
     const tempId = `temp-${Date.now()}`
     setNewMessage('')
     setShowEmoji(false)
     setPendingAttachment(null)
     setImageDraft(null)
+    setReplyTo(null)
+    replyToRef.current = null
     setSending(true)
 
     const previewText = msgText || attachmentPreviewLabel(attachment)
@@ -742,6 +800,7 @@ export default function Chat() {
       sender: 'me',
       text: msgText,
       attachment: attachment || null,
+      reply: activeReply || null,
       status: 'sent',
       time: new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
     }
@@ -751,7 +810,8 @@ export default function Chat() {
       const { data } = await api.post('/chat/send', {
         to: selectedChat.otherId,
         content: msgText,
-        attachment: attachment || undefined
+        attachment: attachment || undefined,
+        reply: activeReply || undefined
       })
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...data } : m)))
       setConversations((convs) =>
@@ -772,6 +832,10 @@ export default function Chat() {
       if (!attachment) setNewMessage(msgText)
       if (attachment?.type === 'image') setImageDraft(attachment)
       else if (attachment) setPendingAttachment(attachment)
+      if (activeReply) {
+        setReplyTo(activeReply)
+        replyToRef.current = activeReply
+      }
       const apiMsg = error.response?.data?.message || ''
       const messagingBlocked =
         error.response?.status === 403 ||
@@ -793,6 +857,31 @@ export default function Chat() {
     }
   }
 
+  const beginReply = (msg) => {
+    const payload = buildReplyPayload(msg, {
+      myName: 'Tú',
+      otherName: selectedChat?.name || 'Usuario'
+    })
+    if (!payload) {
+      toast.error('Espera a que se envíe el mensaje para responder')
+      return
+    }
+    setMsgAction(null)
+    setReplyTo(payload)
+    replyToRef.current = payload
+    window.setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  const scrollToMessage = (messageId) => {
+    if (!messageId) return
+    const safe = String(messageId).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    const el = document.querySelector(`[data-msg-id="${safe}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('chat-msg-flash')
+    window.setTimeout(() => el.classList.remove('chat-msg-flash'), 1200)
+  }
+
   const openViewOnce = async (messageId) => {
     try {
       const { data } = await api.post(`/chat/view-once/${messageId}`)
@@ -803,7 +892,6 @@ export default function Chat() {
     } catch (error) {
       const status = error.response?.status
       if (status === 410) {
-        toast.error('Este contenido ya fue abierto')
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId && m.attachment
@@ -811,11 +899,49 @@ export default function Chat() {
               : m
           )
         )
-      } else {
-        toast.error(error.response?.data?.message || 'No se pudo abrir')
+        return null
       }
+      toast.error(error.response?.data?.message || 'No se pudo abrir')
       return null
     }
+  }
+
+  const notifyViewOnceUsed = async (type) => {
+    const isAudio = type === 'audio'
+    await dialog.alert(
+      isAudio
+        ? 'Este audio se envió para escucharse una sola vez y ya fue abierto.'
+        : 'Esta foto se envió para verse una sola vez y ya fue abierta.',
+      {
+        title: isAudio ? 'Audio de una sola vez' : 'Foto de una sola vez',
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      }
+    )
+  }
+
+  const markViewOnceOpened = (messageId) => {
+    if (!messageId) return
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId || !m.attachment?.viewOnce) return m
+        if (m.sender === 'me') {
+          // Sender consumed their one local preview; keep media so peer can still open once
+          return {
+            ...m,
+            attachment: { ...m.attachment, viewedByMe: true }
+          }
+        }
+        return {
+          ...m,
+          attachment: {
+            ...m.attachment,
+            opened: true,
+            url: null
+          }
+        }
+      })
+    )
   }
 
   const handleTyping = () => {
@@ -893,7 +1019,8 @@ export default function Chat() {
               mime: blob.type || 'audio/webm',
               durationSec,
               viewOnce: Boolean(voiceViewOnceRef.current)
-            }
+            },
+            reply: replyToRef.current
           })
           resetVoiceUi()
           if (!ok) {
@@ -1038,7 +1165,8 @@ export default function Chat() {
             mime: blob.type || 'audio/webm',
             durationSec: Math.max(1, durationAtStopRef.current),
             viewOnce: Boolean(voiceViewOnce)
-          }
+          },
+          reply: replyToRef.current
         })
       } catch {
         toast.error('No se pudo enviar el audio')
@@ -1177,6 +1305,7 @@ export default function Chat() {
 
   const openSharedSheet = () => {
     setShowThreadMenu(false)
+    setSharedFilter('posts')
     setShowSharedSheet(true)
     loadSharedItems()
   }
@@ -1197,6 +1326,9 @@ export default function Chat() {
       setWallpaperId(getChatWallpaper(selectedChat.otherId))
       setPendingAttachment(null)
       setImageDraft(null)
+      setReplyTo(null)
+      replyToRef.current = null
+      setMsgAction(null)
       setShowThreadMenu(false)
       discardVoice()
     }
@@ -1680,7 +1812,10 @@ export default function Chat() {
               </div>
             </header>
 
-            <div className="relative z-10 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5 sm:py-5">
+            <div
+              ref={messagesScrollRef}
+              className="relative z-10 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5 sm:py-5"
+            >
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-6 text-center">
                   <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-3xl bg-[rgba(var(--color-primary-rgb),0.12)] text-3xl">
@@ -1696,6 +1831,8 @@ export default function Chat() {
                   const isMe = msg.sender === 'me'
                   const prev = messages[idx - 1]
                   const showTail = !prev || prev.sender !== msg.sender
+                  const viewOnce = Boolean(msg.attachment?.viewOnce)
+                  const hideBodyText = viewOnce // caption only inside viewer, not in bubble
                   return (
                     <motion.div
                       key={msg.id}
@@ -1704,17 +1841,29 @@ export default function Chat() {
                       transition={{ type: 'spring', damping: 24, stiffness: 380 }}
                       className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${showTail ? 'mt-3' : ''}`}
                     >
-                      <div
-                        className={`relative max-w-[88%] sm:max-w-[72%] px-3.5 py-2.5 shadow-sm ${
-                          isMe
-                            ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)] text-white'
-                            : 'rounded-[1.15rem] rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)]'
-                        }`}
+                      <div className="w-fit max-w-[88%] sm:max-w-[72%]">
+                      <SwipeToReply
+                        enabled={!voiceSession && !sending}
+                        onReply={() => beginReply(msg)}
+                        onLongPress={() => setMsgAction({ msg })}
                       >
+                        <div
+                          data-msg-id={msg.id}
+                          className={`relative px-3.5 py-2.5 shadow-sm transition-[box-shadow] ${
+                            isMe
+                              ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)] text-white'
+                              : 'rounded-[1.15rem] rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)]'
+                          }`}
+                        >
+                        <ReplyQuote
+                          reply={msg.reply}
+                          isMe={isMe}
+                          onClick={scrollToMessage}
+                        />
                         <StoryAttachmentBubble
                           attachment={msg.attachment}
                           isMe={isMe}
-                          hasText={Boolean(msg.text?.trim())}
+                          hasText={Boolean(msg.text?.trim()) && !hideBodyText}
                           onOpen={(att) => {
                             if (att?.storyId) {
                               openStoryById(att.storyId)
@@ -1730,7 +1879,7 @@ export default function Chat() {
                         <PostAttachmentBubble
                           attachment={msg.attachment}
                           isMe={isMe}
-                          hasText={Boolean(msg.text?.trim())}
+                          hasText={Boolean(msg.text?.trim()) && !hideBodyText}
                           onOpen={(att) => {
                             const id = att?.postId
                             if (!id) {
@@ -1744,29 +1893,33 @@ export default function Chat() {
                           messageId={msg.id}
                           attachment={msg.attachment}
                           isMe={isMe}
-                          hasText={Boolean(msg.text?.trim())}
-                          avatar={isMe ? user?.avatar : selectedChat?.avatar}
-                          name={isMe ? user?.name : selectedChat?.name}
+                          caption={msg.text || ''}
                           onOpenOnce={openViewOnce}
+                          onAlreadyOpened={notifyViewOnceUsed}
+                          onMarkOpened={markViewOnceOpened}
                         />
-                        <ImageAttachmentBubble
-                          attachment={msg.attachment}
-                          isMe={isMe}
-                          hasText={Boolean(msg.text?.trim())}
-                        />
-                        <FileAttachmentBubble
-                          attachment={msg.attachment}
-                          isMe={isMe}
-                          hasText={Boolean(msg.text?.trim())}
-                        />
-                        <AudioAttachmentBubble
-                          attachment={msg.attachment}
-                          isMe={isMe}
-                          hasText={Boolean(msg.text?.trim())}
-                          avatar={isMe ? user?.avatar : selectedChat?.avatar}
-                          name={isMe ? user?.name : selectedChat?.name}
-                        />
-                        {msg.text ? (
+                        {!viewOnce && (
+                          <>
+                            <ImageAttachmentBubble
+                              attachment={msg.attachment}
+                              isMe={isMe}
+                              hasText={Boolean(msg.text?.trim())}
+                            />
+                            <FileAttachmentBubble
+                              attachment={msg.attachment}
+                              isMe={isMe}
+                              hasText={Boolean(msg.text?.trim())}
+                            />
+                            <AudioAttachmentBubble
+                              attachment={msg.attachment}
+                              isMe={isMe}
+                              hasText={Boolean(msg.text?.trim())}
+                              avatar={isMe ? user?.avatar : selectedChat?.avatar}
+                              name={isMe ? user?.name : selectedChat?.name}
+                            />
+                          </>
+                        )}
+                        {!hideBodyText && msg.text ? (
                           <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{msg.text}</p>
                         ) : null}
                         {!msg.text && !msg.attachment ? (
@@ -1785,6 +1938,8 @@ export default function Chat() {
                             />
                           )}
                         </p>
+                        </div>
+                      </SwipeToReply>
                       </div>
                     </motion.div>
                   )
@@ -1849,6 +2004,53 @@ export default function Chat() {
                 onClose={() => setShowEmoji(false)}
                 onPick={insertEmoji}
               />
+              {replyTo && (
+                <div
+                  className={`mx-auto mb-2 flex max-w-3xl items-stretch gap-2 overflow-hidden rounded-2xl border ${
+                    hasStyledWall
+                      ? 'border-white/12 bg-white/10'
+                      : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]'
+                  }`}
+                >
+                  <div className="w-1 shrink-0 bg-[color:var(--color-primary)]" />
+                  <button
+                    type="button"
+                    data-no-swipe
+                    onClick={() => scrollToMessage(replyTo.id)}
+                    className="min-w-0 flex-1 py-2 pr-1 text-left"
+                  >
+                    <p
+                      className={`truncate text-xs font-semibold ${
+                        hasStyledWall ? 'text-[color:var(--color-primary)]' : 'text-[color:var(--color-primary)]'
+                      }`}
+                    >
+                      Respondiendo a {replyTo.senderName || 'mensaje'}
+                    </p>
+                    <p
+                      className={`truncate text-sm ${
+                        hasStyledWall ? 'text-white/75' : 'text-[color:var(--text-secondary)]'
+                      }`}
+                    >
+                      {replyTo.text || 'Mensaje'}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplyTo(null)
+                      replyToRef.current = null
+                    }}
+                    className={`m-1.5 self-center rounded-xl p-2 ${
+                      hasStyledWall
+                        ? 'text-white/70 hover:bg-white/10'
+                        : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-elevated)]'
+                    }`}
+                    aria-label="Cancelar respuesta"
+                  >
+                    <FiX size={18} />
+                  </button>
+                </div>
+              )}
               {pendingAttachment && pendingAttachment.type !== 'image' && pendingAttachment.type !== 'audio' && (
                 <div
                   className={`mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-2xl border px-3 py-2 ${
@@ -2176,77 +2378,138 @@ export default function Chat() {
       </AnimatePresence>
 
       <ChatBottomSheet open={showSharedSheet} onClose={() => setShowSharedSheet(false)} title="Archivos y publicaciones">
+        <div className="flex gap-1.5 border-b border-[color:var(--border-subtle)] px-3 pb-2 pt-1">
+          {[
+            { id: 'posts', label: 'Publicaciones' },
+            { id: 'files', label: 'Archivos' },
+            { id: 'links', label: 'Enlaces' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSharedFilter(tab.id)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                sharedFilter === tab.id
+                  ? 'bg-[color:var(--color-primary)] text-white'
+                  : 'bg-[color:var(--bg-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
         {sharedLoading ? (
           <div className="py-12 text-center">
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[color:var(--border-subtle)] border-t-[color:var(--color-primary)]" />
           </div>
-        ) : sharedItems.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-[color:var(--text-muted)]">
-            No hay archivos ni publicaciones compartidas en este chat
-          </p>
         ) : (
-          <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
-            {sharedItems.map((item) => {
+          (() => {
+            const filtered = (sharedItems || []).filter((item) => {
               const att = item.attachment
-              if (att?.type === 'image') {
-                return (
-                  <div key={item.id} className="aspect-square overflow-hidden rounded-xl bg-[color:var(--bg-muted)]">
-                    {String(att.url).startsWith('data:') ? (
-                      <img src={att.url} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <ProtectedMedia src={att.url} alt="" className="h-full w-full object-cover" />
-                    )}
-                  </div>
-                )
-              }
-              if (att?.type === 'post') {
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      if (att.postId) navigate(`/social?post=${encodeURIComponent(att.postId)}`)
-                      setShowSharedSheet(false)
-                    }}
-                    className="aspect-square overflow-hidden rounded-xl bg-[color:var(--bg-muted)] p-2 text-left"
-                  >
-                    {att.image ? (
-                      <ProtectedMedia src={att.image} alt="" className="mb-1 h-12 w-full rounded-lg object-cover" />
-                    ) : (
-                      <span className="mb-1 block text-lg">📝</span>
-                    )}
-                    <span className="line-clamp-2 text-[10px] text-[color:var(--text-secondary)]">
-                      {att.snippet || 'Publicación'}
-                    </span>
-                  </button>
-                )
-              }
-              if (att?.type === 'file') {
-                return (
-                  <a
-                    key={item.id}
-                    href={att.url}
-                    download={att.name}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl bg-[color:var(--bg-muted)] p-2 text-center"
-                  >
-                    <FiFile size={22} className="text-[color:var(--text-secondary)]" />
-                    <span className="line-clamp-2 text-[10px] text-[color:var(--text-secondary)]">{att.name || 'Archivo'}</span>
-                  </a>
-                )
-              }
-              if (att?.type === 'audio') {
-                return (
-                  <div key={item.id} className="col-span-3 flex items-center gap-2 rounded-xl bg-[color:var(--bg-muted)] p-3 sm:col-span-4">
-                    <FiMic size={18} className="shrink-0 text-[color:var(--color-primary)]" />
-                    <audio controls preload="metadata" src={att.url} className="min-w-0 flex-1" />
-                  </div>
-                )
-              }
-              return null
-            })}
-          </div>
+              if (!att || att.viewOnce || att.type === 'audio') return false
+              const cat =
+                item.category ||
+                (att.type === 'post' ? 'posts' : att.type === 'link' ? 'links' : 'files')
+              return cat === sharedFilter
+            })
+            if (filtered.length === 0) {
+              const emptyCopy =
+                sharedFilter === 'posts'
+                  ? 'No hay publicaciones compartidas en este chat'
+                  : sharedFilter === 'links'
+                    ? 'No hay enlaces compartidos en este chat'
+                    : 'No hay archivos compartidos en este chat'
+              return <p className="px-4 py-12 text-center text-sm text-[color:var(--text-muted)]">{emptyCopy}</p>
+            }
+            if (sharedFilter === 'links') {
+              return (
+                <div className="space-y-1.5 p-3">
+                  {filtered.map((item) => {
+                    const url = item.attachment?.url
+                    return (
+                      <a
+                        key={item.id}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2.5 transition hover:border-[color:var(--color-primary)]/40"
+                      >
+                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] text-[color:var(--color-primary)]">
+                          <FiLink size={18} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-[color:var(--text-primary)]">
+                            {item.attachment?.name || url}
+                          </span>
+                          {item.text && item.text !== url ? (
+                            <span className="block truncate text-[11px] text-[color:var(--text-muted)]">{item.text}</span>
+                          ) : null}
+                        </span>
+                      </a>
+                    )
+                  })}
+                </div>
+              )
+            }
+            return (
+              <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
+                {filtered.map((item) => {
+                  const att = item.attachment
+                  if (att?.type === 'image') {
+                    return (
+                      <div key={item.id} className="aspect-square overflow-hidden rounded-xl bg-[color:var(--bg-muted)]">
+                        {String(att.url).startsWith('data:') ? (
+                          <img src={att.url} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <ProtectedMedia src={att.url} alt="" className="h-full w-full object-cover" />
+                        )}
+                      </div>
+                    )
+                  }
+                  if (att?.type === 'post') {
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          if (att.postId) navigate(`/social?post=${encodeURIComponent(att.postId)}`)
+                          setShowSharedSheet(false)
+                        }}
+                        className="aspect-square overflow-hidden rounded-xl bg-[color:var(--bg-muted)] p-2 text-left"
+                      >
+                        {att.image ? (
+                          <ProtectedMedia src={att.image} alt="" className="mb-1 h-12 w-full rounded-lg object-cover" />
+                        ) : (
+                          <span className="mb-1 block text-lg">📝</span>
+                        )}
+                        <span className="line-clamp-2 text-[10px] text-[color:var(--text-secondary)]">
+                          {att.snippet || 'Publicación'}
+                        </span>
+                      </button>
+                    )
+                  }
+                  if (att?.type === 'file') {
+                    return (
+                      <a
+                        key={item.id}
+                        href={att.url}
+                        download={att.name}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl bg-[color:var(--bg-muted)] p-2 text-center"
+                      >
+                        <FiFile size={22} className="text-[color:var(--text-secondary)]" />
+                        <span className="line-clamp-2 text-[10px] text-[color:var(--text-secondary)]">
+                          {att.name || 'Archivo'}
+                        </span>
+                      </a>
+                    )
+                  }
+                  return null
+                })}
+              </div>
+            )
+          })()
         )}
       </ChatBottomSheet>
 
@@ -2391,15 +2654,95 @@ export default function Chat() {
         onClose={() => setImageDraft(null)}
         onSend={async ({ caption, viewOnce }) => {
           if (!imageDraft) return
+          const linkedReply = replyToRef.current
           await sendChatPayload({
             text: caption,
             attachment: {
               ...imageDraft,
               viewOnce: Boolean(viewOnce)
-            }
+            },
+            reply: linkedReply
           })
         }}
       />
+
+      {/* Keep reply visible while recording / previewing media outside the text form */}
+      {replyTo && (voiceSession || imageDraft) && !sending && (
+        <div className="pointer-events-none fixed inset-x-0 top-16 z-[114] flex justify-center px-3 pt-2">
+          <div className="pointer-events-auto flex w-full max-w-3xl items-stretch overflow-hidden rounded-2xl border border-white/12 bg-[#121218]/95 text-white shadow-lg backdrop-blur-md">
+            <div className="w-1 shrink-0 bg-[color:var(--color-primary)]" />
+            <div className="min-w-0 flex-1 px-3 py-2">
+              <p className="truncate text-xs font-semibold text-[color:var(--color-primary)]">
+                Respondiendo a {replyTo.senderName || 'mensaje'}
+              </p>
+              <p className="truncate text-sm text-white/75">{replyTo.text || 'Mensaje'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setReplyTo(null)
+                replyToRef.current = null
+              }}
+              className="m-1.5 rounded-xl p-2 text-white/70 hover:bg-white/10"
+              aria-label="Cancelar respuesta"
+            >
+              <FiX size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {msgAction?.msg &&
+          typeof document !== 'undefined' &&
+          createPortal(
+            <motion.div
+              className="fixed inset-0 z-[135] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMsgAction(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="w-full max-w-sm overflow-hidden rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] sm:rounded-3xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+                  <p className="text-sm font-semibold">Mensaje</p>
+                  <p className="truncate text-xs text-[color:var(--text-muted)]">
+                    {msgAction.msg.text?.trim() ||
+                      (msgAction.msg.attachment?.type === 'audio'
+                        ? 'Audio'
+                        : msgAction.msg.attachment?.type === 'image'
+                          ? 'Foto'
+                          : 'Adjunto')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => beginReply(msgAction.msg)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm hover:bg-[color:var(--bg-muted)]"
+                >
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]">
+                    <FiCornerUpLeft size={18} />
+                  </span>
+                  Responder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMsgAction(null)}
+                  className="w-full border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
+                >
+                  Cancelar
+                </button>
+              </motion.div>
+            </motion.div>,
+            document.body
+          )}
+      </AnimatePresence>
     </div>
   )
 }
