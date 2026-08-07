@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity, FiShare2, FiEye, FiTrash2 } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
@@ -7,6 +7,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import AvatarPicker from '../../components/AvatarPicker'
+import CoverPicker from '../../components/CoverPicker'
 import BadgesModal from '../../components/BadgesModal'
 import StoryHighlights from '../../components/StoryHighlights'
 import ProfileAvatar from '../../components/ProfileAvatar'
@@ -495,9 +496,9 @@ export default function Profile() {
   const [showBadges, setShowBadges] = useState(false)
   const [loading, setLoading] = useState(true)
   const [hasStories, setHasStories] = useState(false)
-  const coverInputRef = useRef(null)
   const [coverMenuOpen, setCoverMenuOpen] = useState(false)
   const [viewCoverOpen, setViewCoverOpen] = useState(false)
+  const [showCoverPicker, setShowCoverPicker] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -543,30 +544,12 @@ export default function Profile() {
     }
   }
 
-  const handleAvatarSave = async (avatar) => {
+  const handleAvatarSave = async () => {
     await refreshUser()
   }
 
-  const handleCoverUpload = (file) => {
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('La imagen de portada debe ser menor a 5MB')
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      try {
-        const coverUrl = e.target.result
-        const { data } = await api.put('/users/profile', {
-          profile: { ...(user?.profile || {}), coverUrl }
-        })
-        updateUser(data.user)
-        toast.success('Portada actualizada')
-        setCoverMenuOpen(false)
-      } catch {
-        toast.error('Error al actualizar portada')
-      }
-    }
-    reader.readAsDataURL(file)
+  const handleCoverSave = async () => {
+    await refreshUser()
   }
 
   const handleRemoveCover = async () => {
@@ -585,14 +568,14 @@ export default function Profile() {
 
   const openCoverPicker = () => {
     setCoverMenuOpen(false)
-    window.setTimeout(() => coverInputRef.current?.click(), 80)
+    setShowCoverPicker(true)
   }
 
   const onCoverPencilClick = () => {
     if (user?.profile?.coverUrl) {
       setCoverMenuOpen(true)
     } else {
-      coverInputRef.current?.click()
+      setShowCoverPicker(true)
     }
   }
 
@@ -700,18 +683,6 @@ export default function Profile() {
           >
             <FiEdit2 size={15} />
           </button>
-          <input
-            id="profile-cover-input"
-            ref={coverInputRef}
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) handleCoverUpload(file)
-              e.target.value = ''
-            }}
-          />
         </div>
         <div className="pointer-events-none relative z-10 -mt-16 px-4 pb-5 text-center sm:-mt-[4.5rem] sm:px-6">
           <div data-tour="tour-profile-avatar" className="pointer-events-auto relative mx-auto mb-4 inline-block">
@@ -995,6 +966,13 @@ export default function Profile() {
         isOpen={showAvatarPicker}
         onClose={() => setShowAvatarPicker(false)}
         onSave={handleAvatarSave}
+      />
+
+      <CoverPicker
+        isOpen={showCoverPicker}
+        onClose={() => setShowCoverPicker(false)}
+        onSave={handleCoverSave}
+        currentCover={user?.profile?.coverUrl || null}
       />
 
       <AnimatePresence>
