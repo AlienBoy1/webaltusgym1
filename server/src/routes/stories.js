@@ -42,7 +42,7 @@ async function enrichStories(rows, viewerId) {
   if (!rows?.length) return []
   const ids = rows.map((r) => r.id)
   const [{ data: reactions }, { data: views }] = await Promise.all([
-    supabaseAdmin.from('story_reactions').select('*').in('story_id', ids),
+    supabaseAdmin.from('story_reactions').select('story_id, user_id, emoji').in('story_id', ids),
     supabaseAdmin.from('story_views').select('story_id, user_id').in('story_id', ids)
   ])
 
@@ -311,25 +311,29 @@ router.get('/reactions', authenticate, (_req, res) => {
 
 router.get('/feed', authenticate, async (req, res) => {
   try {
-    await purgeExpiredStories()
+    // Do not purge on read path — deletes slow the comunidad mount.
     const { data: following } = await supabaseAdmin
       .from('follows')
       .select('following_id')
       .eq('follower_id', req.user.id)
+      .limit(80)
 
     const userIds = [...new Set([req.user.id, ...((following || []).map((f) => f.following_id))])]
     const now = new Date().toISOString()
 
     const { data, error } = await supabaseAdmin
       .from('stories')
-      .select('*')
+      .select('id, user_id, media_type, media_url, caption, created_at, expires_at')
       .in('user_id', userIds)
       .gt('expires_at', now)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(60)
 
     if (error) throw error
 
-    const enriched = await enrichStories(data || [], req.user.id)
+    // Keep chronological within each group (oldest first for story viewers)
+    const rows = [...(data || [])].reverse()
+    const enriched = await enrichStories(rows, req.user.id)
 
     const byUser = new Map()
     for (const story of enriched) {

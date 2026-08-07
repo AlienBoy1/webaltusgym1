@@ -1,6 +1,14 @@
 import { supabaseAdmin } from '../lib/supabase.js'
-import { mapProfile, attachSocial } from '../lib/mappers.js'
+import { mapProfile } from '../lib/mappers.js'
 
+const PROFILE_AUTH_COLUMNS =
+  'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, push_subscription, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+
+/**
+ * Fast auth — verifies JWT + loads profile.
+ * Does NOT load followers/following (that was killing /social/feed and every other API call).
+ * Social graph stays on /auth/me, /users/profile, and dedicated follow endpoints.
+ */
 export const authenticate = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '')
@@ -17,7 +25,7 @@ export const authenticate = async (req, res, next) => {
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('*')
+      .select(PROFILE_AUTH_COLUMNS)
       .eq('id', authData.user.id)
       .single()
 
@@ -25,15 +33,14 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ message: 'Usuario no encontrado' })
     }
 
-    const withSocial = await attachSocial(supabaseAdmin, profile)
     const roleFromMeta = authData.user.app_metadata?.role
-    if (roleFromMeta && roleFromMeta !== withSocial.role) {
-      withSocial.role = roleFromMeta
+    if (roleFromMeta && roleFromMeta !== profile.role) {
+      profile.role = roleFromMeta
     }
 
     req.accessToken = token
     req.authUser = authData.user
-    req.user = mapProfile(withSocial)
+    req.user = mapProfile(profile)
     next()
   } catch (error) {
     console.error('Auth error:', error)

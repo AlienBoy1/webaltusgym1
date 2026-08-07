@@ -60,9 +60,34 @@ function nestComments(flat = []) {
 }
 
 const POST_FEED_COLUMNS =
+  'id,user_id,content,mood,poll,post_type,badge_data,workout_data,shared_from,created_at,updated_at'
+/** Feed list omits base64 `images` (loaded in post detail) — they were timing out production. */
+const POST_FEED_COLUMNS_WITH_IMAGES =
   'id,user_id,content,images,mood,poll,post_type,badge_data,workout_data,shared_from,created_at,updated_at'
 
 const MAX_FEED_FOLLOWING = 80
+/** Cap base64 image payload per post when images are explicitly included. */
+const MAX_FEED_IMAGE_CHARS = 350_000
+
+function slimImagesForFeed(images) {
+  if (!Array.isArray(images) || !images.length) return []
+  let used = 0
+  const out = []
+  for (const img of images) {
+    const len = typeof img === 'string' ? img.length : 0
+    if (len > MAX_FEED_IMAGE_CHARS) continue
+    if (used + len > MAX_FEED_IMAGE_CHARS) break
+    out.push(img)
+    used += len
+  }
+  return out
+}
+
+function postLikelyHasImages(row) {
+  if (Array.isArray(row.images) && row.images.length) return true
+  const t = row.post_type || row.postType
+  return t === 'image' || t === 'mixed'
+}
 
 async function getProfilesMap(ids) {
   const unique = [...new Set((ids || []).filter(Boolean))]
@@ -224,13 +249,14 @@ async function enrichPostsLite(posts, viewerId = null) {
             }
           : s.user_id,
         content: s.content,
-        images: s.images || [],
+        images: [],
         mood: s.mood || null,
         poll: s.poll || null,
         badgeData: s.badge_data || null,
         workoutData: nestedWorkout,
         postType: s.post_type || 'text',
-        createdAt: s.created_at
+        createdAt: s.created_at,
+        imagesOmitted: postLikelyHasImages(s)
       }
     }
 
@@ -251,19 +277,23 @@ async function enrichPostsLite(posts, viewerId = null) {
     const likesCount = reactionSummary.reduce((sum, r) => sum + (r.count || 0), 0)
 
     return {
-      ...mapPost(row, {
-        user: mappedAuthor,
-        likes: [],
-        comments: [],
-        workoutData
-      }),
+      ...mapPost(
+        { ...row, images: [] },
+        {
+          user: mappedAuthor,
+          likes: [],
+          comments: [],
+          workoutData
+        }
+      ),
       likesCount,
       myReaction: viewerId ? myReactionByPost[row.id] || null : null,
       reactionSummary,
       reactors: [],
       sharedFrom,
       commentsCount: commentCountByPost[row.id] || 0,
-      commentsLoaded: false
+      commentsLoaded: false,
+      imagesOmitted: postLikelyHasImages(row)
     }
   })
 }
@@ -440,12 +470,113 @@ async function bumpSocialInteractions(userId) {
   }
 }
 
-// Get feed (own posts + posts from users you follow) — paginated + lite enrich
+function mapAuthorBrief(author) {
+  if (!author?.id) return null
+  return {
+    _id: author.id,
+    id: author.id,
+    name: author.name,
+    username: author.username || null,
+    avatar: author.avatar,
+    stats: author.stats || {}
+  }
+}
+
+function mapFeedRpcPost(row) {
+  const author = mapAuthorBrief(row.author) || row.user_id
+  let workoutData = row.workout_data || null
+  if (!workoutData && row.content && String(row.content).includes('[workout]')) {
+    try {
+      const match = String(row.content).match(/\[workout\]([\s\S]*?)\[\/workout\]/)
+      if (match) workoutData = JSON.parse(match[1])
+    } catch {
+      /* ignore */
+    }
+  }
+
+  let sharedFrom = null
+  if (row.shared_post?.id) {
+    const s = row.shared_post
+    let nestedWorkout = s.workout_data || null
+    if (!nestedWorkout && s.content && String(s.content).includes('[workout]')) {
+      try {
+        const match = String(s.content).match(/\[workout\]([\s\S]*?)\[\/workout\]/)
+        if (match) nestedWorkout = JSON.parse(match[1])
+      } catch {
+        /* ignore */
+      }
+    }
+    sharedFrom = {
+      _id: s.id,
+      id: s.id,
+      user: mapAuthorBrief(s.author) || s.user_id,
+      content: s.content,
+      images: s.images || [],
+      mood: s.mood || null,
+      poll: s.poll || null,
+      badgeData: s.badge_data || null,
+      workoutData: nestedWorkout,
+      postType: s.post_type || 'text',
+      createdAt: s.created_at
+    }
+  }
+
+  const reactionSummary = Array.isArray(row.reaction_summary) ? row.reaction_summary : []
+  return {
+    ...mapPost(
+      {
+        id: row.id,
+        user_id: row.user_id,
+        content: row.content,
+        images: [],
+        mood: row.mood,
+        poll: row.poll,
+        post_type: row.post_type,
+        badge_data: row.badge_data,
+        workout_data: workoutData,
+        shared_from: row.shared_from,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      },
+      { user: author, likes: [], comments: [], workoutData }
+    ),
+    likesCount: Number(row.likes_count) || 0,
+    myReaction: normalizeReactionEmoji(row.my_reaction) || row.my_reaction || null,
+    reactionSummary,
+    reactors: [],
+    sharedFrom,
+    commentsCount: Number(row.comments_count) || 0,
+    commentsLoaded: false,
+    imagesOmitted: Boolean(row.images_omitted) || postLikelyHasImages(row)
+  }
+}
+
+// Get feed (own posts + posts from users you follow) — prefer single RPC, fallback lite enrich
 router.get('/feed', authenticate, async (req, res) => {
   const started = Date.now()
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20)
     const before = req.query.before || null
+
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('get_social_feed_page', {
+      p_viewer: req.user.id,
+      p_before: before,
+      p_limit: limit
+    })
+
+    if (!rpcError && rpcData && typeof rpcData === 'object') {
+      const posts = Array.isArray(rpcData.posts) ? rpcData.posts.map(mapFeedRpcPost) : []
+      res.setHeader('Server-Timing', `feed;dur=${Date.now() - started};desc="rpc"`)
+      return res.json({
+        posts,
+        hasMore: Boolean(rpcData.hasMore),
+        nextCursor: rpcData.nextCursor || null
+      })
+    }
+
+    if (rpcError) {
+      console.warn('[feed] RPC unavailable, using lite path:', rpcError.message)
+    }
 
     const { data: following, error: followErr } = await supabaseAdmin
       .from('follows')
@@ -478,7 +609,7 @@ router.get('/feed', authenticate, async (req, res) => {
     const enriched = await enrichPosts(page, req.user.id, { lite: true })
     const nextCursor = page.length ? page[page.length - 1].created_at : null
 
-    res.setHeader('Server-Timing', `feed;dur=${Date.now() - started}`)
+    res.setHeader('Server-Timing', `feed;dur=${Date.now() - started};desc="lite"`)
     res.json({
       posts: enriched,
       hasMore,

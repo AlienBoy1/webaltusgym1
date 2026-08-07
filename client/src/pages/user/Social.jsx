@@ -138,10 +138,10 @@ export default function Social() {
     const attempt = async () =>
       api.get('/social/feed', {
         params: {
-          limit: 8,
+          limit: 6,
           ...(before ? { before } : {})
         },
-        timeout: 18000
+        timeout: 12000
       })
 
     try {
@@ -153,12 +153,13 @@ export default function Social() {
           firstErr?.code === 'ECONNABORTED' ||
           !firstErr?.response ||
           firstErr?.response?.status >= 500
-        if (!retryable) throw firstErr
+        if (!retryable || append) throw firstErr
+        // Single quick retry only on initial load
         ;({ data } = await attempt())
       }
 
       const list = Array.isArray(data) ? data : data?.posts || []
-      const more = Array.isArray(data) ? list.length >= 8 : Boolean(data?.hasMore)
+      const more = Array.isArray(data) ? list.length >= 6 : Boolean(data?.hasMore)
       const cursor = Array.isArray(data)
         ? list[list.length - 1]?.createdAt || null
         : data?.nextCursor || null
@@ -1024,6 +1025,15 @@ export default function Social() {
                       </button>
                     ))}
                   </div>
+                )}
+                {!post.sharedFrom && post.imagesOmitted && !(post.images && post.images.length) && (
+                  <button
+                    type="button"
+                    onClick={() => setDetailPost(post)}
+                    className="mb-3 sm:mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-elevated)] px-4 py-8 text-sm font-medium text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-hover)]"
+                  >
+                    📷 Ver fotos
+                  </button>
                 )}
 
                 {/* Poll */}
