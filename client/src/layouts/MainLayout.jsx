@@ -25,7 +25,7 @@ import { StoryViewerProvider } from '../components/StoryViewerContext'
 import PresenceManager from '../components/PresenceManager'
 import PresenceDot from '../components/PresenceDot'
 import { installMediaProtection } from '../components/ProtectedMedia'
-import { useChatStore } from '../store/chatStore'
+import { prefetchRoute } from '../utils/routePrefetch'
 
 const navItems = [
   { path: '/dashboard', icon: FiHome, label: 'Inicio', tour: 'nav-dashboard' },
@@ -47,7 +47,7 @@ export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { unreadCount, fetchNotifications, subscribeRealtime, unsubscribeRealtime } = useNotificationStore()
+  const { unreadCount, fetchUnreadCount, subscribeRealtime, unsubscribeRealtime } = useNotificationStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [showSearch, setShowSearch] = useState(false)
@@ -121,7 +121,7 @@ export default function MainLayout() {
   
   useEffect(() => {
     const id = user?.id || user?._id
-    fetchNotifications()
+    fetchUnreadCount()
     if (id) {
       initSocket(id)
       subscribeRealtime(id)
@@ -135,22 +135,7 @@ export default function MainLayout() {
 
   useEffect(() => installMediaProtection(), [])
 
-  useEffect(() => {
-    const id = user?.id || user?._id
-    if (!id) {
-      useChatStore.getState().reset()
-      return
-    }
-    // Defer chat prefetch so first paint / page APIs win
-    const t = window.setTimeout(() => {
-      if (window.requestIdleCallback) {
-        window.requestIdleCallback(() => useChatStore.getState().prefetch(), { timeout: 2500 })
-      } else {
-        useChatStore.getState().prefetch()
-      }
-    }, 400)
-    return () => window.clearTimeout(t)
-  }, [user?.id, user?._id])
+  // Chat conversations load only on /chat (no global prefetch competing with every page)
 
   // Apply saved theme / accent — prefer cache; fetch light settings only if missing
   useEffect(() => {
@@ -304,6 +289,9 @@ export default function MainLayout() {
                   key={`desk-${item.path}`}
                   to={item.path}
                   data-tour={item.tour}
+                  onMouseEnter={() => prefetchRoute(item.path)}
+                  onFocus={() => prefetchRoute(item.path)}
+                  onTouchStart={() => prefetchRoute(item.path)}
                   className={({ isActive }) =>
                     `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
                       isActive
@@ -396,6 +384,9 @@ export default function MainLayout() {
                 key={item.path}
                 to={item.path}
                 data-tour={item.tour || undefined}
+                onMouseEnter={() => prefetchRoute(item.path)}
+                onFocus={() => prefetchRoute(item.path)}
+                onTouchStart={() => prefetchRoute(item.path)}
                 className={({ isActive }) =>
                   `p-1.5 sm:p-2 rounded-lg transition-colors relative ${
                     isActive ? 'text-primary-500' : 'text-gray-400 hover:text-white'
@@ -626,18 +617,7 @@ export default function MainLayout() {
       {/* Main Content */}
       <main className="pt-16 pb-24 md:pb-6 overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          {document.body.dataset.qyntraTutorial === '1' ? (
-            <Outlet />
-          ) : (
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.15 }}
-            >
-              <Outlet />
-            </motion.div>
-          )}
+          <Outlet />
         </div>
       </main>
       
@@ -651,6 +631,9 @@ export default function MainLayout() {
                 key={item.path}
                 to={item.path}
                 data-tour={item.tour}
+                onMouseEnter={() => prefetchRoute(item.path)}
+                onFocus={() => prefetchRoute(item.path)}
+                onTouchStart={() => prefetchRoute(item.path)}
                 className={`flex flex-col items-center p-2 rounded-lg transition-colors ${isActive ? 'text-primary-500' : 'text-gray-500'}`}
               >
                 <item.icon size={20} />

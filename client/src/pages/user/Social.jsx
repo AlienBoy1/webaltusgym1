@@ -64,7 +64,6 @@ export default function Social() {
   const [hasMore, setHasMore] = useState(false)
   const [feedError, setFeedError] = useState(null)
   const [nextCursor, setNextCursor] = useState(null)
-  const [storiesReady, setStoriesReady] = useState(false)
   const loadMoreRef = useRef(null)
   const fetchingMoreRef = useRef(false)
   const [posting, setPosting] = useState(false)
@@ -195,7 +194,6 @@ export default function Social() {
       setLoading(false)
       setLoadingMore(false)
       fetchingMoreRef.current = false
-      if (!append) setStoriesReady(true)
     }
   }, [nextCursor])
 
@@ -587,9 +585,7 @@ export default function Social() {
       </div>
 
       <div data-tour="tour-stories-rail">
-        {storiesReady ? <StoriesRail /> : (
-          <div className="h-[88px] rounded-2xl bg-[color:var(--bg-elevated)]/60 animate-pulse" aria-hidden />
-        )}
+        <StoriesRail />
       </div>
 
       {/* Compose Post */}

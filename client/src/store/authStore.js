@@ -11,6 +11,47 @@ import {
   isRememberMeEnabled
 } from '../utils/tokenStorage'
 
+const CACHED_USER_KEY = 'qyntra:cachedUser'
+const MAX_CACHED_AVATAR = 12_000
+
+function slimCachedAvatar(avatar) {
+  if (!avatar) return null
+  const s = String(avatar)
+  if (s.startsWith('icon:') || s.startsWith('http://') || s.startsWith('https://')) return s
+  if (s.startsWith('data:') && s.length > MAX_CACHED_AVATAR) return null
+  if (s.length > MAX_CACHED_AVATAR) return null
+  return s
+}
+
+function loadCachedUser() {
+  try {
+    const raw = localStorage.getItem(CACHED_USER_KEY)
+    if (!raw) return null
+    return withIdAlias(JSON.parse(raw))
+  } catch {
+    return null
+  }
+}
+
+function persistCachedUser(user) {
+  try {
+    if (!user) {
+      localStorage.removeItem(CACHED_USER_KEY)
+      return
+    }
+    const slim = {
+      ...user,
+      avatar: slimCachedAvatar(user.avatar),
+      profile: user.profile
+        ? { ...user.profile, coverUrl: null }
+        : user.profile
+    }
+    localStorage.setItem(CACHED_USER_KEY, JSON.stringify(slim))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 /** Sync JWT into Supabase client so Realtime/RLS see auth.uid() */
 async function syncSupabaseSession(accessToken, refreshToken) {
   if (!accessToken || !refreshToken) return
@@ -25,9 +66,10 @@ async function syncSupabaseSession(accessToken, refreshToken) {
 }
 
 const { token: initialToken, refreshToken: initialRefreshToken } = getStoredTokens()
+const initialCachedUser = initialToken ? loadCachedUser() : null
 
 export const useAuthStore = create((set, get) => ({
-  user: null,
+  user: initialCachedUser,
   token: initialToken,
   refreshToken: initialRefreshToken,
   isAuthenticated: !!initialToken,
@@ -45,6 +87,7 @@ export const useAuthStore = create((set, get) => ({
       setAuthTokens(token, refreshToken, remember)
       await syncSupabaseSession(token, refreshToken)
       const user = withIdAlias(userPayload)
+      persistCachedUser(user)
       set({
         user,
         token,
@@ -71,6 +114,7 @@ export const useAuthStore = create((set, get) => ({
       setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
+      persistCachedUser(user)
       set({
         user,
         token: data.token,
@@ -103,6 +147,7 @@ export const useAuthStore = create((set, get) => ({
       setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
+      persistCachedUser(user)
       set({
         user,
         token: data.token,
@@ -145,6 +190,7 @@ export const useAuthStore = create((set, get) => ({
       setAuthTokens(data.token, data.refreshToken, true)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
+      persistCachedUser(user)
       set({
         user,
         token: data.token,
@@ -179,6 +225,7 @@ export const useAuthStore = create((set, get) => ({
       /* ignore */
     }
     clearAuthTokens()
+    persistCachedUser(null)
     set({
       user: null,
       token: null,
@@ -205,8 +252,10 @@ export const useAuthStore = create((set, get) => ({
       const remember = isRememberMeEnabled()
       setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
+      const user = withIdAlias(data.user)
+      persistCachedUser(user)
       set({
-        user: withIdAlias(data.user),
+        user,
         token: data.token,
         refreshToken: data.refreshToken,
         isAuthenticated: true,
@@ -216,6 +265,7 @@ export const useAuthStore = create((set, get) => ({
       return { success: true }
     } catch (error) {
       clearAuthTokens()
+      persistCachedUser(null)
       set({
         user: null,
         token: null,
@@ -233,7 +283,15 @@ export const useAuthStore = create((set, get) => ({
 
     try {
       const { data } = await api.get('/auth/me')
-      set({ user: withIdAlias(data.user), isAuthenticated: true })
+      const prev = get().user
+      const next = withIdAlias(data.user)
+      // Keep local media if /me stripped huge base64 avatars
+      if (!next.avatar && prev?.avatar) next.avatar = prev.avatar
+      if (prev?.profile?.coverUrl && !next.profile?.coverUrl) {
+        next.profile = { ...(next.profile || {}), coverUrl: prev.profile.coverUrl }
+      }
+      persistCachedUser(next)
+      set({ user: next, isAuthenticated: true })
     } catch (error) {
       if (error.response?.status === 401) {
         await get().checkAuth()
@@ -242,16 +300,25 @@ export const useAuthStore = create((set, get) => ({
   },
 
   updateUser: (userData) => {
-    set({ user: withIdAlias({ ...get().user, ...userData }) })
+    const user = withIdAlias({ ...get().user, ...userData })
+    persistCachedUser(user)
+    set({ user })
   },
 
   checkAuth: async () => {
-    set({ initializing: true, loading: true })
     const token = getStoredToken()
     const refreshToken = getStoredRefreshToken()
+    const cached = loadCachedUser()
+
+    set({
+      initializing: true,
+      loading: true,
+      ...(token && cached ? { user: cached, isAuthenticated: true, token, refreshToken } : {})
+    })
 
     if (!token) {
       clearAuthTokens()
+      persistCachedUser(null)
       set({
         isAuthenticated: false,
         user: null,
@@ -266,8 +333,15 @@ export const useAuthStore = create((set, get) => ({
     try {
       await syncSupabaseSession(token, refreshToken)
       const { data } = await api.get('/auth/me', { timeout: 15000 })
+      const prev = get().user
+      const user = withIdAlias(data.user)
+      if (!user.avatar && prev?.avatar) user.avatar = prev.avatar
+      if (prev?.profile?.coverUrl && !user.profile?.coverUrl) {
+        user.profile = { ...(user.profile || {}), coverUrl: prev.profile.coverUrl }
+      }
+      persistCachedUser(user)
       set({
-        user: withIdAlias(data.user),
+        user,
         isAuthenticated: true,
         token: getStoredToken() || token,
         refreshToken: getStoredRefreshToken() || refreshToken
@@ -285,7 +359,7 @@ export const useAuthStore = create((set, get) => ({
           isAuthenticated: true,
           token,
           refreshToken,
-          user: get().user
+          user: get().user || cached
         })
         return true
       }
@@ -294,6 +368,7 @@ export const useAuthStore = create((set, get) => ({
         return refreshed.success
       }
       clearAuthTokens()
+      persistCachedUser(null)
       set({
         user: null,
         token: null,

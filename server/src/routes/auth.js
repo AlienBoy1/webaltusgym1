@@ -879,7 +879,7 @@ router.get('/me', async (req, res) => {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select(
-        'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+        'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
       )
       .eq('id', userId)
       .single()
@@ -887,7 +887,13 @@ router.get('/me', async (req, res) => {
     if (!profile) return res.status(404).json({ message: 'Usuario no encontrado' })
     if (roleFromMeta && roleFromMeta !== profile.role) profile.role = roleFromMeta
 
+    // Never ship base64 covers on boot; skip huge avatars on /me
+    if (profile.avatar && String(profile.avatar).startsWith('data:') && String(profile.avatar).length > 12000) {
+      profile.avatar = null
+    }
+
     // Social graph is loaded on demand (profile / follow endpoints) — keep boot fast
+    res.setHeader('Cache-Control', 'private, max-age=30')
     res.json({ user: mapProfile(profile) })
   } catch (error) {
     res.status(401).json({ message: 'Token inválido' })

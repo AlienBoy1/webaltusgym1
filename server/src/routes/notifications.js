@@ -71,7 +71,7 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const { data: notifications, error } = await supabaseAdmin
       .from('notifications')
-      .select('*')
+      .select('id, user_id, type, title, body, icon, priority, related_user_id, related_id, read, created_at')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -80,7 +80,7 @@ router.get('/', authenticate, async (req, res) => {
 
     const { count } = await supabaseAdmin
       .from('notifications')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('user_id', req.user.id)
       .eq('read', false)
 
@@ -90,6 +90,22 @@ router.get('/', authenticate, async (req, res) => {
     })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener notificaciones', error: error.message })
+  }
+})
+
+/** Lightweight badge for MainLayout — no full list. */
+router.get('/unread-count', authenticate, async (req, res) => {
+  try {
+    const { count, error } = await supabaseAdmin
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', req.user.id)
+      .eq('read', false)
+    if (error) throw error
+    res.setHeader('Cache-Control', 'private, max-age=15')
+    res.json({ unreadCount: count || 0 })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al contar notificaciones', error: error.message })
   }
 })
 

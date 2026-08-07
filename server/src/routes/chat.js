@@ -9,12 +9,13 @@ const router = express.Router()
 router.get('/conversations', authenticate, async (req, res) => {
   try {
     const userId = req.user.id
+    // Cap scan — enough for inbox preview without loading full history
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
       .select('id, from_user_id, to_user_id, content, created_at, read')
       .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
       .order('created_at', { ascending: false })
-      .limit(400)
+      .limit(200)
 
     if (error) throw error
 
@@ -52,21 +53,25 @@ router.get('/conversations', authenticate, async (req, res) => {
         const user = profileMap[otherId]
         const conv = conversationMap.get(otherId)
         if (!user || !conv) return null
-        // Unread = only inbound messages not yet read (never outbound)
-        const unread = Number(conv.unread) || 0
+        let avatar = user.avatar || user.name?.charAt(0) || '👤'
+        // Don't ship huge base64 avatars in conversation list
+        if (typeof avatar === 'string' && avatar.startsWith('data:') && avatar.length > 8000) {
+          avatar = user.name?.charAt(0) || '👤'
+        }
         return {
           id: otherId,
           otherId,
           name: user.name,
-          avatar: user.avatar || user.name?.charAt(0) || '👤',
+          avatar,
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
           lastFromMe: Boolean(conv.lastFromMe),
-          unread
+          unread: Number(conv.unread) || 0
         }
       })
       .filter(Boolean)
 
+    res.setHeader('Cache-Control', 'private, max-age=10')
     res.json(conversations)
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
@@ -85,6 +90,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
         `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
       )
       .order('created_at', { ascending: true })
+      .limit(300)
 
     if (error) throw error
 
@@ -113,6 +119,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
           `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
         )
         .order('created_at', { ascending: true })
+        .limit(300)
       await supabaseAdmin
         .from('messages')
         .update({ read: true })

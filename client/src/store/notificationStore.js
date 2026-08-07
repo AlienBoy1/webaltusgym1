@@ -9,10 +9,19 @@ export const useNotificationStore = create((set, get) => ({
   unreadCount: 0,
   loading: false,
 
+  fetchUnreadCount: async () => {
+    try {
+      const { data } = await api.get('/notifications/unread-count', { timeout: 8000 })
+      set({ unreadCount: data.unreadCount || 0 })
+    } catch (error) {
+      console.error('Error fetching unread count:', error)
+    }
+  },
+
   fetchNotifications: async (opts = {}) => {
     try {
       if (!opts.silent) set({ loading: true })
-      const { data } = await api.get('/notifications')
+      const { data } = await api.get('/notifications', { timeout: 12000 })
       set({
         notifications: data.notifications || [],
         unreadCount: data.unreadCount || 0,
@@ -38,8 +47,14 @@ export const useNotificationStore = create((set, get) => ({
           table: 'notifications',
           filter: `user_id=eq.${userId}`
         },
-        () => {
-          get().fetchNotifications({ silent: true })
+        (payload) => {
+          // Bump badge without reloading the full list
+          set({ unreadCount: (get().unreadCount || 0) + 1 })
+          const row = payload?.new
+          if (row && get().notifications?.length) {
+            // Only merge if list already loaded (notifications page)
+            get().fetchNotifications({ silent: true })
+          }
         }
       )
       .on(
@@ -51,7 +66,7 @@ export const useNotificationStore = create((set, get) => ({
           filter: `user_id=eq.${userId}`
         },
         () => {
-          get().fetchNotifications({ silent: true })
+          get().fetchUnreadCount()
         }
       )
       .on(
@@ -63,12 +78,12 @@ export const useNotificationStore = create((set, get) => ({
           filter: `user_id=eq.${userId}`
         },
         () => {
-          get().fetchNotifications({ silent: true })
+          get().fetchUnreadCount()
         }
       )
       .subscribe()
 
-    const onFocus = () => get().fetchNotifications({ silent: true })
+    const onFocus = () => get().fetchUnreadCount()
     window.addEventListener('focus', onFocus)
     notifChannel._onFocus = onFocus
   },

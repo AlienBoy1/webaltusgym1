@@ -89,6 +89,44 @@ export default function StoriesRail({
   const paused = menuOpen || shareOpen || favoritesOpen || viewersOpen || replyFocused || Boolean(reply.trim())
   const [progressPct, setProgressPct] = useState(0)
   const progressRafRef = useRef(null)
+  const hydratingIdsRef = useRef(new Set())
+
+  const patchStoryInGroups = useCallback((storyId, patch) => {
+    setGroups((prev) =>
+      prev.map((g) => ({
+        ...g,
+        stories: g.stories.map((s) =>
+          (s._id || s.id) === storyId ? { ...s, ...patch, mediaDeferred: false } : s
+        )
+      }))
+    )
+  }, [])
+
+  const hydrateStoryMedia = useCallback(
+    async (story) => {
+      const id = story?._id || story?.id
+      if (!id || story.mediaUrl || !story.mediaDeferred) return story
+      if (hydratingIdsRef.current.has(id)) return story
+      hydratingIdsRef.current.add(id)
+      try {
+        const { data } = await api.get(`/stories/${id}`, { timeout: 45000 })
+        if (data?.mediaUrl) {
+          patchStoryInGroups(id, {
+            mediaUrl: data.mediaUrl,
+            mediaType: data.mediaType || story.mediaType,
+            caption: data.caption ?? story.caption
+          })
+          return { ...story, ...data, mediaDeferred: false }
+        }
+      } catch {
+        /* ignore — viewer shows placeholder */
+      } finally {
+        hydratingIdsRef.current.delete(id)
+      }
+      return story
+    },
+    [patchStoryInGroups]
+  )
 
   useEffect(() => {
     const openDraft = () => {
@@ -238,9 +276,37 @@ export default function StoriesRail({
   const currentGroup = viewer != null ? groups[viewer.groupIndex] : null
   const currentStory =
     currentGroup && viewer != null ? currentGroup.stories[viewer.storyIndex] : null
+  const waitingMedia = Boolean(currentStory?.mediaDeferred && !currentStory?.mediaUrl)
   const isOwnStory =
     currentGroup &&
     (currentGroup.user?._id || currentGroup.user) === user?._id
+
+  // Load media only when a story is opened (feed is lite / metadata-only)
+  useEffect(() => {
+    if (!currentStory) return undefined
+    let cancelled = false
+    ;(async () => {
+      await hydrateStoryMedia(currentStory)
+      if (cancelled || viewer == null) return
+      // Prefetch next in group
+      const next = currentGroup?.stories?.[viewer.storyIndex + 1]
+      if (next?.mediaDeferred && !next.mediaUrl) {
+        hydrateStoryMedia(next)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    currentStory?._id,
+    currentStory?.id,
+    currentStory?.mediaDeferred,
+    currentStory?.mediaUrl,
+    viewer?.groupIndex,
+    viewer?.storyIndex,
+    hydrateStoryMedia,
+    currentGroup
+  ])
 
   useEffect(() => {
     if (viewer != null) {
@@ -427,7 +493,7 @@ export default function StoriesRail({
   useEffect(() => {
     if (!currentStory) return undefined
 
-    if (paused) {
+    if (paused || waitingMedia) {
       if (timerRef.current) {
         window.clearTimeout(timerRef.current)
         timerRef.current = null
@@ -462,7 +528,7 @@ export default function StoriesRail({
         timerRef.current = null
       }
     }
-  }, [currentStory?._id, currentStory?.id, goNext, paused])
+  }, [currentStory?._id, currentStory?.id, goNext, paused, waitingMedia])
 
   useEffect(() => {
     if (!currentStory) { setProgressPct(0); return }
@@ -474,14 +540,14 @@ export default function StoriesRail({
       if (t0 != null) elapsed += Date.now() - t0
       return Math.min(100, (elapsed / full) * 100)
     }
-    if (paused) { setProgressPct(computePct()); return }
+    if (paused || waitingMedia) { setProgressPct(computePct()); return }
     const tick = () => {
       setProgressPct(computePct())
       progressRafRef.current = requestAnimationFrame(tick)
     }
     progressRafRef.current = requestAnimationFrame(tick)
     return () => { if (progressRafRef.current) cancelAnimationFrame(progressRafRef.current) }
-  }, [currentStory?._id, currentStory?.id, paused])
+  }, [currentStory?._id, currentStory?.id, paused, waitingMedia])
 
   const react = async (emoji) => {
     if (!currentStory) return
@@ -493,7 +559,9 @@ export default function StoriesRail({
         prev.map((g) => ({
           ...g,
           stories: g.stories.map((s) =>
-            (s._id || s.id) === (data._id || data.id) ? { ...s, ...data } : s
+            (s._id || s.id) === (data._id || data.id)
+              ? { ...s, ...data, mediaUrl: data.mediaUrl || s.mediaUrl, mediaDeferred: !(data.mediaUrl || s.mediaUrl) }
+              : s
           )
         }))
       )
@@ -502,9 +570,14 @@ export default function StoriesRail({
     }
   }
 
-  const sendReply = () => {
+  const sendReply = async () => {
     if (!currentStory || !reply.trim()) return
-    const target = currentStory.user
+    const story = await hydrateStoryMedia(currentStory)
+    if (!story?.mediaUrl) {
+      toast.error('Espera a que cargue la historia')
+      return
+    }
+    const target = story.user || currentStory.user
     navigate('/chat', {
       state: {
         startWith: {
@@ -514,7 +587,7 @@ export default function StoriesRail({
         },
         storyReply: {
           text: reply.trim(),
-          attachment: storyAttachment(currentStory, 'reply')
+          attachment: storyAttachment(story, 'reply')
         }
       }
     })
@@ -562,8 +635,13 @@ export default function StoriesRail({
   const shareStory = async () => {
     if (!currentStory || selectedShare.length === 0) return
     setSharing(true)
-    const attachment = storyAttachment(currentStory, 'share')
     try {
+      const story = await hydrateStoryMedia(currentStory)
+      if (!story?.mediaUrl) {
+        toast.error('Espera a que cargue la historia')
+        return
+      }
+      const attachment = storyAttachment(story, 'share')
       await Promise.all(
         selectedShare.map((to) =>
           api.post('/chat/send', {
@@ -1058,7 +1136,14 @@ export default function StoriesRail({
                   onClick={goNext}
                   aria-label="Siguiente"
                 />
-                {currentStory.mediaType === 'video' ? (
+                {waitingMedia || !currentStory.mediaUrl ? (
+                  <div className="flex h-full w-full items-center justify-center bg-black/40">
+                    <div
+                      className="h-9 w-9 animate-spin rounded-full border-2 border-white/20"
+                      style={{ borderTopColor: '#fff' }}
+                    />
+                  </div>
+                ) : currentStory.mediaType === 'video' ? (
                   <ProtectedMedia
                     as="video"
                     key={currentStory._id || currentStory.id}
@@ -1068,10 +1153,10 @@ export default function StoriesRail({
                     className="h-full w-full object-cover"
                     ref={(el) => {
                       if (!el) return
-                      if (paused) el.pause()
+                      if (paused || waitingMedia) el.pause()
                       else el.play().catch(() => {})
                     }}
-                    onEnded={!paused ? goNext : undefined}
+                    onEnded={!paused && !waitingMedia ? goNext : undefined}
                   />
                 ) : (
                   <ProtectedMedia

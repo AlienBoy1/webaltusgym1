@@ -71,7 +71,7 @@ function computeViewportSize() {
 }
 
 export default function AvatarPicker({ isOpen, onClose, onSave }) {
-  const { user, refreshUser } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [selectedAvatar, setSelectedAvatar] = useState('')
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState('pick') // 'pick' | 'crop'
@@ -362,7 +362,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
 
   const persistAvatar = async (avatarValue) => {
     await api.put('/users/profile', { avatar: avatarValue })
-    await refreshUser()
+    updateUser({ avatar: avatarValue })
     onSave?.(avatarValue)
     toast.success('Avatar actualizado correctamente')
     setSelectedAvatar('')

@@ -35,7 +35,15 @@ async function getProfilesMap(ids) {
     .from('profiles')
     .select('id, name, username, avatar')
     .in('id', unique)
-  return Object.fromEntries((data || []).map((p) => [p.id, p]))
+  return Object.fromEntries(
+    (data || []).map((p) => {
+      let avatar = p.avatar || null
+      if (avatar && String(avatar).startsWith('data:') && String(avatar).length > 12000) {
+        avatar = null
+      }
+      return [p.id, { ...p, avatar }]
+    })
+  )
 }
 
 async function enrichStories(rows, viewerId) {
@@ -321,9 +329,10 @@ router.get('/feed', authenticate, async (req, res) => {
     const userIds = [...new Set([req.user.id, ...((following || []).map((f) => f.following_id))])]
     const now = new Date().toISOString()
 
+    // Lite feed: never pull media_url blobs here — hydrate on open via GET /stories/:id
     const { data, error } = await supabaseAdmin
       .from('stories')
-      .select('id, user_id, media_type, media_url, caption, created_at, expires_at')
+      .select('id, user_id, media_type, caption, created_at, expires_at')
       .in('user_id', userIds)
       .gt('expires_at', now)
       .order('created_at', { ascending: false })
@@ -332,22 +341,23 @@ router.get('/feed', authenticate, async (req, res) => {
     if (error) throw error
 
     // Keep chronological within each group (oldest first for story viewers)
-    const rows = [...(data || [])].reverse()
+    const rows = [...(data || [])].reverse().map((r) => ({ ...r, media_url: null }))
     const enriched = await enrichStories(rows, req.user.id)
 
     const byUser = new Map()
     for (const story of enriched) {
-      const uid = story.user?._id || story.user
+      const lite = { ...story, mediaUrl: null, mediaDeferred: true }
+      const uid = lite.user?._id || lite.user
       if (!byUser.has(uid)) {
         byUser.set(uid, {
-          user: story.user,
+          user: lite.user,
           stories: [],
           hasUnseen: false
         })
       }
       const group = byUser.get(uid)
-      group.stories.push(story)
-      if (!story.viewed && uid !== req.user.id) group.hasUnseen = true
+      group.stories.push(lite)
+      if (!lite.viewed && uid !== req.user.id) group.hasUnseen = true
     }
 
     const groups = [...byUser.values()].sort((a, b) => {
@@ -359,6 +369,7 @@ router.get('/feed', authenticate, async (req, res) => {
       return 0
     })
 
+    res.setHeader('Cache-Control', 'private, max-age=15')
     res.json({ groups, reactions: STORY_REACTIONS })
   } catch (error) {
     console.error('Stories feed error:', error)

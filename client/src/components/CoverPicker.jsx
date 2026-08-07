@@ -60,7 +60,7 @@ function computeFrameSize() {
 }
 
 export default function CoverPicker({ isOpen, onClose, onSave, currentCover = null }) {
-  const { user, refreshUser, updateUser } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [preview, setPreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState('pick') // 'pick' | 'crop'
@@ -346,8 +346,20 @@ export default function CoverPicker({ isOpen, onClose, onSave, currentCover = nu
     const { data } = await api.put('/users/profile', {
       profile: { ...(user?.profile || {}), coverUrl }
     })
-    if (data?.user) updateUser(data.user)
-    else await refreshUser()
+    if (data?.user) {
+      updateUser({
+        ...data.user,
+        avatar: data.user.avatar || user?.avatar,
+        profile: {
+          ...(data.user.profile || {}),
+          coverUrl
+        }
+      })
+    } else {
+      updateUser({
+        profile: { ...(user?.profile || {}), coverUrl }
+      })
+    }
     onSave?.(coverUrl)
     toast.success('Portada actualizada')
     setPreview(null)

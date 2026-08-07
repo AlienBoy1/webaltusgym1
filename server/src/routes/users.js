@@ -1,7 +1,7 @@
 import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapProfile, mapWorkout, attachSocial } from '../lib/mappers.js'
-import { authenticate, isAdmin } from '../middleware/auth.js'
+import { authenticate, isAdmin, invalidateAuthProfileCache } from '../middleware/auth.js'
 import { normalizeUsername, validateUsernameFormat } from '../utils/username.js'
 
 const router = express.Router()
@@ -96,7 +96,9 @@ router.put('/profile', authenticate, async (req, res) => {
       .from('profiles')
       .update(updateData)
       .eq('id', req.user.id)
-      .select('*')
+      .select(
+        'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+      )
       .single()
 
     if (error) {
@@ -105,7 +107,28 @@ router.put('/profile', authenticate, async (req, res) => {
       }
       throw error
     }
-    res.json({ message: 'Perfil actualizado', user: mapProfile(data) })
+    invalidateAuthProfileCache(req.user.id)
+
+    const out = { ...data }
+    // Never echo megabyte data-URLs in the response — client already has them in memory
+    const reqCover = profile?.coverUrl
+    out.profile = {
+      ...(updateData.profile || {}),
+      coverUrl:
+        typeof reqCover === 'string' && reqCover.startsWith('data:')
+          ? null
+          : updateData.profile?.coverUrl || null
+    }
+    if (
+      typeof avatar === 'string' &&
+      avatar.startsWith('data:') &&
+      avatar.length > 12000
+    ) {
+      out.avatar = null
+    } else if (out.avatar && String(out.avatar).startsWith('data:') && String(out.avatar).length > 12000) {
+      out.avatar = null
+    }
+    res.json({ message: 'Perfil actualizado', user: mapProfile(out) })
   } catch (error) {
     res.status(500).json({ message: 'Error al actualizar perfil', error: error.message })
   }
