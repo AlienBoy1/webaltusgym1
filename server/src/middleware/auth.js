@@ -1,16 +1,17 @@
+import jwt from 'jsonwebtoken'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapProfile } from '../lib/mappers.js'
 
 const PROFILE_AUTH_COLUMNS =
-  'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, push_subscription, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+  'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
 
-/** Short-lived auth cache — Comunidad fires feed + stories back-to-back. */
-const AUTH_CACHE_TTL_MS = 25_000
+/** Best-effort per-isolate cache (helps bursty SPA mounts on warm instances). */
+const AUTH_CACHE_TTL_MS = 45_000
 const authCache = new Map()
 
 function rememberAuth(token, payload) {
   authCache.set(token, { ...payload, exp: Date.now() + AUTH_CACHE_TTL_MS })
-  if (authCache.size > 200) {
+  if (authCache.size > 300) {
     const now = Date.now()
     for (const [key, val] of authCache) {
       if (val.exp <= now) authCache.delete(key)
@@ -18,10 +19,38 @@ function rememberAuth(token, payload) {
   }
 }
 
+function verifyAccessTokenLocally(token) {
+  const secret = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET
+  if (!secret) return null
+  try {
+    const payload = jwt.verify(token, secret, {
+      algorithms: ['HS256']
+    })
+    const sub = payload?.sub
+    if (!sub) return null
+    return { id: sub, role: payload?.app_metadata?.role || payload?.role || null, claims: payload }
+  } catch {
+    return null
+  }
+}
+
+async function loadAuthProfile(userId, roleFromMeta = null) {
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select(PROFILE_AUTH_COLUMNS)
+    .eq('id', userId)
+    .single()
+
+  if (profileError || !profile) return null
+  if (roleFromMeta && roleFromMeta !== profile.role) {
+    profile.role = roleFromMeta
+  }
+  return profile
+}
+
 /**
- * Fast auth — verifies JWT + loads profile.
- * Does NOT load followers/following (that was killing /social/feed and every other API call).
- * Social graph stays on /auth/me, /users/profile, and dedicated follow endpoints.
+ * Fast auth — prefer local JWT verify (no Auth network hop).
+ * Does NOT load followers/following.
  */
 export const authenticate = async (req, res, next) => {
   try {
@@ -39,32 +68,32 @@ export const authenticate = async (req, res, next) => {
       return next()
     }
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token)
-
-    if (authError || !authData?.user) {
-      authCache.delete(token)
-      return res.status(401).json({ message: 'Token inválido' })
+    let authUser = null
+    const local = verifyAccessTokenLocally(token)
+    if (local) {
+      authUser = { id: local.id, app_metadata: { role: local.role } }
+    } else {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token)
+      if (authError || !authData?.user) {
+        authCache.delete(token)
+        return res.status(401).json({ message: 'Token inválido' })
+      }
+      authUser = authData.user
     }
 
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select(PROFILE_AUTH_COLUMNS)
-      .eq('id', authData.user.id)
-      .single()
+    const profile = await loadAuthProfile(
+      authUser.id,
+      authUser.app_metadata?.role || null
+    )
 
-    if (profileError || !profile) {
+    if (!profile) {
       return res.status(401).json({ message: 'Usuario no encontrado' })
     }
 
-    const roleFromMeta = authData.user.app_metadata?.role
-    if (roleFromMeta && roleFromMeta !== profile.role) {
-      profile.role = roleFromMeta
-    }
-
     req.accessToken = token
-    req.authUser = authData.user
+    req.authUser = authUser
     req.user = mapProfile(profile)
-    rememberAuth(token, { authUser: authData.user, user: req.user })
+    rememberAuth(token, { authUser, user: req.user })
     next()
   } catch (error) {
     console.error('Auth error:', error)

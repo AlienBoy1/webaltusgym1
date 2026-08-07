@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
-import api from '../utils/api'
 import { getWorkoutSession, subscribeWorkoutSession } from '../utils/workoutSession'
 import { trackPresence, onChatEvent, getPresenceSnapshot } from '../utils/socket'
 import {
@@ -12,7 +11,6 @@ import {
   STORY_CLOSE_EVENT,
   STORY_OPEN_EVENT,
   getUserStatus,
-  hasActiveChallengeParticipant,
   isChallengeTimerActive,
   patchUserPresence,
   resolveLocalStatus,
@@ -113,16 +111,9 @@ export default function PresenceManager() {
     }, 15_000)
 
     const pollChallenge = async () => {
+      // Prefer local timer flag — avoid heavy /challenges/my on every minute
       try {
-        if (isChallengeTimerActive()) {
-          if (!challengeRef.current) {
-            challengeRef.current = true
-            recompute()
-          }
-          return
-        }
-        const { data } = await api.get('/challenges/my')
-        const active = hasActiveChallengeParticipant(data, userId)
+        const active = isChallengeTimerActive()
         if (active !== challengeRef.current) {
           challengeRef.current = active
           recompute()

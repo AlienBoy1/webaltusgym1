@@ -5,6 +5,7 @@ let messageChannel = null
 let presenceChannel = null
 const listeners = {
   newMessage: new Set(),
+  messageStatus: new Set(),
   userTyping: new Set(),
   userOnline: new Set(),
   userOffline: new Set(),
@@ -89,6 +90,26 @@ export function initSocket(userId) {
           attachment: decoded.attachment,
           timestamp: row.created_at,
           id: row.id
+        })
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `from_user_id=eq.${userId}`
+      },
+      (payload) => {
+        const row = payload.new
+        if (!row?.id) return
+        emit('messageStatus', {
+          id: row.id,
+          to: row.to_user_id,
+          delivered: Boolean(row.delivered),
+          read: Boolean(row.read),
+          status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent'
         })
       }
     )

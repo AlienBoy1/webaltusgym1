@@ -1,4 +1,4 @@
-import express from 'express'
+﻿import express from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyNewMessage } from '../services/notificationService.js'
@@ -11,9 +11,10 @@ router.get('/conversations', authenticate, async (req, res) => {
     const userId = req.user.id
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
-      .select('*')
+      .select('id, from_user_id, to_user_id, content, created_at, read')
       .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
       .order('created_at', { ascending: false })
+      .limit(400)
 
     if (error) throw error
 
@@ -33,15 +34,21 @@ router.get('/conversations', authenticate, async (req, res) => {
       }
     }
 
-    const conversations = []
-    for (const [otherId, conv] of conversationMap) {
-      const { data: user } = await supabaseAdmin
-        .from('profiles')
-        .select('name, avatar')
-        .eq('id', otherId)
-        .single()
-      if (user) {
-        conversations.push({
+    const partnerIds = [...conversationMap.keys()]
+    if (!partnerIds.length) return res.json([])
+
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, avatar')
+      .in('id', partnerIds)
+
+    const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]))
+    const conversations = partnerIds
+      .map((otherId) => {
+        const user = profileMap[otherId]
+        const conv = conversationMap.get(otherId)
+        if (!user || !conv) return null
+        return {
           id: otherId,
           otherId,
           name: user.name,
@@ -49,9 +56,9 @@ router.get('/conversations', authenticate, async (req, res) => {
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
           unread: conv.unread
-        })
-      }
-    }
+        }
+      })
+      .filter(Boolean)
 
     res.json(conversations)
   } catch (error) {
@@ -83,10 +90,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       .eq('to_user_id', myId)
       .or('read.eq.false,delivered.eq.false')
 
-    // Also mark any of my outbound as delivered if peer previously opened? already handled when they open.
-
     res.json((messages || []).map((m) => {
-      // Reflect read/delivered for messages we just marked
       if (m.from_user_id === otherId && m.to_user_id === myId) {
         return formatChatMessage({ ...m, read: true, delivered: true }, myId)
       }
@@ -129,6 +133,25 @@ router.post('/delivered/:userId', authenticate, async (req, res) => {
       .eq('from_user_id', fromId)
       .eq('to_user_id', myId)
       .eq('delivered', false)
+    if (error) throw error
+    res.json({ ok: true })
+  } catch (error) {
+    res.json({ ok: false })
+  }
+})
+
+// Mark inbound as read while thread is open
+router.post('/read/:userId', authenticate, async (req, res) => {
+  try {
+    const myId = req.user.id
+    const fromId = req.params.userId
+    const now = new Date().toISOString()
+    const { error } = await supabaseAdmin
+      .from('messages')
+      .update({ read: true, delivered: true, delivered_at: now })
+      .eq('from_user_id', fromId)
+      .eq('to_user_id', myId)
+      .eq('read', false)
     if (error) throw error
     res.json({ ok: true })
   } catch (error) {

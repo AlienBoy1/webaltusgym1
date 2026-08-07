@@ -215,9 +215,13 @@ export default function Chat() {
     if (!user?._id) return
 
     const handleNewMessage = (data) => {
-      // Ack delivery to sender
+      // Ack delivery; mark read if this thread is open
       if (data.from) {
-        api.post(`/chat/delivered/${data.from}`).catch(() => {})
+        if (selectedChatRef.current?.otherId === data.from) {
+          api.post(`/chat/read/${data.from}`).catch(() => {})
+        } else {
+          api.post(`/chat/delivered/${data.from}`).catch(() => {})
+        }
       }
       showNotification(`${data.fromName}`, data.message, {
         tag: `msg-${data.from}`,
@@ -279,7 +283,24 @@ export default function Chat() {
       })
     }
 
+    const handleMessageStatus = (data) => {
+      if (!data?.id) return
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.id
+            ? {
+                ...m,
+                delivered: data.delivered,
+                read: data.read,
+                status: data.status || (data.read ? 'read' : data.delivered ? 'delivered' : 'sent')
+              }
+            : m
+        )
+      )
+    }
+
     const unsubMessage = onChatEvent('newMessage', handleNewMessage)
+    const unsubStatus = onChatEvent('messageStatus', handleMessageStatus)
 
     const handleTyping = (payload) => {
       const from = payload?.from
@@ -295,6 +316,7 @@ export default function Chat() {
 
     return () => {
       unsubMessage()
+      unsubStatus()
       unsubTyping()
       if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
     }

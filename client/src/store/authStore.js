@@ -265,22 +265,31 @@ export const useAuthStore = create((set, get) => ({
 
     try {
       await syncSupabaseSession(token, refreshToken)
-      const timeoutMs = 12000
-      const { data } = await Promise.race([
-        api.get('/auth/me'),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(Object.assign(new Error('Auth timeout'), { code: 'TIMEOUT' })), timeoutMs)
-        )
-      ])
+      const { data } = await api.get('/auth/me', { timeout: 15000 })
       set({
         user: withIdAlias(data.user),
         isAuthenticated: true,
-        token,
-        refreshToken
+        token: getStoredToken() || token,
+        refreshToken: getStoredRefreshToken() || refreshToken
       })
       return true
     } catch (error) {
-      if (refreshToken && error?.code !== 'TIMEOUT') {
+      // Never wipe remember-me tokens on timeout/network — only on definitive auth failure
+      const isTimeout =
+        error?.code === 'TIMEOUT' ||
+        error?.code === 'ECONNABORTED' ||
+        error?.message === 'Auth timeout'
+      const isNetwork = !error?.response
+      if (isTimeout || isNetwork) {
+        set({
+          isAuthenticated: true,
+          token,
+          refreshToken,
+          user: get().user
+        })
+        return true
+      }
+      if (refreshToken) {
         const refreshed = await get().refreshSession(refreshToken)
         return refreshed.success
       }

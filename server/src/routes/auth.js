@@ -1,7 +1,7 @@
 import express from 'express'
 import crypto from 'crypto'
 import { supabaseAdmin, createAuthClient } from '../lib/supabase.js'
-import { mapProfile, attachSocial } from '../lib/mappers.js'
+import { mapProfile } from '../lib/mappers.js'
 import { validateUsernameFormat } from '../utils/username.js'
 
 const router = express.Router()
@@ -855,19 +855,40 @@ router.get('/me', async (req, res) => {
     const token = req.headers.authorization?.replace('Bearer ', '')
     if (!token) return res.status(401).json({ message: 'No autorizado' })
 
-    const { data: authData, error } = await supabaseAdmin.auth.getUser(token)
-    if (error || !authData?.user) return res.status(401).json({ message: 'Token inválido' })
+    // Prefer local JWT when SUPABASE_JWT_SECRET is set; otherwise Auth API.
+    let userId = null
+    let roleFromMeta = null
+    const secret = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET
+    if (secret) {
+      try {
+        const jwt = (await import('jsonwebtoken')).default
+        const payload = jwt.verify(token, secret, { algorithms: ['HS256'] })
+        userId = payload?.sub || null
+        roleFromMeta = payload?.app_metadata?.role || null
+      } catch {
+        userId = null
+      }
+    }
+    if (!userId) {
+      const { data: authData, error } = await supabaseAdmin.auth.getUser(token)
+      if (error || !authData?.user) return res.status(401).json({ message: 'Token inválido' })
+      userId = authData.user.id
+      roleFromMeta = authData.user.app_metadata?.role || null
+    }
 
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('*')
-      .eq('id', authData.user.id)
+      .select(
+        'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+      )
+      .eq('id', userId)
       .single()
 
     if (!profile) return res.status(404).json({ message: 'Usuario no encontrado' })
+    if (roleFromMeta && roleFromMeta !== profile.role) profile.role = roleFromMeta
 
-    const withSocial = await attachSocial(supabaseAdmin, profile)
-    res.json({ user: mapProfile(withSocial) })
+    // Social graph is loaded on demand (profile / follow endpoints) — keep boot fast
+    res.json({ user: mapProfile(profile) })
   } catch (error) {
     res.status(401).json({ message: 'Token inválido' })
   }

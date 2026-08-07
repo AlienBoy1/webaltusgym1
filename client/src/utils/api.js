@@ -33,7 +33,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 25000
+  timeout: 15000
 })
 
 let isRefreshing = false
@@ -48,6 +48,15 @@ const processQueue = (error, token = null) => {
     }
   })
   refreshQueue = []
+}
+
+function hardLogoutToLogin() {
+  clearAuthTokens()
+  const path = window.location.pathname
+  if (path !== '/login' && path !== '/register' && path !== '/' && !path.startsWith('/auth/')) {
+    const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.href = `/login?redirect=${redirect}`
+  }
 }
 
 api.interceptors.request.use(
@@ -75,8 +84,13 @@ api.interceptors.response.use(
       url.includes('/auth/request-access') ||
       url.includes('/auth/complete-registration')
 
-    // Wrong password / form errors: never wipe an existing session storage by accident
+    // Wrong password / form errors: never wipe an existing session
     if (error.response?.status === 401 && isCredentialRequest) {
+      return Promise.reject(error)
+    }
+
+    // Network / timeout: never wipe session
+    if (!error.response || error.code === 'ECONNABORTED') {
       return Promise.reject(error)
     }
 
@@ -106,13 +120,12 @@ api.interceptors.response.use(
             headers: {
               'Content-Type': 'application/json'
             },
-            timeout: 25000
+            timeout: 15000
           }
         )
 
         const token = response.data.token
         const nextRefreshToken = response.data.refreshToken
-        // Keep tokens in the same persistence tier the user chose ("Recordarme")
         const remember = isRememberMeEnabled() || Boolean(localStorage.getItem('token'))
         setAuthTokens(token, nextRefreshToken, remember)
         processQueue(null, token)
@@ -120,11 +133,9 @@ api.interceptors.response.use(
         return api(originalRequest)
       } catch (refreshError) {
         processQueue(refreshError, null)
-        clearAuthTokens()
-        const path = window.location.pathname
-        if (path !== '/login' && path !== '/register' && path !== '/' && !path.startsWith('/auth/')) {
-          const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-          window.location.href = `/login?redirect=${redirect}`
+        // Only hard-logout when refresh itself returned 401 (token truly dead)
+        if (refreshError?.response?.status === 401 || refreshError?.response?.status === 403) {
+          hardLogoutToLogin()
         }
         return Promise.reject(refreshError)
       } finally {
@@ -132,13 +143,9 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401 && !isCredentialRequest) {
-      clearAuthTokens()
-      const path = window.location.pathname
-      if (path !== '/login' && path !== '/register' && path !== '/' && !path.startsWith('/auth/')) {
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-        window.location.href = `/login?redirect=${redirect}`
-      }
+    // 401 without refresh token (or refresh endpoint failed above)
+    if (error.response?.status === 401 && !isCredentialRequest && !refreshToken) {
+      hardLogoutToLogin()
     }
 
     return Promise.reject(error)

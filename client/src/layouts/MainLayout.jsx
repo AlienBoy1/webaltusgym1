@@ -120,8 +120,8 @@ export default function MainLayout() {
   }
   
   useEffect(() => {
-    fetchNotifications()
     const id = user?.id || user?._id
+    fetchNotifications()
     if (id) {
       initSocket(id)
       subscribeRealtime(id)
@@ -130,7 +130,8 @@ export default function MainLayout() {
       disconnectSocket()
       unsubscribeRealtime()
     }
-  }, [user])
+    // Intentionally only on user id — full user object changes must not reconnect sockets
+  }, [user?.id, user?._id])
 
   useEffect(() => installMediaProtection(), [])
 
@@ -140,10 +141,18 @@ export default function MainLayout() {
       useChatStore.getState().reset()
       return
     }
-    useChatStore.getState().prefetch()
+    // Defer chat prefetch so first paint / page APIs win
+    const t = window.setTimeout(() => {
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(() => useChatStore.getState().prefetch(), { timeout: 2500 })
+      } else {
+        useChatStore.getState().prefetch()
+      }
+    }, 400)
+    return () => window.clearTimeout(t)
   }, [user?.id, user?._id])
 
-  // Apply saved theme / accent across the whole app on session start
+  // Apply saved theme / accent — prefer cache; fetch light settings only if missing
   useEffect(() => {
     const id = user?.id || user?._id
     if (!id) return
@@ -151,6 +160,18 @@ export default function MainLayout() {
     if (cached) {
       applyAppearanceSettings(cached)
       bindSystemThemeListener(() => cached.theme || 'dark')
+      setThemeMode(
+        cached.theme === 'light'
+          ? 'light'
+          : cached.theme === 'system'
+            ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+            : cached.theme === 'dark'
+              ? 'dark'
+              : 'light'
+      )
+      return
     }
     ;(async () => {
       try {
@@ -160,10 +181,18 @@ export default function MainLayout() {
           cacheAppearance(data.settings)
           localStorage.setItem(`settings_${id}`, JSON.stringify(data.settings))
           bindSystemThemeListener(() => data.settings.theme || 'dark')
-          setThemeMode(data.settings.theme === 'light' ? 'light' : data.settings.theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : 'dark')
+          setThemeMode(
+            data.settings.theme === 'light'
+              ? 'light'
+              : data.settings.theme === 'system'
+                ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                  ? 'dark'
+                  : 'light'
+                : 'dark'
+          )
         }
       } catch {
-        /* keep cached */
+        /* keep defaults */
       }
     })()
   }, [user?.id, user?._id])

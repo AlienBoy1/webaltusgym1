@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { setAuthTokens, isRememberMeEnabled, getStoredToken } from '../utils/tokenStorage'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bmzaoaeykfmmppwrsrxn.supabase.co'
 const supabaseAnonKey =
@@ -11,6 +12,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true
   }
+})
+
+// Keep app tokenStorage in sync when Supabase rotates refresh tokens
+supabase.auth.onAuthStateChange((event, session) => {
+  if (!session?.access_token || !session?.refresh_token) return
+  if (event !== 'TOKEN_REFRESHED' && event !== 'SIGNED_IN') return
+  // Only sync if we already have an app session (avoid writing guest browser sessions)
+  if (!getStoredToken() && event === 'SIGNED_IN') return
+  const remember = isRememberMeEnabled() || Boolean(localStorage.getItem('token'))
+  setAuthTokens(session.access_token, session.refresh_token, remember)
 })
 
 export default supabase

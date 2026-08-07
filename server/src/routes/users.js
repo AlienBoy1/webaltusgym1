@@ -51,11 +51,13 @@ router.get('/profile', authenticate, async (req, res) => {
   try {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('*')
+      .select(
+        'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
+      )
       .eq('id', req.user.id)
       .single()
-    const withSocial = await attachSocial(supabaseAdmin, profile)
-    res.json({ ...mapProfile(withSocial), settings: profile.settings || {} })
+    // Keep social empty here — follow counts load via dedicated endpoints / UserProfile
+    res.json({ ...mapProfile(profile), settings: profile?.settings || {} })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener perfil', error: error.message })
   }

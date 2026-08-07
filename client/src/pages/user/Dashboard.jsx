@@ -65,8 +65,8 @@ function pickMessage(seedKey) {
 }
 
 export default function Dashboard() {
-  const { user, refreshUser } = useAuthStore()
-  const { fetchNotifications, unreadCount } = useNotificationStore()
+  const { user } = useAuthStore()
+  const { unreadCount } = useNotificationStore()
   const [stats, setStats] = useState(null)
   const [visitTick, setVisitTick] = useState(0)
 
@@ -77,8 +77,6 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      await refreshUser()
-      await fetchNotifications()
       const { data } = await api.get('/users/stats')
       setStats(data)
     } catch (error) {
