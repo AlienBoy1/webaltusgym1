@@ -19,7 +19,8 @@ export const TUTORIAL_IDS = {
   CLASSES: 'classes',
   INVITES: 'invites',
   PROGRESS: 'progress',
-  REST_TIMES: 'rest_times'
+  REST_TIMES: 'rest_times',
+  PRIVACY_PERMISSIONS: 'privacy_permissions'
 }
 
 /**
@@ -34,7 +35,8 @@ export const PRE_SPOTLIGHT_TUTORIAL_IDS = [
   TUTORIAL_IDS.CHALLENGES,
   TUTORIAL_IDS.CLASSES,
   TUTORIAL_IDS.INVITES,
-  TUTORIAL_IDS.PROGRESS
+  TUTORIAL_IDS.PROGRESS,
+  TUTORIAL_IDS.REST_TIMES
 ]
 
 export const TUTORIAL_CATALOG = [
@@ -119,6 +121,15 @@ export const TUTORIAL_CATALOG = [
     description: 'Ajusta el timer de descanso, el auto-inicio y las alertas desde Configuración.',
     completionKey: 'qyntra_tutorial_rest_times_done',
     settingsKey: 'tutorialRestTimesCompleted'
+  },
+  {
+    id: TUTORIAL_IDS.PRIVACY_PERMISSIONS,
+    title: 'Permisos y privacidad',
+    short: 'Almacenamiento, notificaciones y perfil',
+    icon: '🔐',
+    description: 'Activa el almacenamiento, controla notificaciones y decide si tu perfil es público o privado.',
+    completionKey: 'qyntra_tutorial_privacy_permissions_done',
+    settingsKey: 'tutorialPrivacyPermissionsCompleted'
   }
 ]
 
@@ -555,6 +566,57 @@ const REST_TIMES_STEPS = [
   }
 ]
 
+const PRIVACY_PERMISSIONS_STEPS = [
+  {
+    id: 'pp-permissions-nav',
+    path: '/settings?section=permissions',
+    target: 'tour-settings-permissions-section',
+    demo: 'settings-permissions-nav',
+    title: 'Permisos del dispositivo',
+    body: 'Aquí Qyntra pide solo lo necesario. Empieza por el acceso a almacenamiento para compartir fotos y videos.'
+  },
+  {
+    id: 'pp-storage',
+    path: '/settings?section=permissions',
+    target: 'tour-settings-storage-access',
+    demo: 'settings-storage-access',
+    title: 'Acceso a almacenamiento',
+    body: 'Actívalo para subir historias y medios. Sin este permiso, la comunidad no podrá recibir tu contenido multimedia.'
+  },
+  {
+    id: 'pp-notifications-nav',
+    path: '/settings?section=notifications',
+    target: 'tour-settings-notifications-section',
+    demo: 'settings-notifications-nav',
+    title: 'Notificaciones',
+    body: 'Entra a Notificaciones para decidir qué alertas quieres recibir — o apagarlas por completo.'
+  },
+  {
+    id: 'pp-push',
+    path: '/settings?section=notifications',
+    target: 'tour-settings-notifications-push',
+    demo: 'settings-notifications-push',
+    title: 'Push y recordatorios',
+    body: 'Puedes activar o desactivar push, email, entrenos, social y retos. Tú eliges el nivel de ruido.'
+  },
+  {
+    id: 'pp-privacy-nav',
+    path: '/settings?section=privacy',
+    target: 'tour-settings-privacy-section',
+    demo: 'settings-privacy-nav',
+    title: 'Privacidad del perfil',
+    body: 'Define cómo te ven los demás. El control principal es Perfil público o privado.'
+  },
+  {
+    id: 'pp-profile-public',
+    path: '/settings?section=privacy',
+    target: 'tour-settings-profile-public',
+    demo: 'settings-profile-public',
+    title: 'Público o privado',
+    body: 'Si el perfil es privado, solo tus seguidores ven tus publicaciones. Si es público, tu comunidad crece más fácil.'
+  }
+]
+
 export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.QUICK_START]: QUICK_START_STEPS,
   [TUTORIAL_IDS.PROFILE_EDIT]: PROFILE_STEPS,
@@ -564,7 +626,8 @@ export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.CLASSES]: CLASS_STEPS,
   [TUTORIAL_IDS.INVITES]: INVITE_STEPS,
   [TUTORIAL_IDS.PROGRESS]: PROGRESS_STEPS,
-  [TUTORIAL_IDS.REST_TIMES]: REST_TIMES_STEPS
+  [TUTORIAL_IDS.REST_TIMES]: REST_TIMES_STEPS,
+  [TUTORIAL_IDS.PRIVACY_PERMISSIONS]: PRIVACY_PERMISSIONS_STEPS
 }
 
 export function getTutorialMeta(id) {

@@ -3,26 +3,19 @@ import crypto from 'crypto'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { mapProfile } from '../lib/mappers.js'
 import { authenticate, isAdmin } from '../middleware/auth.js'
+import {
+  buildLegacyFeatures,
+  buildScheduledPaidFeatures,
+  mapMembershipPlanRow,
+  syncMembershipPlansLifecycle
+} from '../services/membershipService.js'
+import { isPaidEraLive, PAID_ERA_START_ISO } from '../utils/membershipLifecycle.js'
 
 const router = express.Router()
 router.use(authenticate, isAdmin)
 
 function mapMembershipPlan(row) {
-  if (!row) return null
-  return {
-    _id: row.id,
-    id: row.id,
-    plan: row.plan,
-    name: row.name,
-    description: row.description || '',
-    price: Number(row.price) || 0,
-    duration: row.duration,
-    durationUnit: row.duration_unit || 'days',
-    benefits: row.benefits || [],
-    features: row.features || {},
-    active: row.active,
-    createdAt: row.created_at
-  }
+  return mapMembershipPlanRow(row)
 }
 
 function mapRegistrationRequest(row, extras = {}) {
@@ -433,10 +426,10 @@ const initializeDefaultMemberships = async () => {
       {
         plan: 'basic',
         name: 'Básico',
-        price: 29,
+        price: 0,
         duration: 30,
-        benefits: ['Acceso al gimnasio', 'Horario limitado'],
-        features: {
+        benefits: ['Acceso al gimnasio', 'Horario limitado', 'Comunidad y entrenos'],
+        features: buildLegacyFeatures({
           accessToClasses: true,
           accessToChallenges: true,
           accessToSocial: true,
@@ -444,16 +437,16 @@ const initializeDefaultMemberships = async () => {
           accessToReports: false,
           personalTrainer: false,
           nutritionPlan: false
-        },
-        active: true
+        }),
+        active: !isPaidEraLive()
       },
       {
         plan: 'premium',
         name: 'Premium',
-        price: 49,
+        price: 0,
         duration: 30,
         benefits: ['Acceso completo', 'Clases grupales', 'Área de pesas'],
-        features: {
+        features: buildLegacyFeatures({
           accessToClasses: true,
           accessToChallenges: true,
           accessToSocial: true,
@@ -461,16 +454,16 @@ const initializeDefaultMemberships = async () => {
           accessToReports: true,
           personalTrainer: false,
           nutritionPlan: false
-        },
-        active: true
+        }),
+        active: !isPaidEraLive()
       },
       {
         plan: 'elite',
         name: 'Elite',
-        price: 79,
+        price: 0,
         duration: 30,
         benefits: ['Todo Premium', 'Entrenador personal', 'Nutrición', 'Spa'],
-        features: {
+        features: buildLegacyFeatures({
           accessToClasses: true,
           accessToChallenges: true,
           accessToSocial: true,
@@ -478,8 +471,8 @@ const initializeDefaultMemberships = async () => {
           accessToReports: true,
           personalTrainer: true,
           nutritionPlan: true
-        },
-        active: true
+        }),
+        active: !isPaidEraLive()
       }
     ]
 
@@ -495,6 +488,8 @@ const initializeDefaultMemberships = async () => {
         console.log(`Membresía ${membershipData.plan} inicializada`)
       }
     }
+
+    await syncMembershipPlansLifecycle()
   } catch (error) {
     console.error('Error inicializando membresías:', error)
   }
@@ -534,7 +529,7 @@ router.get('/memberships/:id', async (req, res) => {
   }
 })
 
-// Create membership
+// Create membership — scheduled for public release Jan 1, 2027
 router.post('/memberships', async (req, res) => {
   try {
     const { plan, name, description, price, duration, durationUnit, benefits, features } = req.body
@@ -553,33 +548,63 @@ router.post('/memberships', async (req, res) => {
       return res.status(400).json({ message: 'Ya existe una membresía con este plan' })
     }
 
-    const { data, error } = await supabaseAdmin
+    const featureFlags = {
+      accessToClasses: true,
+      accessToChallenges: true,
+      accessToSocial: true,
+      accessToChat: true,
+      accessToReports: false,
+      personalTrainer: false,
+      nutritionPlan: false,
+      ...(features || {})
+    }
+
+    const paidLive = isPaidEraLive()
+    const insertPayload = {
+      plan,
+      name,
+      price: parseFloat(price),
+      duration: parseInt(duration, 10),
+      benefits: benefits || [],
+      features: paidLive
+        ? {
+            ...buildScheduledPaidFeatures(featureFlags),
+            __meta: {
+              era: 'paid',
+              publicFrom: PAID_ERA_START_ISO,
+              isLegacyFree: false,
+              retiresAt: null
+            }
+          }
+        : buildScheduledPaidFeatures(featureFlags),
+      active: paidLive
+    }
+
+    // Optional columns (supported schemas)
+    if (description !== undefined) insertPayload.description = description || ''
+    if (durationUnit) insertPayload.duration_unit = durationUnit === 'months' ? 'months' : 'days'
+
+    let data
+    let error
+    ;({ data, error } = await supabaseAdmin
       .from('membership_plans')
-      .insert({
-        plan,
-        name,
-        price: parseFloat(price),
-        duration: parseInt(duration),
-        benefits: benefits || [],
-        features: features || {
-          accessToClasses: true,
-          accessToChallenges: true,
-          accessToSocial: true,
-          accessToChat: true,
-          accessToReports: false,
-          personalTrainer: false,
-          nutritionPlan: false
-        },
-        active: true
-      })
+      .insert(insertPayload)
       .select('*')
-      .single()
+      .single())
+
+    // Retry without optional columns if schema is older
+    if (error && (insertPayload.description !== undefined || insertPayload.duration_unit)) {
+      delete insertPayload.description
+      delete insertPayload.duration_unit
+      ;({ data, error } = await supabaseAdmin
+        .from('membership_plans')
+        .insert(insertPayload)
+        .select('*')
+        .single())
+    }
 
     if (error) throw error
-    const mapped = mapMembershipPlan(data)
-    if (description) mapped.description = description
-    if (durationUnit) mapped.durationUnit = durationUnit
-    res.status(201).json(mapped)
+    res.status(201).json(mapMembershipPlan(data))
   } catch (error) {
     res.status(500).json({ message: 'Error al crear membresía', error: error.message })
   }
@@ -588,15 +613,44 @@ router.post('/memberships', async (req, res) => {
 // Update membership
 router.put('/memberships/:id', async (req, res) => {
   try {
-    const { name, price, duration, benefits, features, active } = req.body
+    const { name, description, price, duration, durationUnit, benefits, features, active } = req.body
+
+    const { data: current } = await supabaseAdmin
+      .from('membership_plans')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (!current) return res.status(404).json({ message: 'Membresía no encontrada' })
 
     const updateData = {}
     if (name) updateData.name = name
+    if (description !== undefined) updateData.description = description
     if (price !== undefined) updateData.price = parseFloat(price)
-    if (duration !== undefined) updateData.duration = parseInt(duration)
+    if (duration !== undefined) updateData.duration = parseInt(duration, 10)
+    if (durationUnit !== undefined) {
+      updateData.duration_unit = durationUnit === 'months' ? 'months' : 'days'
+    }
     if (benefits) updateData.benefits = benefits
-    if (features) updateData.features = features
-    if (active !== undefined) updateData.active = active
+    if (features) {
+      const meta = current.features?.__meta
+      updateData.features = {
+        ...features,
+        ...(meta ? { __meta: meta } : {})
+      }
+    }
+    // Admins cannot manually publish legacy-retired or unpublish scheduled early
+    // except toggling within lifecycle rules via sync
+    if (active !== undefined) {
+      const mapped = mapMembershipPlan(current)
+      if (mapped.era === 'legacy' && isPaidEraLive()) {
+        updateData.active = false
+      } else if (mapped.phase === 'scheduled' && !isPaidEraLive()) {
+        updateData.active = false
+      } else {
+        updateData.active = active
+      }
+    }
 
     const { data, error } = await supabaseAdmin
       .from('membership_plans')
@@ -608,7 +662,14 @@ router.put('/memberships/:id', async (req, res) => {
     if (error) throw error
     if (!data) return res.status(404).json({ message: 'Membresía no encontrada' })
 
-    res.json(mapMembershipPlan(data))
+    await syncMembershipPlansLifecycle()
+    const { data: refreshed } = await supabaseAdmin
+      .from('membership_plans')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    res.json(mapMembershipPlan(refreshed || data))
   } catch (error) {
     res.status(500).json({ message: 'Error al actualizar membresía', error: error.message })
   }

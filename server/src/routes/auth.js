@@ -3,6 +3,16 @@ import crypto from 'crypto'
 import { supabaseAdmin, createAuthClient } from '../lib/supabase.js'
 import { mapProfile } from '../lib/mappers.js'
 import { validateUsernameFormat } from '../utils/username.js'
+import {
+  syncMembershipPlansLifecycle,
+  syncUserMembershipOnProfile
+} from '../services/membershipService.js'
+import {
+  FREE_ERA_END_ISO,
+  freeEraEndLabel,
+  isPastFreeEra,
+  paidEraStartLabel
+} from '../utils/membershipLifecycle.js'
 
 const router = express.Router()
 
@@ -171,6 +181,34 @@ function mapAuthUserPayload(mapped) {
     membership: mapped.membership,
     stats: mapped.stats,
     mustResetPassword: mapped.mustResetPassword
+  }
+}
+
+function membershipNoticeFor(membership) {
+  if (!membership || membership.__paidEra === true || membership.era === 'paid') return null
+  if (isPastFreeEra()) {
+    return {
+      type: 'expired',
+      title: 'Periodo gratuito finalizado',
+      body: `Tu membresía gratuita venció el ${freeEraEndLabel()}. Las membresías de pago se habilitan el ${paidEraStartLabel()}.`,
+      freeEndsAt: FREE_ERA_END_ISO
+    }
+  }
+  return {
+    type: 'free_era_warning',
+    title: 'Membresía gratuita por tiempo limitado',
+    body: `Tu membresía gratuita vence el ${freeEraEndLabel()}. A partir de enero 2027 se habilitarán los planes de pago en Qyntra.`,
+    freeEndsAt: FREE_ERA_END_ISO
+  }
+}
+
+async function prepareAuthProfile(profile) {
+  const synced = await syncUserMembershipOnProfile(profile)
+  syncMembershipPlansLifecycle().catch(() => {})
+  const mapped = mapProfile(synced)
+  return {
+    mapped,
+    membershipNotice: membershipNoticeFor(mapped.membership)
   }
 }
 
@@ -614,7 +652,8 @@ router.post('/google', async (req, res) => {
       .then(() => {})
       .catch(() => {})
 
-    const mapped = mapProfile(profileById)
+    const { mapped, membershipNotice } = await prepareAuthProfile(profileById)
+
     const token = accessToken
     let nextRefresh = refreshToken || null
 
@@ -628,7 +667,8 @@ router.post('/google', async (req, res) => {
       message: 'Login exitoso',
       token,
       refreshToken: nextRefresh,
-      user: mapAuthUserPayload(mapped)
+      user: mapAuthUserPayload(mapped),
+      membershipNotice
     })
   } catch (error) {
     console.error('Google auth error:', error)
@@ -659,13 +699,14 @@ router.post('/login', async (req, res) => {
       .then(() => {})
       .catch(() => {})
 
-    const mapped = mapProfile(profile)
+    const { mapped, membershipNotice } = await prepareAuthProfile(profile)
 
     res.json({
       message: 'Login exitoso',
       token: session.session.access_token,
       refreshToken: session.session.refresh_token,
-      user: mapAuthUserPayload(mapped)
+      user: mapAuthUserPayload(mapped),
+      membershipNotice
     })
   } catch (error) {
     console.error('Login error:', error)
@@ -698,12 +739,13 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ message: 'Usuario inválido' })
     }
 
-    const mapped = mapProfile(profile)
+    const { mapped, membershipNotice } = await prepareAuthProfile(profile)
     res.json({
       message: 'Sesión renovada',
       token: session.access_token,
       refreshToken: session.refresh_token,
-      user: mapAuthUserPayload(mapped)
+      user: mapAuthUserPayload(mapped),
+      membershipNotice
     })
   } catch (error) {
     console.error('Refresh token error:', error)
@@ -892,9 +934,11 @@ router.get('/me', async (req, res) => {
       profile.avatar = null
     }
 
+    const { mapped, membershipNotice } = await prepareAuthProfile(profile)
+
     // Social graph is loaded on demand (profile / follow endpoints) — keep boot fast
     res.setHeader('Cache-Control', 'private, max-age=30')
-    res.json({ user: mapProfile(profile) })
+    res.json({ user: mapped, membershipNotice })
   } catch (error) {
     res.status(401).json({ message: 'Token inválido' })
   }

@@ -16,6 +16,15 @@ import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import ProtectedMedia from '../../components/ProtectedMedia'
 import { openTutorialHub } from '../../components/AppTutorial'
+import {
+  FEATURE_LABELS,
+  FREE_ERA_END_ISO,
+  displayFeatures,
+  formatMembershipDate,
+  freeEraEndLabel,
+  membershipStatusLabel,
+  paidEraStartLabel
+} from '../../utils/membershipLifecycle'
 
 const menuItems = [
   { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
@@ -36,19 +45,17 @@ function MembershipSection({ user }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (user?._id) {
+    if (user?._id || user?.id) {
       fetchMemberships()
     }
-  }, [user?._id, user?.membership?.plan])
+  }, [user?._id, user?.id, user?.membership?.plan])
 
   const fetchMemberships = async () => {
     try {
       setLoading(true)
       const { data } = await api.get('/users/memberships')
       setMemberships(data || [])
-      
-      // Find current membership
-      const current = data?.find(m => m.plan === user?.membership?.plan)
+      const current = data?.find((m) => m.plan === user?.membership?.plan)
       setCurrentMembership(current)
     } catch (error) {
       console.error('Error fetching memberships:', error)
@@ -65,12 +72,16 @@ function MembershipSection({ user }) {
         transition={{ delay: 0.25 }}
         className="card"
       >
-        <div className="text-center py-4">
-          <div className="w-6 h-6 border-2 border-[color:var(--border-subtle)] border-t-primary-500 rounded-full animate-spin mx-auto" />
+        <div className="py-4 text-center">
+          <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[color:var(--border-subtle)] border-t-primary-500" />
         </div>
       </motion.div>
     )
   }
+
+  const status = user?.membership?.status || 'active'
+  const endLabel = formatMembershipDate(user?.membership?.endDate || FREE_ERA_END_ISO)
+  const isLegacy = user?.membership?.era !== 'paid' && user?.membership?.__paidEra !== true
 
   return (
     <>
@@ -78,45 +89,60 @@ function MembershipSection({ user }) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="card"
+        className="card overflow-hidden"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="font-display text-xl flex items-center gap-2">
             <FiAward className="text-accent-cyan" />
             Mi Membresía
           </h2>
           <button
+            type="button"
             onClick={() => setShowAllMemberships(true)}
-            className="text-primary-500 hover:text-primary-400 text-sm"
+            className="text-sm font-medium text-primary-500 hover:text-primary-400"
           >
-            Ver otras
+            Ver planes
           </button>
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl bg-[color:var(--bg-muted)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/70 p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="font-semibold text-lg">
                 {currentMembership?.name || `Plan ${user?.membership?.plan?.toUpperCase() || 'Básico'}`}
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                user?.membership?.status === 'active' ? 'bg-accent-green/20 text-accent-green' :
-                user?.membership?.status === 'expiring' ? 'bg-yellow-500/20 text-yellow-500' :
-                'bg-red-500/20 text-red-500'
-              }`}>
-                {user?.membership?.status === 'active' ? 'Activa' :
-                 user?.membership?.status === 'expiring' ? 'Por vencer' : 'Vencida'}
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  status === 'active'
+                    ? 'bg-accent-green/20 text-accent-green'
+                    : status === 'expiring'
+                      ? 'bg-yellow-500/20 text-yellow-500'
+                      : 'bg-red-500/20 text-red-500'
+                }`}
+              >
+                {membershipStatusLabel(status)}
               </span>
             </div>
+
+            {isLegacy && (
+              <p className="mb-3 rounded-xl border border-[rgba(var(--color-primary-rgb),0.25)] bg-[rgba(var(--color-primary-rgb),0.08)] px-3 py-2 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+                Membresía gratuita de transición. Vence el <strong className="text-[color:var(--text-primary)]">{freeEraEndLabel()}</strong>.
+                Los planes de pago se habilitan el {paidEraStartLabel()}.
+              </p>
+            )}
 
             {currentMembership && (
               <>
                 <div className="mb-3 flex flex-wrap items-center gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {currentMembership.price > 0 && (
+                  {Number(currentMembership.price) > 0 ? (
                     <div className="flex items-center gap-1">
                       <FiDollarSign size={14} />
                       ${currentMembership.price}
                     </div>
+                  ) : (
+                    <span className="rounded-full bg-accent-green/15 px-2 py-0.5 text-xs font-semibold text-accent-green">
+                      Periodo gratuito
+                    </span>
                   )}
                   <div className="flex items-center gap-1">
                     <FiClock size={14} />
@@ -125,16 +151,24 @@ function MembershipSection({ user }) {
                 </div>
 
                 {currentMembership.description && (
-                  <p className="mb-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{currentMembership.description}</p>
+                  <p className="mb-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    {currentMembership.description}
+                  </p>
                 )}
 
-                {currentMembership.benefits && currentMembership.benefits.length > 0 && (
+                {currentMembership.benefits?.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Beneficios:</div>
+                    <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      Beneficios
+                    </div>
                     <div className="space-y-1">
                       {currentMembership.benefits.map((benefit, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                          <FiCheck size={14} className="text-accent-green flex-shrink-0" />
+                        <div
+                          key={idx}
+                          className="flex items-center gap-2 text-sm"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <FiCheck size={14} className="flex-shrink-0 text-accent-green" />
                           <span>{benefit}</span>
                         </div>
                       ))}
@@ -144,120 +178,123 @@ function MembershipSection({ user }) {
               </>
             )}
 
-            <div className="mt-4 border-t border-[color:var(--border-subtle)] pt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {user?.membership?.endDate ? (
-                <>
-                  Vence: {new Date(user.membership.endDate).toLocaleDateString('es-ES', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </>
-              ) : (
-                'Sin fecha de vencimiento'
-              )}
+            <div
+              className="mt-4 border-t border-[color:var(--border-subtle)] pt-4 text-xs"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {endLabel ? `Vence: ${endLabel}` : 'Sin fecha de vencimiento'}
             </div>
           </div>
         </div>
       </motion.div>
 
-      {/* All Memberships Modal */}
       <AnimatePresence>
         {showAllMemberships && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center bg-black/70 sm:items-center sm:p-4">
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="card max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="app-bottom-sheet-panel max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-5 sm:rounded-3xl"
             >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="font-display text-2xl">Membresías Disponibles</h2>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-2xl tracking-wide">Planes Qyntra</h2>
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    Gratuitos hasta {freeEraEndLabel()} · Pago desde {paidEraStartLabel()}
+                  </p>
+                </div>
                 <button
+                  type="button"
                   onClick={() => setShowAllMemberships(false)}
                   className="rounded-lg p-2 transition-colors hover:bg-[color:var(--bg-muted)]"
                 >
-                  <FiX size={24} />
+                  <FiX size={22} />
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {memberships.map((membership) => {
                   const isCurrent = membership.plan === user?.membership?.plan
+                  const features = displayFeatures(membership.features)
                   return (
                     <div
                       key={membership._id || membership.plan}
-                      className={`rounded-xl border-2 p-4 ${
+                      className={`rounded-2xl border-2 p-4 ${
                         isCurrent
                           ? 'border-primary-500 bg-primary-500/10'
-                          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]'
+                          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/50'
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
                             <h3 className="font-semibold text-lg">{membership.name}</h3>
                             {isCurrent && (
-                              <span className="px-2 py-0.5 bg-primary-500/20 text-primary-500 text-xs rounded-full">
+                              <span className="rounded-full bg-primary-500/20 px-2 py-0.5 text-xs text-primary-500">
                                 Actual
+                              </span>
+                            )}
+                            {membership.comingSoon && (
+                              <span className="rounded-full bg-accent-cyan/15 px-2 py-0.5 text-xs font-semibold text-accent-cyan">
+                                Desde 1 ene 2027
+                              </span>
+                            )}
+                            {membership.isLegacyFree && (
+                              <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-semibold text-yellow-500">
+                                Transición gratuita
                               </span>
                             )}
                           </div>
                           {membership.description && (
-                            <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{membership.description}</p>
+                            <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                              {membership.description}
+                            </p>
                           )}
                         </div>
-                        {membership.price > 0 && (
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-primary-500">
-                              ${membership.price}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                              / {membership.duration} días
-                            </div>
-                          </div>
-                        )}
+                        <div className="shrink-0 text-right">
+                          {Number(membership.price) > 0 ? (
+                            <>
+                              <div className="text-2xl font-bold text-primary-500">${membership.price}</div>
+                              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                / {membership.duration} días
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-sm font-semibold text-accent-green">Gratis</div>
+                          )}
+                        </div>
                       </div>
 
-                      {membership.benefits && membership.benefits.length > 0 && (
-                        <div className="space-y-2 mb-3">
-                          <div className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                            <FiGift size={12} />
-                            Beneficios:
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            {membership.benefits.map((benefit, idx) => (
-                              <div key={idx} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                <FiCheck size={12} className="text-accent-green flex-shrink-0" />
-                                <span>{benefit}</span>
-                              </div>
-                            ))}
-                          </div>
+                      {membership.benefits?.length > 0 && (
+                        <div className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                          {membership.benefits.map((benefit, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 text-sm"
+                              style={{ color: 'var(--text-secondary)' }}
+                            >
+                              <FiCheck size={12} className="flex-shrink-0 text-accent-green" />
+                              <span>{benefit}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
 
-                      {membership.features && (
-                        <div className="border-t border-[color:var(--border-subtle)] pt-3">
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            {Object.entries(membership.features).map(([key, value]) => (
-                              <div key={key} className="flex items-center gap-2">
-                                {value ? (
-                                  <FiCheck size={12} className="text-accent-green" />
-                                ) : (
-                                  <FiX size={12} style={{ color: 'var(--text-muted)' }} />
-                                )}
-                                <span style={{ color: value ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
-                                  {key === 'accessToClasses' && 'Clases'}
-                                  {key === 'accessToChallenges' && 'Retos'}
-                                  {key === 'accessToSocial' && 'Social'}
-                                  {key === 'accessToChat' && 'Chat'}
-                                  {key === 'accessToReports' && 'Reportes'}
-                                  {key === 'personalTrainer' && 'Entrenador Personal'}
-                                  {key === 'nutritionPlan' && 'Plan Nutricional'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+                      {Object.keys(features).length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 border-t border-[color:var(--border-subtle)] pt-3 text-xs">
+                          {Object.entries(features).map(([key, value]) => (
+                            <div key={key} className="flex items-center gap-2">
+                              {value ? (
+                                <FiCheck size={12} className="text-accent-green" />
+                              ) : (
+                                <FiX size={12} style={{ color: 'var(--text-muted)' }} />
+                              )}
+                              <span style={{ color: value ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+                                {FEATURE_LABELS[key] || key}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -265,8 +302,11 @@ function MembershipSection({ user }) {
                 })}
               </div>
 
-              <div className="mt-6 border-t border-[color:var(--border-subtle)] pt-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                <p>Los pagos se realizan en persona con el administrador del gimnasio</p>
+              <div
+                className="mt-6 border-t border-[color:var(--border-subtle)] pt-5 text-center text-sm"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <p>Los pagos se gestionarán en la app a partir de 2027. Mientras tanto, tu acceso gratuito sigue activo hasta la fecha indicada.</p>
               </div>
             </motion.div>
           </div>

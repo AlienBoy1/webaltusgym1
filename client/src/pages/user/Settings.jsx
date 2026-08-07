@@ -251,7 +251,17 @@ export default function UserSettings() {
             <button
               key={section.id}
               type="button"
-              data-tour={section.id === 'workout' ? 'tour-settings-workout-section' : undefined}
+              data-tour={
+                section.id === 'workout'
+                  ? 'tour-settings-workout-section'
+                  : section.id === 'permissions'
+                    ? 'tour-settings-permissions-section'
+                    : section.id === 'notifications'
+                      ? 'tour-settings-notifications-section'
+                      : section.id === 'privacy'
+                        ? 'tour-settings-privacy-section'
+                        : undefined
+              }
               onClick={() => setActiveSection(section.id)}
               className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeSection === section.id ? 'bg-primary-500/10 text-primary-500' : 'text-gray-400 hover:bg-dark-200 hover:text-white'}`}
             >
@@ -336,14 +346,18 @@ export default function UserSettings() {
                 <h2 className="font-display text-xl flex items-center gap-2"><FiBell className="text-primary-500" /> Notificaciones</h2>
                 <div className="space-y-4">
                   {[
-                    { key: 'push', icon: FiSmartphone, label: 'Notificaciones Push', desc: 'Recibe alertas en tu dispositivo', handler: handlePushToggle },
+                    { key: 'push', icon: FiSmartphone, label: 'Notificaciones Push', desc: 'Recibe alertas en tu dispositivo', handler: handlePushToggle, tour: 'tour-settings-notifications-push' },
                     { key: 'email', icon: FiMail, label: 'Emails', desc: 'Recibe recordatorios por email' },
                     { key: 'workoutReminders', icon: FiActivity, label: 'Recordatorios de Entrenamiento', desc: 'Notificaciones para entrenar' },
                     { key: 'socialActivity', icon: FiHeart, label: 'Actividad Social', desc: 'Likes, comentarios y seguidores' },
                     { key: 'challenges', icon: FiTarget, label: 'Retos', desc: 'Actualizaciones de retos' },
                     { key: 'marketing', icon: FiMail, label: 'Marketing', desc: 'Ofertas y promociones' },
                   ].map((item, i) => (
-                    <div key={item.key} className={`flex items-center justify-between py-3 ${i < 5 ? 'border-b border-white/5' : ''}`}>
+                    <div
+                      key={item.key}
+                      data-tour={item.tour}
+                      className={`flex items-center justify-between py-3 ${i < 5 ? 'border-b border-white/5' : ''}`}
+                    >
                       <div className="flex items-center gap-3">
                         <item.icon className="text-gray-400" />
                         <div><div className="font-medium">{item.label}</div><div className="text-gray-400 text-sm">{item.desc}</div></div>
@@ -360,12 +374,16 @@ export default function UserSettings() {
                 <h2 className="font-display text-xl flex items-center gap-2"><FiEye className="text-accent-cyan" /> Privacidad</h2>
                 <div className="space-y-4">
                   {[
-                    { key: 'profilePublic', label: 'Perfil Público', desc: 'Si está desactivado, solo tus seguidores ven tus publicaciones' },
+                    { key: 'profilePublic', label: 'Perfil Público', desc: 'Si está desactivado, solo tus seguidores ven tus publicaciones', tour: 'tour-settings-profile-public' },
                     { key: 'showProgress', label: 'Mostrar Progreso', desc: 'Compartir estadísticas y logros' },
                     { key: 'showWorkouts', label: 'Mostrar Entrenamientos', desc: 'Visible en tu perfil público' },
                     { key: 'allowMessages', label: 'Permitir Mensajes', desc: 'Recibir mensajes de otros usuarios' },
                   ].map((item, i) => (
-                    <div key={item.key} className={`flex items-center justify-between py-3 ${i < 3 ? 'border-b border-white/5' : ''}`}>
+                    <div
+                      key={item.key}
+                      data-tour={item.tour}
+                      className={`flex items-center justify-between py-3 ${i < 3 ? 'border-b border-white/5' : ''}`}
+                    >
                       <div><div className="font-medium">{item.label}</div><div className="text-gray-400 text-sm">{item.desc}</div></div>
                       <Toggle enabled={settings.privacy?.[item.key]} onChange={(v) => updateSetting('privacy', item.key, v)} />
                     </div>
@@ -380,7 +398,10 @@ export default function UserSettings() {
                   <FiHardDrive className="text-primary-500" /> Permisos del dispositivo
                 </h2>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-white/5 py-3">
+                  <div
+                    data-tour="tour-settings-storage-access"
+                    className="flex items-center justify-between border-b border-white/5 py-3"
+                  >
                     <div>
                       <div className="font-medium">Acceso a almacenamiento</div>
                       <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>

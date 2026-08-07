@@ -10,6 +10,7 @@ import UsernameSetupModal from '../components/UsernameSetupModal'
 import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
+import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -685,6 +686,7 @@ export default function MainLayout() {
       <AppTutorial />
       <TutorialHub />
       <NewTutorialPrompt />
+      <MembershipExpiryNotice />
     </div>
     </StoryViewerProvider>
   )

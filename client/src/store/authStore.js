@@ -77,8 +77,11 @@ export const useAuthStore = create((set, get) => ({
   loading: false,
   initializing: true,
   authIntent: null,
+  membershipNotice: null,
 
-  loginWithSession: async (token, refreshToken, userPayload, { remember = true } = {}) => {
+  clearMembershipNotice: () => set({ membershipNotice: null }),
+
+  loginWithSession: async (token, refreshToken, userPayload, { remember = true, membershipNotice = null } = {}) => {
     if (!token || !refreshToken || !userPayload) {
       return { success: false, message: 'Sesión incompleta' }
     }
@@ -95,15 +98,13 @@ export const useAuthStore = create((set, get) => ({
         isAuthenticated: true,
         rememberMe: remember,
         loading: false,
-        authIntent: null
+        authIntent: null,
+        membershipNotice: membershipNotice || null
       })
       return { success: true }
     } catch (error) {
       set({ loading: false, authIntent: null })
-      return {
-        success: false,
-        message: error?.message || 'Error al establecer sesión'
-      }
+      return { success: false, message: error.message || 'Error de sesión' }
     }
   },
 
@@ -122,7 +123,8 @@ export const useAuthStore = create((set, get) => ({
         isAuthenticated: true,
         rememberMe: remember,
         loading: false,
-        authIntent: null
+        authIntent: null,
+        membershipNotice: data.membershipNotice || null
       })
       return { success: true }
     } catch (error) {
@@ -155,7 +157,8 @@ export const useAuthStore = create((set, get) => ({
         isAuthenticated: true,
         rememberMe: remember,
         loading: false,
-        authIntent: null
+        authIntent: null,
+        membershipNotice: data.membershipNotice || null
       })
       return { success: true }
     } catch (error) {
@@ -234,7 +237,8 @@ export const useAuthStore = create((set, get) => ({
       rememberMe: false,
       loading: true,
       authIntent: 'logout',
-      initializing: false
+      initializing: false,
+      membershipNotice: null
     })
     await new Promise((resolve) => setTimeout(resolve, 850))
     // PWA/logged-out UX: always login. Web landing remains available at `/` via "Volver".
@@ -291,7 +295,11 @@ export const useAuthStore = create((set, get) => ({
         next.profile = { ...(next.profile || {}), coverUrl: prev.profile.coverUrl }
       }
       persistCachedUser(next)
-      set({ user: next, isAuthenticated: true })
+      set({
+        user: next,
+        isAuthenticated: true,
+        membershipNotice: data.membershipNotice || get().membershipNotice
+      })
     } catch (error) {
       if (error.response?.status === 401) {
         await get().checkAuth()
@@ -390,7 +398,8 @@ export const useAuthStore = create((set, get) => ({
         user,
         isAuthenticated: true,
         token: getStoredToken() || token,
-        refreshToken: getStoredRefreshToken() || refreshToken
+        refreshToken: getStoredRefreshToken() || refreshToken,
+        membershipNotice: data.membershipNotice || null
       })
       return true
     } catch (error) {

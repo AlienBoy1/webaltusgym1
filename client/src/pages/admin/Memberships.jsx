@@ -215,15 +215,25 @@ export default function AdminMemberships() {
   
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl">Membresías</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="font-display text-3xl">Membresías</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[color:var(--text-secondary)]">
+            Las membresías actuales son de transición gratuita y se retiran el 31 dic 2026 23:59.
+            Todo plan nuevo queda pendiente de publicación el 1 ene 2027 00:00.
+          </p>
+        </div>
         <button
           onClick={handleAdd}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center justify-center gap-2"
         >
           <FiPlus size={20} />
-          Agregar Membresía
+          Registrar plan (pago)
         </button>
+      </div>
+
+      <div className="rounded-2xl border border-[rgba(var(--color-primary-rgb),0.28)] bg-[rgba(var(--color-primary-rgb),0.08)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+        <strong className="text-[color:var(--text-primary)]">Ciclo 2026 → 2027:</strong> al registrar un plan desde este panel queda como <em>Pendiente · 1 ene 2027</em> hasta la habilitación pública automática.
       </div>
       
       {/* Plans */}
@@ -240,6 +250,7 @@ export default function AdminMemberships() {
           memberships.map((membership, i) => {
             const color = PLAN_COLORS[membership.plan] || '#6B7280'
             const activeCount = stats.byPlan?.find(p => p._id === membership.plan)?.count || 0
+            const phaseLabel = membership.lifecycleLabel || (membership.active ? 'Activa' : 'Inactiva')
             
             return (
               <motion.div
@@ -249,30 +260,48 @@ export default function AdminMemberships() {
                 transition={{ delay: i * 0.1 }}
                 className={`card relative overflow-hidden ${membership.plan === 'premium' ? 'ring-2 ring-primary-500' : ''}`}
               >
-                {membership.plan === 'premium' && (
-                  <div className="absolute top-0 right-0 bg-primary-500 text-white text-xs px-3 py-1 rounded-bl-lg z-10">
-                    Popular
-                  </div>
-                )}
+                <div className="absolute top-0 right-0 z-10 flex flex-col items-end gap-1 p-2">
+                  {membership.phase === 'scheduled' && (
+                    <span className="rounded-bl-lg rounded-tr-lg bg-accent-cyan px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-black">
+                      Pendiente 2027
+                    </span>
+                  )}
+                  {membership.isLegacyFree && (
+                    <span className="rounded-bl-lg rounded-tr-lg bg-yellow-500 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-black">
+                      Transición
+                    </span>
+                  )}
+                  {membership.plan === 'premium' && membership.isLegacyFree && (
+                    <span className="rounded-bl-lg bg-primary-500 px-2.5 py-1 text-[10px] font-semibold text-white">
+                      Popular
+                    </span>
+                  )}
+                </div>
                 
-                <div className="text-center mb-4">
+                <div className="text-center mb-4 pt-4">
                   <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
                     <FiCreditCard size={24} style={{ color }} />
                   </div>
                   <h3 className="font-display text-xl">{membership.name}</h3>
+                  <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
+                    {phaseLabel}
+                  </p>
                   <div className="mt-2">
-                    <span className="text-3xl font-bold">${membership.price}</span>
-                    <span className="text-gray-400">
-                      /{(() => {
-                        const durationUnit = membership.durationUnit || 'days'
-                        if (durationUnit === 'months') {
-                          const months = membership.duration / 30
-                          return months === 1 ? 'mes' : `${months.toFixed(1)} meses`
-                        } else {
-                          return membership.duration === 1 ? 'día' : `${membership.duration} días`
-                        }
-                      })()}
+                    <span className="text-3xl font-bold">
+                      {Number(membership.price) > 0 ? `$${membership.price}` : 'Gratis'}
                     </span>
+                    {Number(membership.price) > 0 && (
+                      <span className="text-gray-400">
+                        /{(() => {
+                          const durationUnit = membership.durationUnit || 'days'
+                          if (durationUnit === 'months') {
+                            const months = membership.duration / 30
+                            return months === 1 ? 'mes' : `${months.toFixed(1)} meses`
+                          }
+                          return membership.duration === 1 ? 'día' : `${membership.duration} días`
+                        })()}
+                      </span>
+                    )}
                   </div>
                 </div>
                 

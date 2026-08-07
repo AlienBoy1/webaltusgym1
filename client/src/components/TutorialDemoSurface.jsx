@@ -1,4 +1,4 @@
-import { FiCheck, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers } from 'react-icons/fi'
+import { FiCheck, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye } from 'react-icons/fi'
 
 /**
  * Premium fallback surfaces when a real UI target is missing.
@@ -225,6 +225,90 @@ export default function TutorialDemoSurface({ demoId }) {
         <div>
           <p className="text-sm font-medium text-[color:var(--text-primary)]">Auto-iniciar Timer</p>
           <p className="text-xs text-[color:var(--text-muted)]">Al completar el ejercicio</p>
+        </div>
+        <div className="h-6 w-11 rounded-full bg-[color:var(--color-primary)] p-0.5">
+          <div className="ml-auto h-5 w-5 rounded-full bg-white" />
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-permissions-nav') {
+    return (
+      <div data-tour="tour-settings-permissions-section" className={`${shell} p-3`}>
+        <div className="flex items-center gap-3 rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] px-3 py-3 text-[color:var(--color-primary)]">
+          <FiHardDrive size={18} />
+          <span className="flex-1 text-sm font-semibold">Permisos</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-storage-access') {
+    return (
+      <div
+        data-tour="tour-settings-storage-access"
+        className={`${shell} flex items-center justify-between gap-3 px-4 py-4`}
+      >
+        <div>
+          <p className="text-sm font-medium text-[color:var(--text-primary)]">Acceso a almacenamiento</p>
+          <p className="text-xs text-[color:var(--text-muted)]">Fotos y videos para historias</p>
+        </div>
+        <div className="h-6 w-11 rounded-full bg-[color:var(--color-primary)] p-0.5">
+          <div className="ml-auto h-5 w-5 rounded-full bg-white" />
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-notifications-nav') {
+    return (
+      <div data-tour="tour-settings-notifications-section" className={`${shell} p-3`}>
+        <div className="flex items-center gap-3 rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] px-3 py-3 text-[color:var(--color-primary)]">
+          <FiBell size={18} />
+          <span className="flex-1 text-sm font-semibold">Notificaciones</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-notifications-push') {
+    return (
+      <div
+        data-tour="tour-settings-notifications-push"
+        className={`${shell} flex items-center justify-between gap-3 px-4 py-4`}
+      >
+        <div>
+          <p className="text-sm font-medium text-[color:var(--text-primary)]">Notificaciones Push</p>
+          <p className="text-xs text-[color:var(--text-muted)]">Activa o silencia alertas</p>
+        </div>
+        <div className="h-6 w-11 rounded-full bg-[color:var(--bg-muted)] p-0.5">
+          <div className="h-5 w-5 rounded-full bg-white" />
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-privacy-nav') {
+    return (
+      <div data-tour="tour-settings-privacy-section" className={`${shell} p-3`}>
+        <div className="flex items-center gap-3 rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] px-3 py-3 text-[color:var(--color-primary)]">
+          <FiEye size={18} />
+          <span className="flex-1 text-sm font-semibold">Privacidad</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-profile-public') {
+    return (
+      <div
+        data-tour="tour-settings-profile-public"
+        className={`${shell} flex items-center justify-between gap-3 px-4 py-4`}
+      >
+        <div>
+          <p className="text-sm font-medium text-[color:var(--text-primary)]">Perfil Público</p>
+          <p className="text-xs text-[color:var(--text-muted)]">Visible para la comunidad</p>
         </div>
         <div className="h-6 w-11 rounded-full bg-[color:var(--color-primary)] p-0.5">
           <div className="ml-auto h-5 w-5 rounded-full bg-white" />

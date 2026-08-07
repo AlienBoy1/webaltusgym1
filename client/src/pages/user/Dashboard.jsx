@@ -5,6 +5,13 @@ import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import api from '../../utils/api'
 import { Link } from 'react-router-dom'
+import {
+  FREE_ERA_END_ISO,
+  formatMembershipDate,
+  freeEraEndLabel,
+  membershipStatusLabel,
+  paidEraStartLabel
+} from '../../utils/membershipLifecycle'
 
 const MOTIVATIONAL_MESSAGES = [
   'Cada serie cuenta. Hoy sumas un paso más hacia tu mejor versión.',
@@ -225,12 +232,12 @@ export default function Dashboard() {
         transition={{ delay: 0.35 }}
         className="glass rounded-2xl border border-accent-cyan/20 p-5"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
             <div className="font-semibold text-accent-cyan">
               Membresía {user?.membership?.plan?.toUpperCase() || 'BÁSICA'}
             </div>
-            <div style={{ color: 'var(--text-secondary)' }}>
+            <div className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
               Estado:{' '}
               <span
                 className={
@@ -241,21 +248,21 @@ export default function Dashboard() {
                       : 'text-red-500'
                 }
               >
-                {user?.membership?.status === 'active'
-                  ? 'Activa'
-                  : user?.membership?.status === 'expiring'
-                    ? 'Por vencer'
-                    : 'Vencida'}
+                {membershipStatusLabel(user?.membership?.status)}
               </span>
-              {user?.membership?.endDate && (
+              {(user?.membership?.endDate || true) && (
                 <span style={{ color: 'var(--text-muted)' }}>
                   {' '}
-                  · Vence: {new Date(user.membership.endDate).toLocaleDateString()}
+                  · Vence:{' '}
+                  {formatMembershipDate(user?.membership?.endDate || FREE_ERA_END_ISO)}
                 </span>
               )}
             </div>
+            <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Acceso gratuito hasta {freeEraEndLabel()}. Planes de pago desde {paidEraStartLabel()}.
+            </p>
           </div>
-          <Link to="/profile" className="btn-primary px-4 py-2 text-sm">
+          <Link to="/profile" className="btn-primary shrink-0 px-4 py-2.5 text-sm text-center">
             Ver más
           </Link>
         </div>

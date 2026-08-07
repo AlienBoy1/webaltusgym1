@@ -3,6 +3,11 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { mapProfile, mapWorkout, attachSocial } from '../lib/mappers.js'
 import { authenticate, isAdmin, invalidateAuthProfileCache } from '../middleware/auth.js'
 import { normalizeUsername, validateUsernameFormat } from '../utils/username.js'
+import {
+  mapMembershipPlanRow,
+  syncMembershipPlansLifecycle
+} from '../services/membershipService.js'
+import { isPaidEraLive } from '../utils/membershipLifecycle.js'
 
 const router = express.Router()
 
@@ -289,23 +294,46 @@ router.put('/:id/membership', authenticate, isAdmin, async (req, res) => {
 
 router.get('/memberships', authenticate, async (req, res) => {
   try {
+    await syncMembershipPlansLifecycle()
+
     const { data, error } = await supabaseAdmin
       .from('membership_plans')
       .select('*')
-      .eq('active', true)
       .order('price', { ascending: true })
     if (error) throw error
+
+    const paidLive = isPaidEraLive()
+    const list = (data || []).map(mapMembershipPlanRow)
+
+    // Users see:
+    // - legacy plans while free era is live
+    // - scheduled paid plans as "coming soon" before Jan 1 2027
+    // - only public paid plans after cutover
+    const visible = list.filter((p) => {
+      if (paidLive) return p.era === 'paid' || (p.active && !p.isLegacyFree)
+      return p.era === 'legacy' || p.phase === 'scheduled' || p.era === 'scheduled_paid'
+    })
+
     res.json(
-      (data || []).map((p) => ({
+      visible.map((p) => ({
         _id: p.id,
         id: p.id,
         plan: p.plan,
         name: p.name,
+        description: p.description,
         price: p.price,
         duration: p.duration,
+        durationUnit: p.durationUnit,
         benefits: p.benefits,
         features: p.features,
-        active: p.active
+        active: p.active,
+        era: p.era,
+        phase: p.phase,
+        lifecycleLabel: p.lifecycleLabel,
+        publicFrom: p.publicFrom,
+        retiresAt: p.retiresAt,
+        isLegacyFree: p.isLegacyFree,
+        comingSoon: p.phase === 'scheduled'
       }))
     )
   } catch (error) {
