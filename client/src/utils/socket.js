@@ -41,6 +41,24 @@ function emit(event, payload) {
   })
 }
 
+function emitMessageUpdate(row) {
+  if (!row?.id) return
+  const decoded = decodeChatContent(row.content)
+  emit('messageStatus', {
+    id: row.id,
+    from: row.from_user_id,
+    to: row.to_user_id,
+    delivered: Boolean(row.delivered),
+    read: Boolean(row.read),
+    status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent',
+    text: decoded.text,
+    attachment: decoded.attachment,
+    reply: decoded.reply || null,
+    reactions: decoded.reactions || null,
+    contentUpdated: true
+  })
+}
+
 export function onChatEvent(event, handler) {
   if (!listeners[event]) listeners[event] = new Set()
   listeners[event].add(handler)
@@ -103,23 +121,26 @@ export function initSocket(userId) {
         filter: `from_user_id=eq.${userId}`
       },
       (payload) => {
-        const row = payload.new
-        if (!row?.id) return
-        const decoded = decodeChatContent(row.content)
-        emit('messageStatus', {
-          id: row.id,
-          to: row.to_user_id,
-          delivered: Boolean(row.delivered),
-          read: Boolean(row.read),
-          status: row.read ? 'read' : row.delivered ? 'delivered' : 'sent',
-          text: decoded.text,
-          attachment: decoded.attachment,
-          reply: decoded.reply || null,
-          contentUpdated: true
-        })
+        emitMessageUpdate(payload.new)
       }
     )
-    .subscribe()
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `to_user_id=eq.${userId}`
+      },
+      (payload) => {
+        emitMessageUpdate(payload.new)
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        scheduleSocketReconnect()
+      }
+    })
 
   presenceChannel = supabase.channel('online-users', {
     config: { presence: { key: userId } }
@@ -150,9 +171,43 @@ export function initSocket(userId) {
           updated_at: new Date().toISOString()
         })
       }
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        scheduleSocketReconnect()
+      }
     })
 
   return { messageChannel, presenceChannel }
+}
+
+let reconnectTimer = null
+
+function scheduleSocketReconnect() {
+  if (!trackedUserId) return
+  if (reconnectTimer) return
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    const id = trackedUserId
+    if (id) initSocket(id)
+  }, 1500)
+}
+
+/** Re-subscribe channels after tab wake / network restore. */
+export function ensureSocketAlive(userId) {
+  const id = userId ? String(userId) : trackedUserId
+  if (!id) return null
+  const msgState = messageChannel?.state
+  const presenceState = presenceChannel?.state
+  const healthy =
+    messageChannel &&
+    presenceChannel &&
+    trackedUserId === String(id) &&
+    (msgState === 'joined' || msgState === 'joining') &&
+    (presenceState === 'joined' || presenceState === 'joining')
+  if (healthy) {
+    trackPresence({ user_id: id, status: 'online' }).catch(() => {})
+    return { messageChannel, presenceChannel }
+  }
+  return initSocket(id)
 }
 
 export function getPresenceChannel() {
@@ -181,6 +236,10 @@ export function disconnectSocket() {
 }
 
 function cleanupSocket() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
   if (messageChannel) {
     supabase.removeChannel(messageChannel)
     messageChannel = null
@@ -247,6 +306,7 @@ export function getSocket() {
 
 export default {
   initSocket,
+  ensureSocketAlive,
   disconnectSocket,
   getSocket,
   onChatEvent,

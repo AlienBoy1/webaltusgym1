@@ -4,7 +4,8 @@ import { FiSend, FiX } from 'react-icons/fi'
 import ViewOnceIcon from './ViewOnceIcon'
 
 /**
- * Full-screen WhatsApp-like image preview before send (caption + view once).
+ * Full-screen image preview before send (caption + view once).
+ * force-dark keeps chrome readable under html.light remaps.
  */
 export default function ChatImageComposer({
   open,
@@ -27,7 +28,7 @@ export default function ChatImageComposer({
   if (!open || !imageUrl || typeof document === 'undefined') return null
 
   return createPortal(
-    <div className="fixed inset-0 z-[140] flex flex-col bg-black text-white">
+    <div className="force-dark fixed inset-0 z-[140] flex flex-col bg-black text-white">
       <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           type="button"
@@ -38,17 +39,14 @@ export default function ChatImageComposer({
         >
           <FiX size={24} />
         </button>
-        <button
-          type="button"
-          onClick={() => setViewOnce((v) => !v)}
-          className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition ${
-            viewOnce ? 'bg-white/15 text-[color:var(--color-primary)]' : 'text-white/90 hover:bg-white/10'
-          }`}
-          aria-pressed={viewOnce}
-        >
-          <ViewOnceIcon size={20} active={viewOnce} />
-          <span className="hidden sm:inline">Ver una vez</span>
-        </button>
+        {recipientName ? (
+          <p className="min-w-0 flex-1 truncate text-center text-sm font-medium text-white/80">
+            {recipientName}
+          </p>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <span className="w-11 shrink-0" aria-hidden />
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-2">
@@ -59,7 +57,7 @@ export default function ChatImageComposer({
           draggable={false}
         />
         {viewOnce && (
-          <span className="absolute bottom-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
+          <span className="absolute bottom-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
             <ViewOnceIcon size={16} active />
             Solo se verá una vez
           </span>
@@ -67,11 +65,8 @@ export default function ChatImageComposer({
       </div>
 
       <div className="space-y-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        {recipientName ? (
-          <p className="truncate text-center text-xs text-white/55">{recipientName}</p>
-        ) : null}
         <div className="flex items-end gap-2">
-          <div className="flex min-w-0 flex-1 items-center rounded-full border border-white/15 bg-white/10 px-4 py-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-white/15 bg-white/10 py-1.5 pl-4 pr-1.5">
             <input
               type="text"
               value={caption}
@@ -79,7 +74,19 @@ export default function ChatImageComposer({
               placeholder="Añade un comentario…"
               className="min-w-0 flex-1 bg-transparent text-[15px] text-white outline-none placeholder:text-white/45"
               maxLength={500}
+              style={{ color: '#fff', WebkitTextFillColor: '#fff' }}
             />
+            <button
+              type="button"
+              onClick={() => setViewOnce((v) => !v)}
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
+                viewOnce ? 'bg-white/15 text-[color:var(--color-primary)]' : 'text-white/80 hover:bg-white/10'
+              }`}
+              aria-label="Ver una sola vez"
+              aria-pressed={viewOnce}
+            >
+              <ViewOnceIcon size={20} active={viewOnce} />
+            </button>
           </div>
           <button
             type="button"

@@ -84,7 +84,7 @@ export const TUTORIAL_CATALOG = [
     short: 'Chats de la comunidad',
     icon: '💬',
     description:
-      'Bandeja, adjuntos, mensajes de voz, ver una vez, respuestas, estilos y archivos compartidos.',
+      'Bandeja con tipado en vivo, adjuntos, mensajes de voz, emojis grandes, reacciones, ver una vez, respuestas, estilos y archivos compartidos.',
     completionKey: 'qyntra_tutorial_chat_done',
     settingsKey: 'tutorialChatCompleted'
   },
@@ -422,6 +422,15 @@ const CHAT_STEPS = [
     body: 'Aquí ves todas tus conversaciones: último mensaje, hora y avisos sin leer.'
   },
   {
+    id: 'chat-typing',
+    path: '/chat',
+    target: 'tour-chat-typing-demo',
+    demo: 'chat-typing',
+    forceDemo: true,
+    title: 'Cuando están escribiendo',
+    body: 'Si alguien te escribe, lo verás en la lista de chats y también dentro del chat, con la animación “escribiendo…”.'
+  },
+  {
     id: 'chat-new',
     path: '/chat',
     target: 'tour-chat-new',
@@ -445,6 +454,24 @@ const CHAT_STEPS = [
     forceDemo: true,
     title: 'Escribir y adjuntar',
     body: 'Escribe texto, abre emojis o el menú + para foto y archivo. Al elegir una foto, la previsualizas a pantalla completa con pie de foto antes de enviar. Con el campo vacío, el micrófono inicia un mensaje de voz.'
+  },
+  {
+    id: 'chat-emoji',
+    path: '/chat',
+    target: 'tour-chat-emoji-demo',
+    demo: 'chat-emoji',
+    forceDemo: true,
+    title: 'Emojis grandes',
+    body: 'Si envías solo uno, dos o tres emojis, se muestran grandes y sin burbuja para que se aprecien mejor.'
+  },
+  {
+    id: 'chat-reactions',
+    path: '/chat',
+    target: 'tour-chat-reactions-demo',
+    demo: 'chat-reactions',
+    forceDemo: true,
+    title: 'Reacciones a mensajes',
+    body: 'Mantén pulsado un mensaje y elige una reacción (las mismas de Comunidad: ❤️ 💪 🧴 🔥 ⚡ 🏆). Vuelve a tocarla para quitarla.'
   },
   {
     id: 'chat-voice',

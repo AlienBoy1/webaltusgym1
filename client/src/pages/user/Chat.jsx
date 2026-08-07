@@ -47,6 +47,8 @@ import ChatImageComposer from '../../components/ChatImageComposer'
 import { ViewOnceAttachmentBubble } from '../../components/ViewOnceMedia'
 import SwipeToReply from '../../components/SwipeToReply'
 import { buildReplyPayload } from '../../utils/chatMessage'
+import { isEmojiOnlyText, emojiOnlySizeClass, summarizeMessageReactions } from '../../utils/chatEmoji'
+import { POST_REACTIONS } from '../../components/PostReactionButton'
 import { useChatStore } from '../../store/chatStore'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
@@ -142,7 +144,7 @@ function ReplyQuote({ reply, isMe, compact = false, onClick }) {
   )
 }
 
-function MessageTicks({ status, isMe }) {
+function MessageTicks({ status, isMe, muted = false }) {
   if (!status) return null
   const read = status === 'read'
   const delivered = status === 'delivered' || read
@@ -152,9 +154,9 @@ function MessageTicks({ status, isMe }) {
       style={{
         color: read
           ? '#53bdeb'
-          : isMe
-            ? 'rgba(255,255,255,0.72)'
-            : 'var(--text-muted)'
+          : muted || !isMe
+            ? 'var(--text-muted)'
+            : 'rgba(255,255,255,0.72)'
       }}
       title={read ? 'Leído' : delivered ? 'Entregado' : 'Enviado'}
     >
@@ -394,6 +396,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [peerTyping, setPeerTyping] = useState(false)
+  const [typingUsers, setTypingUsers] = useState({})
   const [wallpaperId, setWallpaperId] = useState(CHAT_WALLPAPER_NONE)
   const [showThreadMenu, setShowThreadMenu] = useState(false)
   const [showSharedSheet, setShowSharedSheet] = useState(false)
@@ -426,6 +429,7 @@ export default function Chat() {
   const selectedChatRef = useRef(null)
   const pendingStoryReply = useRef(null)
   const typingClearRef = useRef(null)
+  const typingTimersRef = useRef(new Map())
   const mediaRecorderRef = useRef(null)
   const recordingTimerRef = useRef(null)
   const recordingChunksRef = useRef([])
@@ -544,24 +548,29 @@ export default function Chat() {
 
     const handleMessageStatus = (data) => {
       if (!data?.id) return
+      const myId = user?._id || user?.id
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === data.id
-            ? {
-                ...m,
-                delivered: data.delivered ?? m.delivered,
-                read: data.read ?? m.read,
-                status: data.status || (data.read ? 'read' : data.delivered ? 'delivered' : m.status || 'sent'),
-                ...(data.contentUpdated
-                  ? {
-                      text: data.text ?? m.text,
-                      attachment: data.attachment !== undefined ? data.attachment : m.attachment,
-                      reply: data.reply !== undefined ? data.reply : m.reply
-                    }
-                  : null)
-              }
-            : m
-        )
+        prev.map((m) => {
+          if (m.id !== data.id) return m
+          const next = {
+            ...m,
+            delivered: data.delivered ?? m.delivered,
+            read: data.read ?? m.read,
+            status: data.status || (data.read ? 'read' : data.delivered ? 'delivered' : m.status || 'sent')
+          }
+          if (data.contentUpdated) {
+            next.text = data.text ?? m.text
+            next.attachment = data.attachment !== undefined ? data.attachment : m.attachment
+            next.reply = data.reply !== undefined ? data.reply : m.reply
+            if (data.reactions !== undefined) {
+              next.reactions = data.reactions
+              const summarized = summarizeMessageReactions(data.reactions, myId)
+              next.myReaction = summarized.myReaction
+              next.reactionSummary = summarized.reactionSummary
+            }
+          }
+          return next
+        })
       )
     }
 
@@ -570,10 +579,25 @@ export default function Chat() {
 
     const handleTyping = (payload) => {
       const from = payload?.from
-      if (!from || selectedChatRef.current?.otherId !== from) return
-      setPeerTyping(true)
-      if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
-      typingClearRef.current = window.setTimeout(() => setPeerTyping(false), 2200)
+      if (!from) return
+      setTypingUsers((prev) => ({ ...prev, [from]: true }))
+      if (selectedChatRef.current?.otherId === from) setPeerTyping(true)
+
+      const timers = typingTimersRef.current
+      if (timers.has(from)) window.clearTimeout(timers.get(from))
+      timers.set(
+        from,
+        window.setTimeout(() => {
+          setTypingUsers((prev) => {
+            if (!prev[from]) return prev
+            const next = { ...prev }
+            delete next[from]
+            return next
+          })
+          if (selectedChatRef.current?.otherId === from) setPeerTyping(false)
+          timers.delete(from)
+        }, 2200)
+      )
     }
     const unsubTyping = onChatEvent('userTyping', handleTyping)
 
@@ -585,8 +609,10 @@ export default function Chat() {
       unsubStatus()
       unsubTyping()
       if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
+      typingTimersRef.current.forEach((id) => window.clearTimeout(id))
+      typingTimersRef.current.clear()
     }
-  }, [user?._id, navigate])
+  }, [user?._id, user?.id, navigate])
 
   useEffect(() => {
     if (selectedChat?.otherId) {
@@ -870,6 +896,42 @@ export default function Chat() {
     setReplyTo(payload)
     replyToRef.current = payload
     window.setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  const applyReaction = async (msg, emoji) => {
+    if (!msg?.id || String(msg.id).startsWith('temp-')) {
+      toast.error('Espera a que se envíe el mensaje para reaccionar')
+      return
+    }
+    const myId = user?._id || user?.id
+    if (!myId) return
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msg.id) return m
+        const reactions = { ...(m.reactions || {}) }
+        if (!emoji || reactions[myId] === emoji) delete reactions[myId]
+        else reactions[myId] = emoji
+        const hasAny = Object.keys(reactions).length > 0
+        const summarized = summarizeMessageReactions(hasAny ? reactions : null, myId)
+        return {
+          ...m,
+          reactions: hasAny ? reactions : null,
+          myReaction: summarized.myReaction,
+          reactionSummary: summarized.reactionSummary
+        }
+      })
+    )
+    setMsgAction(null)
+
+    try {
+      const { data } = await api.post(`/chat/react/${msg.id}`, { emoji: emoji || null })
+      if (data?.id) {
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...data } : m)))
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo reaccionar')
+    }
   }
 
   const scrollToMessage = (messageId) => {
@@ -1656,16 +1718,32 @@ export default function Chat() {
                         </span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2.5">
-                        <p
-                          className={`truncate text-[13px] leading-snug sm:text-sm ${
-                            unread
-                              ? 'font-medium text-[color:var(--text-secondary)]'
-                              : 'text-[color:var(--text-muted)]'
-                          }`}
-                        >
-                          {conv.lastMessage || 'Nuevo chat'}
-                        </p>
-                        {unread && (
+                        {typingUsers[conv.otherId] ? (
+                          <p className="flex min-w-0 items-center gap-1.5 truncate text-[13px] font-medium text-[color:var(--color-primary)] sm:text-sm">
+                            <span className="inline-flex items-center gap-[3px]" aria-hidden>
+                              {[0, 1, 2].map((i) => (
+                                <motion.span
+                                  key={i}
+                                  className="h-1 w-1 rounded-full bg-[color:var(--color-primary)]"
+                                  animate={{ y: [0, -2.5, 0], opacity: [0.35, 1, 0.35] }}
+                                  transition={{ duration: 0.85, repeat: Infinity, delay: i * 0.14 }}
+                                />
+                              ))}
+                            </span>
+                            escribiendo…
+                          </p>
+                        ) : (
+                          <p
+                            className={`truncate text-[13px] leading-snug sm:text-sm ${
+                              unread
+                                ? 'font-medium text-[color:var(--text-secondary)]'
+                                : 'text-[color:var(--text-muted)]'
+                            }`}
+                          >
+                            {conv.lastMessage || 'Nuevo chat'}
+                          </p>
+                        )}
+                        {unread && !typingUsers[conv.otherId] && (
                           <span className="inline-flex h-5 min-w-[1.35rem] shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)] px-1.5 text-[10px] font-bold text-white shadow-[0_4px_10px_rgba(var(--color-primary-rgb),0.35)]">
                             {conv.unread > 99 ? '99+' : conv.unread}
                           </span>
@@ -1833,6 +1911,12 @@ export default function Chat() {
                   const showTail = !prev || prev.sender !== msg.sender
                   const viewOnce = Boolean(msg.attachment?.viewOnce)
                   const hideBodyText = viewOnce // caption only inside viewer, not in bubble
+                  const emojiOnly =
+                    !msg.attachment &&
+                    !msg.reply &&
+                    !viewOnce &&
+                    isEmojiOnlyText(msg.text)
+                  const reactionChips = Array.isArray(msg.reactionSummary) ? msg.reactionSummary : []
                   return (
                     <motion.div
                       key={msg.id}
@@ -1849,10 +1933,16 @@ export default function Chat() {
                       >
                         <div
                           data-msg-id={msg.id}
-                          className={`relative px-3.5 py-2.5 shadow-sm transition-[box-shadow] ${
-                            isMe
-                              ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)] text-white'
-                              : 'rounded-[1.15rem] rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)]'
+                          className={`relative transition-[box-shadow] ${
+                            emojiOnly
+                              ? `bg-transparent px-1 py-0.5 shadow-none ${
+                                  isMe ? 'text-white' : 'text-[color:var(--text-primary)]'
+                                }`
+                              : `px-3.5 py-2.5 shadow-sm ${
+                                  isMe
+                                    ? 'rounded-[1.15rem] rounded-br-md bg-[color:var(--color-primary)] text-white'
+                                    : 'rounded-[1.15rem] rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)]'
+                                }`
                           }`}
                         >
                         <ReplyQuote
@@ -1920,26 +2010,70 @@ export default function Chat() {
                           </>
                         )}
                         {!hideBodyText && msg.text ? (
-                          <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{msg.text}</p>
+                          <p
+                            className={
+                              emojiOnly
+                                ? `select-none whitespace-pre-wrap break-words ${emojiOnlySizeClass(msg.text)}`
+                                : 'whitespace-pre-wrap break-words text-[15px] leading-relaxed'
+                            }
+                          >
+                            {msg.text}
+                          </p>
                         ) : null}
                         {!msg.text && !msg.attachment ? (
                           <p className="break-words opacity-70"> </p>
                         ) : null}
                         <p
                           className={`mt-1 flex items-center justify-end gap-0.5 text-[10px] ${
-                            isMe ? 'text-white/70' : 'text-[color:var(--text-muted)]'
+                            emojiOnly
+                              ? 'text-[color:var(--text-muted)]'
+                              : isMe
+                                ? 'text-white/70'
+                                : 'text-[color:var(--text-muted)]'
                           }`}
                         >
                           {msg.time}
                           {isMe && (
                             <MessageTicks
                               isMe
+                              muted={emojiOnly}
                               status={msg.status || (msg.read ? 'read' : msg.delivered ? 'delivered' : 'sent')}
                             />
                           )}
                         </p>
                         </div>
                       </SwipeToReply>
+                      {reactionChips.length > 0 && (
+                        <div
+                          className={`mt-1 flex flex-wrap gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}
+                        >
+                          {reactionChips.map(({ emoji, count }) => {
+                            const mine = msg.myReaction === emoji
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                data-no-swipe
+                                onClick={() => applyReaction(msg, emoji)}
+                                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs shadow-sm backdrop-blur-sm transition active:scale-95 ${
+                                  mine
+                                    ? 'border-[rgba(var(--color-primary-rgb),0.45)] bg-[rgba(var(--color-primary-rgb),0.16)]'
+                                    : hasStyledWall
+                                      ? 'border-white/15 bg-black/40 text-white'
+                                      : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
+                                }`}
+                              >
+                                <span>{emoji}</span>
+                                {count > 1 ? (
+                                  <span className="text-[10px] font-semibold text-[color:var(--text-secondary)]">
+                                    {count}
+                                  </span>
+                                ) : null}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                       </div>
                     </motion.div>
                   )
@@ -2721,10 +2855,30 @@ export default function Chat() {
                           : 'Adjunto')}
                   </p>
                 </div>
+                <div className="flex items-center justify-between gap-1 px-3 py-3">
+                  {POST_REACTIONS.map((r) => {
+                    const active = msgAction.msg.myReaction === r.emoji
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        title={r.label}
+                        onClick={() => applyReaction(msgAction.msg, r.emoji)}
+                        className={`flex h-11 w-11 items-center justify-center rounded-full text-xl transition active:scale-90 ${
+                          active
+                            ? 'bg-[rgba(var(--color-primary-rgb),0.2)] ring-2 ring-[color:var(--color-primary)]'
+                            : 'hover:bg-[color:var(--bg-muted)]'
+                        }`}
+                      >
+                        {r.emoji}
+                      </button>
+                    )
+                  })}
+                </div>
                 <button
                   type="button"
                   onClick={() => beginReply(msgAction.msg)}
-                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm hover:bg-[color:var(--bg-muted)]"
+                  className="flex w-full items-center gap-3 border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-left text-sm hover:bg-[color:var(--bg-muted)]"
                 >
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]">
                     <FiCornerUpLeft size={18} />

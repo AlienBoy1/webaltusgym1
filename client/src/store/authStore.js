@@ -275,6 +275,21 @@ export const useAuthStore = create((set, get) => ({
       })
       return { success: true }
     } catch (error) {
+      const status = error?.response?.status
+      const isAuthDead = status === 401 || status === 403
+
+      // Keep session through deploy / network blips — only wipe on definitive auth failure
+      if (!isAuthDead) {
+        set({
+          loading: false,
+          isAuthenticated: true,
+          token: get().token || getStoredToken(),
+          refreshToken: get().refreshToken || refreshToken,
+          user: get().user || loadCachedUser()
+        })
+        return { success: false, transient: true }
+      }
+
       clearAuthTokens()
       persistCachedUser(null)
       set({
@@ -418,7 +433,9 @@ export const useAuthStore = create((set, get) => ({
         error?.code === 'ECONNABORTED' ||
         error?.message === 'Auth timeout'
       const isNetwork = !error?.response
-      if (isTimeout || isNetwork) {
+      const status = error?.response?.status
+      const isServerBlip = status >= 500 && status <= 599
+      if (isTimeout || isNetwork || isServerBlip) {
         set({
           isAuthenticated: true,
           token,
@@ -429,7 +446,10 @@ export const useAuthStore = create((set, get) => ({
       }
       if (refreshToken) {
         const refreshed = await get().refreshSession(refreshToken)
-        return refreshed.success
+        if (refreshed.success || refreshed.transient) {
+          return true
+        }
+        return false
       }
       clearAuthTokens()
       persistCachedUser(null)

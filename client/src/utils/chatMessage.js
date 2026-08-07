@@ -25,15 +25,29 @@ function previewLabel(text, attachment) {
   return text || ''
 }
 
-export function encodeChatContent({ text = '', attachment = null, reply = null } = {}) {
+function normalizeReactions(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const out = {}
+  for (const [uid, emoji] of Object.entries(raw)) {
+    if (!uid || typeof emoji !== 'string' || !emoji.trim()) continue
+    out[String(uid)] = emoji.trim().slice(0, 16)
+  }
+  return Object.keys(out).length ? out : null
+}
+
+export function encodeChatContent({ text = '', attachment = null, reply = null, reactions = null } = {}) {
   const hasAttachment = Boolean(attachment)
   const hasReply = Boolean(reply?.id)
-  if (!hasAttachment && !hasReply) return String(text || '')
-  return `${MSG_PREFIX}${JSON.stringify({
+  const cleanReactions = normalizeReactions(reactions)
+  const hasReactions = Boolean(cleanReactions)
+  if (!hasAttachment && !hasReply && !hasReactions) return String(text || '')
+  const payload = {
     text: String(text || ''),
     attachment: attachment || null,
     reply: hasReply ? reply : null
-  })}`
+  }
+  if (hasReactions) payload.reactions = cleanReactions
+  return `${MSG_PREFIX}${JSON.stringify(payload)}`
 }
 
 export function decodeChatContent(raw) {
@@ -43,17 +57,19 @@ export function decodeChatContent(raw) {
       const text = parsed.text || ''
       const attachment = parsed.attachment || null
       const reply = parsed.reply || null
+      const reactions = normalizeReactions(parsed.reactions)
       return {
         text,
         attachment,
         reply,
+        reactions,
         preview: previewLabel(text, attachment)
       }
     } catch {
       /* fallthrough */
     }
   }
-  return { text: raw || '', attachment: null, reply: null, preview: raw || '' }
+  return { text: raw || '', attachment: null, reply: null, reactions: null, preview: raw || '' }
 }
 
 export function replySnippetFromMessage(msg) {

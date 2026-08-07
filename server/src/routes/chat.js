@@ -2,7 +2,7 @@
 import { supabaseAdmin } from '../lib/supabase.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyNewMessage } from '../services/notificationService.js'
-import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment } from '../utils/chatMessage.js'
+import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment, CHAT_REACTIONS } from '../utils/chatMessage.js'
 
 const router = express.Router()
 
@@ -433,7 +433,8 @@ router.post('/view-once/:messageId', authenticate, async (req, res) => {
     const scrubbed = encodeChatContent({
       text: decoded.text,
       attachment: scrubViewOnceAttachment(attachment),
-      reply: decoded.reply || null
+      reply: decoded.reply || null,
+      reactions: decoded.reactions || null
     })
 
     const { data: updated, error: updateError } = await supabaseAdmin
@@ -449,6 +450,65 @@ router.post('/view-once/:messageId', authenticate, async (req, res) => {
       media: payload,
       message: formatChatMessage(updated, userId)
     })
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+/** Toggle/set message reaction (same emoji set as Comunidad). */
+router.post('/react/:messageId', authenticate, async (req, res) => {
+  try {
+    const messageId = req.params.messageId
+    const userId = req.user.id
+    const rawEmoji = req.body?.emoji
+    const emoji =
+      rawEmoji === null || rawEmoji === undefined || rawEmoji === ''
+        ? null
+        : String(rawEmoji).trim().slice(0, 16)
+
+    if (emoji && !CHAT_REACTIONS.includes(emoji)) {
+      return res.status(400).json({ message: 'Reacción no válida' })
+    }
+
+    const { data: message, error } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('id', messageId)
+      .single()
+
+    if (error || !message) {
+      return res.status(404).json({ message: 'Mensaje no encontrado' })
+    }
+
+    if (message.from_user_id !== userId && message.to_user_id !== userId) {
+      return res.status(403).json({ message: 'No eres participante de este chat' })
+    }
+
+    const decoded = decodeChatContent(message.content)
+    const nextReactions = { ...(decoded.reactions || {}) }
+    if (!emoji || nextReactions[userId] === emoji) {
+      delete nextReactions[userId]
+    } else {
+      nextReactions[userId] = emoji
+    }
+
+    const stored = encodeChatContent({
+      text: decoded.text,
+      attachment: decoded.attachment,
+      reply: decoded.reply || null,
+      reactions: Object.keys(nextReactions).length ? nextReactions : null
+    })
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('messages')
+      .update({ content: stored })
+      .eq('id', messageId)
+      .select('*')
+      .single()
+
+    if (updateError) throw updateError
+
+    res.json(formatChatMessage(updated, userId))
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
   }

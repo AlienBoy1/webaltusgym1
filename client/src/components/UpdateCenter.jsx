@@ -7,7 +7,8 @@ import QyntraLogo from './QyntraLogo'
 import { setUpdateBlocking, setUpdateSettled } from '../utils/appGate'
 
 const VERSION_KEY = 'qyntra_app_version'
-const POLL_MS = 90_000
+const POLL_MS = 45_000
+const POLL_VISIBLE_MS = 20_000
 
 async function fetchRemoteVersion() {
   const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
@@ -200,10 +201,11 @@ export default function UpdateCenter() {
           openPrompt(null, reg.waiting)
         }
         reg.addEventListener('updatefound', () => trackWorker(reg.installing))
-        pollId = setInterval(() => {
+        const tick = () => {
           reg.update().catch(() => {})
           checkVersion()
-        }, POLL_MS)
+        }
+        pollId = setInterval(tick, document.visibilityState === 'visible' ? POLL_VISIBLE_MS : POLL_MS)
       } catch {
         /* ignore */
       }
@@ -218,7 +220,14 @@ export default function UpdateCenter() {
     const onFocus = () => checkVersion()
     window.addEventListener('focus', onFocus)
     const onVis = () => {
-      if (document.visibilityState === 'visible') checkVersion()
+      if (document.visibilityState === 'visible') {
+        checkVersion()
+        if (promptReadyRef.current && pendingPromptRef.current && !updatingRef.current) {
+          const pending = pendingPromptRef.current
+          pendingPromptRef.current = null
+          showPromptNow(pending.version, pending.worker)
+        }
+      }
     }
     document.addEventListener('visibilitychange', onVis)
 
@@ -257,6 +266,11 @@ export default function UpdateCenter() {
   const runUpdate = async () => {
     if (updatingRef.current) return
     updatingRef.current = true
+    try {
+      document.body.dataset.qyntraUpdating = '1'
+    } catch {
+      /* ignore */
+    }
     setPhase('updating')
     setProgress(0)
     setScene(0)

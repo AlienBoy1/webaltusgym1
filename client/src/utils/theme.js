@@ -39,6 +39,11 @@ export function applyThemeMode(themePreference = 'light') {
   root.dataset.theme = mode
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.setAttribute('content', mode === 'light' ? '#F4F5F7' : '#0A0A0F')
+  try {
+    window.dispatchEvent(new CustomEvent('qyntra:theme', { detail: { mode } }))
+  } catch {
+    /* ignore */
+  }
   return mode
 }
 

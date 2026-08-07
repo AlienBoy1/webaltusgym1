@@ -11,9 +11,10 @@ import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
-import { initSocket, disconnectSocket } from '../utils/socket'
+import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import QyntraLogo from '../components/QyntraLogo'
 import { Avatar } from '../utils/avatarUtils'
 import {
@@ -28,6 +29,8 @@ import PresenceManager from '../components/PresenceManager'
 import PresenceDot from '../components/PresenceDot'
 import { installMediaProtection } from '../components/ProtectedMedia'
 import { prefetchRoute } from '../utils/routePrefetch'
+import { getStoredToken, getStoredRefreshToken } from '../utils/tokenStorage'
+import { supabase } from '../lib/supabase'
 
 const navItems = [
   { path: '/dashboard', icon: FiHome, label: 'Inicio', tour: 'nav-dashboard' },
@@ -155,6 +158,74 @@ export default function MainLayout() {
     }
     // Intentionally only on user id — full user object changes must not reconnect sockets
   }, [user?.id, user?._id])
+
+  // In-app message alerts even when /chat is not mounted
+  useEffect(() => {
+    if (!user?.id && !user?._id) return undefined
+    const unsub = onChatEvent('newMessage', (data) => {
+      if (location.pathname.startsWith('/chat')) return
+      showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
+        tag: `msg-${data.from}`,
+        onClick: () => navigate('/chat')
+      })
+      toast.success(`${data.fromName || 'Mensaje'}: ${data.message || 'Nuevo mensaje'}`, {
+        duration: 4000
+      })
+    })
+    return unsub
+  }, [user?.id, user?._id, location.pathname, navigate])
+
+  // Keep realtime / push alive when returning to the app (mobile browsers kill WS in background)
+  useEffect(() => {
+    const id = user?.id || user?._id
+    if (!id) return undefined
+
+    let busy = false
+    const revive = async () => {
+      if (busy || document.visibilityState === 'hidden') return
+      busy = true
+      try {
+        const access = getStoredToken()
+        const refresh = getStoredRefreshToken()
+        if (access && refresh) {
+          try {
+            await supabase.auth.setSession({
+              access_token: access,
+              refresh_token: refresh
+            })
+          } catch {
+            /* ignore */
+          }
+        }
+        ensureSocketAlive(id)
+        subscribeRealtime(id)
+        fetchUnreadCount()
+        if (Notification.permission === 'granted') {
+          try {
+            const { isPushSupported, subscribeToPush } = await import('../utils/push')
+            if (await isPushSupported()) await subscribeToPush()
+          } catch {
+            /* ignore */
+          }
+        }
+      } finally {
+        busy = false
+      }
+    }
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') revive()
+    }
+    const onOnline = () => revive()
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('focus', onVis)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('focus', onVis)
+    }
+  }, [user?.id, user?._id, fetchUnreadCount, subscribeRealtime])
 
   useEffect(() => installMediaProtection(), [])
 

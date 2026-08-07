@@ -1,12 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 import { useEffect, lazy, Suspense } from 'react'
 import UpdateCenter from './components/UpdateCenter'
+import AppToaster from './components/AppToaster'
 import InstallAppPrompt from './components/InstallAppPrompt'
 import WorkoutFloatingPanel from './components/WorkoutFloatingPanel'
 import WorkoutSessionManager from './components/WorkoutSessionManager'
 import SessionTheater from './components/SessionTheater'
+import { installRuntimeIntegrityGuards } from './utils/runtimeIntegrity'
 
 // Layouts (keep eager — shell of the app)
 import MainLayout from './layouts/MainLayout'
@@ -118,6 +119,8 @@ function App() {
     checkAuth()
   }, [checkAuth])
 
+  useEffect(() => installRuntimeIntegrityGuards(), [])
+
   useEffect(() => {
     const hash = window.location.hash || ''
     if (!hash.includes('type=recovery') && !hash.includes('type%3Drecovery')) return
@@ -138,23 +141,7 @@ function App() {
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: '#14141C',
-            color: '#fff',
-            border: '1px solid rgba(255,255,255,0.1)',
-          },
-          success: {
-            iconTheme: { primary: '#22C55E', secondary: '#fff' }
-          },
-          error: {
-            iconTheme: { primary: '#EF4444', secondary: '#fff' }
-          }
-        }}
-      />
+      <AppToaster />
 
       <UpdateCenter />
       <InstallAppPrompt />

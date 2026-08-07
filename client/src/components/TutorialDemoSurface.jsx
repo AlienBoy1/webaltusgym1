@@ -209,6 +209,78 @@ export default function TutorialDemoSurface({ demoId }) {
     )
   }
 
+  if (demoId === 'chat-typing') {
+    return (
+      <div data-tour="tour-chat-typing-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Lista de chats
+          </p>
+        </div>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.18)] text-sm font-bold text-[color:var(--color-primary)]">
+            A
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">Athlete</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-[color:var(--color-primary)]">
+              <span className="inline-flex gap-[3px]">
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className="h-1 w-1 animate-pulse rounded-full bg-[color:var(--color-primary)]" />
+                ))}
+              </span>
+              escribiendo…
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-emoji') {
+    return (
+      <div data-tour="tour-chat-emoji-demo" className={`${shell} space-y-3 p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Solo emojis
+        </p>
+        <div className="ml-auto text-right">
+          <p className="select-none text-[3rem] leading-none">🔥</p>
+          <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">10:24</p>
+        </div>
+        <div className="mr-auto">
+          <p className="select-none text-[2.4rem] leading-none">💪🏆</p>
+          <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">10:25</p>
+        </div>
+        <p className="text-[11px] text-[color:var(--text-muted)]">Sin cajón · hasta 3 emojis</p>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-reactions') {
+    return (
+      <div data-tour="tour-chat-reactions-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Reacciones
+        </p>
+        <div className="relative mt-3 ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[color:var(--color-primary)] px-3 py-2 text-sm text-white">
+          Nuevo PR hoy
+          <p className="mt-1 text-right text-[10px] text-white/75">10:30</p>
+          <div className="absolute -bottom-3 right-2 inline-flex items-center gap-0.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-1.5 py-0.5 text-xs shadow-sm">
+            🔥 <span className="text-[10px] text-[color:var(--text-secondary)]">2</span>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-between gap-1 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-2 py-2">
+          {['❤️', '💪', '🧴', '🔥', '⚡', '🏆'].map((e) => (
+            <span key={e} className="flex h-9 w-9 items-center justify-center rounded-full text-lg">
+              {e}
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-[color:var(--text-muted)]">Mantén pulsado el mensaje · mismas que en Comunidad</p>
+      </div>
+    )
+  }
+
   if (demoId === 'chat-compose') {
     return (
       <div data-tour="tour-chat-compose-demo" className={`${shell} p-4`}>

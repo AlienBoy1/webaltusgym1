@@ -135,7 +135,7 @@ export default function ChatVoiceComposer({
 
   return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[115] flex justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
-      <div className="pointer-events-auto w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#121218] px-3 py-3 text-white shadow-[0_-8px_40px_rgba(0,0,0,0.45)]">
+      <div className="force-dark pointer-events-auto w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#121218] px-3 py-3 text-white shadow-[0_-8px_40px_rgba(0,0,0,0.45)]">
         <div className="mb-3 flex items-center gap-2">
           {mode === 'recording' ? (
             <>
