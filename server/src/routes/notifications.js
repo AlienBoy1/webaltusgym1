@@ -71,7 +71,7 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const { data: notifications, error } = await supabaseAdmin
       .from('notifications')
-      .select('id, user_id, type, title, body, icon, priority, related_user_id, related_id, read, created_at')
+      .select('id, user_id, type, title, body, icon, priority, related_user_id, related_data, read, created_at')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false })
       .limit(50)
