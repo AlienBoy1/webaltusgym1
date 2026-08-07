@@ -87,17 +87,12 @@ router.get('/conversations', authenticate, async (req, res) => {
         const user = profileMap[otherId]
         const conv = conversationMap.get(otherId)
         if (!user || !conv) return null
-        let avatar = user.avatar || user.name?.charAt(0) || '👤'
-        // Don't ship huge base64 avatars in conversation list
-        if (typeof avatar === 'string' && avatar.startsWith('data:') && avatar.length > 8000) {
-          avatar = user.name?.charAt(0) || '👤'
-        }
         return {
           id: otherId,
           otherId,
           name: user.name,
           username: user.username || null,
-          avatar,
+          avatar: user.avatar || null,
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
           lastFromMe: Boolean(conv.lastFromMe),

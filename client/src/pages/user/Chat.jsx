@@ -49,6 +49,13 @@ function isMessagingDisabledUser(u) {
   return false
 }
 
+function isRenderableAvatar(avatar) {
+  if (!avatar || typeof avatar !== 'string') return false
+  if (avatar.startsWith('data:') || avatar.startsWith('http') || avatar.startsWith('icon:')) return true
+  // Single letter / emoji placeholders are NOT real photos
+  return false
+}
+
 const MAX_FILE_BYTES = 4 * 1024 * 1024
 const MAX_AUDIO_SEC = 60
 
@@ -498,6 +505,44 @@ export default function Chat() {
     }
   }, [selectedChat?.otherId])
 
+  // Fill missing conversation avatars after inbox loads
+  useEffect(() => {
+    const missing = (conversations || []).filter((c) => c.otherId && !isRenderableAvatar(c.avatar))
+    if (!missing.length) return
+    let cancelled = false
+    ;(async () => {
+      const updates = {}
+      await Promise.all(
+        missing.slice(0, 20).map(async (c) => {
+          try {
+            const { data } = await api.get(`/users/${c.otherId}`)
+            if (isRenderableAvatar(data?.avatar)) {
+              updates[c.otherId] = {
+                avatar: data.avatar,
+                name: data.name || c.name,
+                username: data.username || c.username
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        })
+      )
+      if (cancelled || !Object.keys(updates).length) return
+      setConversations((list) =>
+        list.map((c) => (updates[c.otherId] ? { ...c, ...updates[c.otherId] } : c))
+      )
+      setSelectedChat((prev) =>
+        prev?.otherId && updates[prev.otherId] ? { ...prev, ...updates[prev.otherId] } : prev
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Only re-check when partner set / avatar presence changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.length, conversations.filter((c) => !isRenderableAvatar(c.avatar)).map((c) => c.otherId).join(',')])
+
   useEffect(() => {
     if (!showThreadMenu) return
     const onDocClick = (e) => {
@@ -561,7 +606,30 @@ export default function Chat() {
   const handleSelectChat = (conv) => {
     setShowEmoji(false)
     setPeerTyping(false)
-    setSelectedChat({ ...conv, otherId: conv.otherId || conv.oderId })
+    const next = { ...conv, otherId: conv.otherId || conv.oderId }
+    setSelectedChat(next)
+    // Hydrate full profile photo if the list had a slim / missing avatar
+    if (next.otherId && !isRenderableAvatar(next.avatar)) {
+      ;(async () => {
+        try {
+          const { data } = await api.get(`/users/${next.otherId}`)
+          const avatar = data?.avatar || data?.user?.avatar || null
+          if (!isRenderableAvatar(avatar)) return
+          setSelectedChat((prev) =>
+            prev?.otherId === next.otherId ? { ...prev, avatar, name: data?.name || prev.name, username: data?.username || prev.username } : prev
+          )
+          setConversations((list) =>
+            list.map((c) =>
+              c.otherId === next.otherId
+                ? { ...c, avatar, name: data?.name || c.name, username: data?.username || c.username }
+                : c
+            )
+          )
+        } catch {
+          /* keep fallback initial */
+        }
+      })()
+    }
   }
 
   const handleBack = () => {
@@ -931,7 +999,7 @@ export default function Chat() {
         otherId: uid,
         name: selectedUser.name,
         username: selectedUser.username || null,
-        avatar: selectedUser.avatar || selectedUser.name?.charAt(0) || '👤',
+        avatar: isRenderableAvatar(selectedUser.avatar) ? selectedUser.avatar : null,
         lastMessage: '',
         time: 'Ahora',
         unread: 0
@@ -942,6 +1010,38 @@ export default function Chat() {
     setShowNewChat(false)
     setUserSearch('')
     setSearchResults([])
+    // Always hydrate media for new / existing selection
+    ;(async () => {
+      try {
+        const { data } = await api.get(`/users/${uid}`)
+        const avatar = data?.avatar || null
+        if (!isRenderableAvatar(avatar) && !data?.name) return
+        setSelectedChat((prev) =>
+          prev?.otherId === uid
+            ? {
+                ...prev,
+                avatar: isRenderableAvatar(avatar) ? avatar : prev.avatar,
+                name: data?.name || prev.name,
+                username: data?.username || prev.username
+              }
+            : prev
+        )
+        setConversations((list) =>
+          list.map((c) =>
+            c.otherId === uid
+              ? {
+                  ...c,
+                  avatar: isRenderableAvatar(avatar) ? avatar : c.avatar,
+                  name: data?.name || c.name,
+                  username: data?.username || c.username
+                }
+              : c
+          )
+        )
+      } catch {
+        /* ignore */
+      }
+    })()
   }
 
   // Open chat from profile "Mensaje" button or story reply
@@ -1192,7 +1292,7 @@ export default function Chat() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -12 }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-            className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-none md:rounded-2xl border-0 md:border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-none md:shadow-[0_12px_40px_var(--shadow-color)]"
+            className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-none md:rounded-2xl border-0 md:border border-[color:var(--border-subtle)] bg-transparent shadow-none md:shadow-[0_12px_40px_var(--shadow-color)]"
           >
             {/* chat wallpaper */}
             <ChatWallpaper styleId={wallpaperId} />
@@ -1815,7 +1915,7 @@ export default function Chat() {
       </ChatBottomSheet>
 
       <ChatBottomSheet open={showWallpaperSheet} onClose={() => setShowWallpaperSheet(false)} title="Estilo del chat">
-        <div className="grid grid-cols-2 gap-2 p-3">
+        <div className="grid grid-cols-2 gap-2.5 p-3 sm:gap-3">
           {CHAT_WALLPAPER_STYLES.map((style) => {
             const active = wallpaperId === style.id
             return (
@@ -1823,17 +1923,31 @@ export default function Chat() {
                 key={style.id}
                 type="button"
                 onClick={() => handleWallpaperSelect(style.id)}
-                className={`relative overflow-hidden rounded-2xl border p-3 text-left transition ${
+                className={`relative overflow-hidden rounded-2xl border text-left transition ${
                   active
-                    ? 'border-[color:var(--color-primary)] ring-2 ring-[rgba(var(--color-primary-rgb),0.2)]'
-                    : 'border-[color:var(--border-subtle)] hover:border-[color:var(--color-primary)]/40'
+                    ? 'border-[color:var(--color-primary)] ring-2 ring-[rgba(var(--color-primary-rgb),0.28)]'
+                    : 'border-[color:var(--border-subtle)] hover:border-[color:var(--color-primary)]/45'
                 }`}
               >
-                <div className={`relative mb-2 h-16 overflow-hidden rounded-xl chat-wallpaper ${style.className}`}>
+                <div className={`relative h-24 overflow-hidden sm:h-28 chat-wallpaper ${style.className}`}>
+                  <span className="chat-wall-layer chat-wall-base" />
                   <span className="chat-wall-layer chat-wall-a" />
                   <span className="chat-wall-layer chat-wall-b" />
+                  <span className="chat-wall-layer chat-wall-c" />
                 </div>
-                <span className="text-sm font-medium text-[color:var(--text-primary)]">{style.name}</span>
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <span className="text-sm font-medium text-[color:var(--text-primary)]">{style.name}</span>
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/10"
+                    style={{ background: style.swatch }}
+                    aria-hidden
+                  />
+                </div>
+                {active && (
+                  <span className="absolute right-2 top-2 rounded-full bg-[color:var(--color-primary)] px-2 py-0.5 text-[10px] font-semibold text-white">
+                    Activo
+                  </span>
+                )}
               </button>
             )
           })}
