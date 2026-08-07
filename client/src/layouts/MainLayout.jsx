@@ -47,6 +47,7 @@ export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
+  const loadMyMedia = useAuthStore((s) => s.loadMyMedia)
   const { unreadCount, fetchUnreadCount, subscribeRealtime, unsubscribeRealtime } = useNotificationStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -134,6 +135,32 @@ export default function MainLayout() {
   }, [user?.id, user?._id])
 
   useEffect(() => installMediaProtection(), [])
+
+  // Restore avatar/cover stripped by slim /auth/me (after first paint)
+  useEffect(() => {
+    const id = user?.id || user?._id
+    if (!id) return undefined
+    const needsMedia =
+      !user?.avatar ||
+      (user?.avatar && String(user.avatar).startsWith('icon:')) ||
+      !user?.profile?.coverUrl
+    // Always refresh once per session user — cover/avatar live outside /auth/me
+    let cancelled = false
+    const run = () => {
+      if (!cancelled) loadMyMedia()
+    }
+    const t = window.setTimeout(() => {
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(run, { timeout: 1500 })
+      } else {
+        run()
+      }
+    }, needsMedia ? 50 : 400)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [user?.id, user?._id, loadMyMedia])
 
   // Chat conversations load only on /chat (no global prefetch competing with every page)
 

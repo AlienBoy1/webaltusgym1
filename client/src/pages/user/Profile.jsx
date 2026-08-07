@@ -485,7 +485,7 @@ function MyChallengesSection() {
 }
 
 export default function Profile() {
-  const { user, logout, updateUser, refreshUser } = useAuthStore()
+  const { user, logout, updateUser } = useAuthStore()
   const { unreadCount } = useNotificationStore()
   const { openUserStory } = useStoryViewer()
   const [editing, setEditing] = useState(false)
@@ -506,6 +506,37 @@ export default function Profile() {
       setLoading(false)
     }
   }, [user])
+
+  // Always hydrate avatar/cover on this page (slim /auth/me strips them)
+  useEffect(() => {
+    const id = user?.id || user?._id
+    if (!id) return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        // Same source of truth as "perfil público"
+        const { data } = await api.get(`/users/${id}`, { timeout: 90000 })
+        if (cancelled || !data) return
+        updateUser({
+          ...(data.avatar ? { avatar: data.avatar } : {}),
+          profile: {
+            ...(data.profile || {})
+          }
+        })
+      } catch (err) {
+        console.warn('Profile media hydrate failed:', err?.message || err)
+        try {
+          await useAuthStore.getState().loadMyMedia()
+        } catch {
+          /* ignore */
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on identity change
+  }, [user?.id, user?._id])
 
   useEffect(() => {
     if (user?.avatar) {
@@ -544,12 +575,16 @@ export default function Profile() {
     }
   }
 
-  const handleAvatarSave = async () => {
-    await refreshUser()
+  const handleAvatarSave = (avatarValue) => {
+    if (avatarValue) updateUser({ avatar: avatarValue })
   }
 
-  const handleCoverSave = async () => {
-    await refreshUser()
+  const handleCoverSave = (coverUrl) => {
+    if (coverUrl) {
+      updateUser({
+        profile: { ...(user?.profile || {}), coverUrl }
+      })
+    }
   }
 
   const handleRemoveCover = async () => {
@@ -557,7 +592,10 @@ export default function Profile() {
       const { data } = await api.put('/users/profile', {
         profile: { ...(user?.profile || {}), coverUrl: null }
       })
-      updateUser(data.user)
+      updateUser({
+        ...(data?.user || {}),
+        profile: { ...(data?.user?.profile || user?.profile || {}), coverUrl: null }
+      })
       toast.success('Portada eliminada')
       setCoverMenuOpen(false)
       setViewCoverOpen(false)

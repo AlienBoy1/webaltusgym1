@@ -39,7 +39,7 @@ export default function UserProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
   const dialog = useAppDialog()
-  const { user: currentUser } = useAuthStore()
+  const { user: currentUser, updateUser } = useAuthStore()
   const { openUserStory } = useStoryViewer()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -150,6 +150,15 @@ export default function UserProfile() {
       setLoading(true)
       const { data } = await api.get(`/users/${id}`)
       setUser(data)
+      // Sync own media into shell/Profile store (slim /auth/me omits base64)
+      const myId = currentUser?._id || currentUser?.id
+      const theirId = data?._id || data?.id
+      if (myId && theirId && myId === theirId) {
+        updateUser({
+          ...(data.avatar ? { avatar: data.avatar } : {}),
+          profile: { ...(data.profile || {}) }
+        })
+      }
     } catch (error) {
       console.error('Error fetching user:', error)
       toast.error('Error al cargar perfil')

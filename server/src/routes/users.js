@@ -63,6 +63,25 @@ router.get('/profile', authenticate, async (req, res) => {
   }
 })
 
+/** Avatar + cover only — used after slim /auth/me so the shell can show real photos. */
+router.get('/profile-media', authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('avatar, profile')
+      .eq('id', req.user.id)
+      .single()
+    if (error) throw error
+    res.setHeader('Cache-Control', 'private, max-age=60')
+    res.json({
+      avatar: data?.avatar || null,
+      coverUrl: data?.profile?.coverUrl || null
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener media del perfil', error: error.message })
+  }
+})
+
 router.put('/profile', authenticate, async (req, res) => {
   try {
     const { name, avatar, phone, settings, goal, profile, username } = req.body

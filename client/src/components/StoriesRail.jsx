@@ -26,6 +26,7 @@ import { useAppDialog } from './AppDialog'
 import MentionInput, { MentionText } from './MentionInput'
 import { dispatchStoryClose, dispatchStoryOpen } from '../utils/presence'
 import ProtectedMedia from './ProtectedMedia'
+import { compressImageFile } from '../utils/compressImage'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -109,14 +110,13 @@ export default function StoriesRail({
       if (hydratingIdsRef.current.has(id)) return story
       hydratingIdsRef.current.add(id)
       try {
-        const { data } = await api.get(`/stories/${id}`, { timeout: 45000 })
+        const { data } = await api.get(`/stories/${id}/media`, { timeout: 90000 })
         if (data?.mediaUrl) {
           patchStoryInGroups(id, {
             mediaUrl: data.mediaUrl,
-            mediaType: data.mediaType || story.mediaType,
-            caption: data.caption ?? story.caption
+            mediaType: data.mediaType || story.mediaType
           })
-          return { ...story, ...data, mediaDeferred: false }
+          return { ...story, mediaUrl: data.mediaUrl, mediaType: data.mediaType || story.mediaType, mediaDeferred: false }
         }
       } catch {
         /* ignore — viewer shows placeholder */
@@ -126,6 +126,49 @@ export default function StoriesRail({
       return story
     },
     [patchStoryInGroups]
+  )
+
+  const prefetchGroupMedia = useCallback(
+    async (group) => {
+      if (!group?.stories?.length) return
+      const ids = group.stories
+        .filter((s) => s.mediaDeferred && !s.mediaUrl)
+        .map((s) => s._id || s.id)
+        .filter((id) => id && !hydratingIdsRef.current.has(id))
+      if (!ids.length) return
+      ids.forEach((id) => hydratingIdsRef.current.add(id))
+      try {
+        const { data } = await api.post(
+          '/stories/media/batch',
+          { ids },
+          { timeout: 120000 }
+        )
+        const byId = Object.fromEntries((data.items || []).map((i) => [i.id, i]))
+        setGroups((prev) =>
+          prev.map((g) => {
+            if ((g.user?._id || g.user) !== (group.user?._id || group.user)) return g
+            return {
+              ...g,
+              stories: g.stories.map((s) => {
+                const m = byId[s._id || s.id]
+                if (!m?.mediaUrl) return s
+                return {
+                  ...s,
+                  mediaUrl: m.mediaUrl,
+                  mediaType: m.mediaType || s.mediaType,
+                  mediaDeferred: false
+                }
+              })
+            }
+          })
+        )
+      } catch {
+        // Fallback: hydrate current only
+      } finally {
+        ids.forEach((id) => hydratingIdsRef.current.delete(id))
+      }
+    },
+    []
   )
 
   useEffect(() => {
@@ -271,6 +314,8 @@ export default function StoriesRail({
     setFavoritesOpen(false)
     setViewersOpen(false)
     setViewers([])
+    const g = groups[groupIndex]
+    if (g) prefetchGroupMedia(g)
   }
 
   const currentGroup = viewer != null ? groups[viewer.groupIndex] : null
@@ -281,32 +326,19 @@ export default function StoriesRail({
     currentGroup &&
     (currentGroup.user?._id || currentGroup.user) === user?._id
 
-  // Load media only when a story is opened (feed is lite / metadata-only)
+  // Prefetch all media in the opened group once (do not depend on `groups` — that loops)
   useEffect(() => {
-    if (!currentStory) return undefined
-    let cancelled = false
-    ;(async () => {
-      await hydrateStoryMedia(currentStory)
-      if (cancelled || viewer == null) return
-      // Prefetch next in group
-      const next = currentGroup?.stories?.[viewer.storyIndex + 1]
-      if (next?.mediaDeferred && !next.mediaUrl) {
-        hydrateStoryMedia(next)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    currentStory?._id,
-    currentStory?.id,
-    currentStory?.mediaDeferred,
-    currentStory?.mediaUrl,
-    viewer?.groupIndex,
-    viewer?.storyIndex,
-    hydrateStoryMedia,
-    currentGroup
-  ])
+    if (viewer == null) return undefined
+    const group = groups[viewer.groupIndex]
+    if (!group) return undefined
+    prefetchGroupMedia(group)
+  }, [viewer?.groupIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fallback if a single story is still deferred after batch
+  useEffect(() => {
+    if (!currentStory?.mediaDeferred || currentStory.mediaUrl) return undefined
+    hydrateStoryMedia(currentStory)
+  }, [currentStory?._id, currentStory?.id, currentStory?.mediaDeferred, currentStory?.mediaUrl, hydrateStoryMedia])
 
   useEffect(() => {
     if (viewer != null) {
@@ -714,13 +746,28 @@ export default function StoriesRail({
     setComposeContain(false)
   }
 
-  const readFile = (file, type) => {
+  const readFile = async (file, type) => {
     if (type === 'image' && file.size > MAX_IMAGE_BYTES) {
       toast.error('Imagen máximo 5MB')
       return
     }
     if (type === 'video' && file.size > MAX_VIDEO_BYTES) {
       toast.error('Video máximo 12MB / 30s')
+      return
+    }
+
+    if (type === 'image') {
+      try {
+        const dataUrl = await compressImageFile(file, { maxDim: 1080, quality: 0.78 })
+        setMediaData(dataUrl)
+        setMediaPreview(dataUrl)
+        setMediaType('image')
+        setCaption('')
+        setComposeContain(false)
+        setComposeOpen(true)
+      } catch {
+        toast.error('No se pudo procesar la imagen')
+      }
       return
     }
 

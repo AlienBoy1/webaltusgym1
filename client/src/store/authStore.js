@@ -299,8 +299,61 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  /** Load full avatar/cover after slim /auth/me. Uses existing /users/profile (works in prod). */
+  loadMyMedia: async () => {
+    const token = getStoredToken()
+    if (!token) return
+    try {
+      // Prefer dedicated endpoint when deployed; fall back to full profile (always shipped)
+      let avatar = null
+      let coverUrl = null
+      let profilePatch = null
+      try {
+        const { data } = await api.get('/users/profile-media', { timeout: 90000 })
+        avatar = data?.avatar ?? null
+        coverUrl = data?.coverUrl ?? null
+      } catch {
+        const { data } = await api.get('/users/profile', { timeout: 90000 })
+        avatar = data?.avatar ?? null
+        coverUrl = data?.profile?.coverUrl ?? null
+        profilePatch = data?.profile || null
+      }
+      const prev = get().user
+      if (!prev) return
+      const next = withIdAlias({
+        ...prev,
+        avatar: avatar || prev.avatar,
+        profile: {
+          ...(prev.profile || {}),
+          ...(profilePatch || {}),
+          coverUrl: coverUrl ?? prev.profile?.coverUrl ?? null
+        }
+      })
+      set({ user: next, isAuthenticated: true })
+    } catch (error) {
+      console.warn('loadMyMedia failed:', error?.message || error)
+    }
+  },
+
   updateUser: (userData) => {
-    const user = withIdAlias({ ...get().user, ...userData })
+    const prev = get().user || {}
+    const next = { ...prev, ...userData }
+    if (userData?.profile) {
+      next.profile = { ...(prev.profile || {}), ...userData.profile }
+    }
+    // Don't let undefined/null slim echoes wipe a real photo
+    if (userData.avatar === undefined || userData.avatar === null) {
+      if (prev.avatar) next.avatar = prev.avatar
+    }
+    // coverUrl: null is intentional wipe; undefined means leave previous
+    if (
+      userData.profile &&
+      userData.profile.coverUrl === undefined &&
+      prev.profile?.coverUrl
+    ) {
+      next.profile.coverUrl = prev.profile.coverUrl
+    }
+    const user = withIdAlias(next)
     persistCachedUser(user)
     set({ user })
   },

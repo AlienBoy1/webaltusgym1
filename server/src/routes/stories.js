@@ -450,13 +450,59 @@ router.post('/', authenticate, async (req, res) => {
   }
 })
 
-router.get('/:id', authenticate, async (req, res) => {
+/** Batch media only — no enrich / no purge. Used when opening a story group. */
+router.post('/media/batch', authenticate, async (req, res) => {
   try {
-    await purgeExpiredStories()
+    const ids = [...new Set((req.body?.ids || []).filter(Boolean))].slice(0, 24)
+    if (!ids.length) return res.json({ items: [] })
     const now = new Date().toISOString()
     const { data, error } = await supabaseAdmin
       .from('stories')
-      .select('*')
+      .select('id, media_type, media_url')
+      .in('id', ids)
+      .gt('expires_at', now)
+    if (error) throw error
+    res.json({
+      items: (data || []).map((r) => ({
+        id: r.id,
+        mediaType: r.media_type,
+        mediaUrl: r.media_url
+      }))
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al cargar media', error: error.message })
+  }
+})
+
+router.get('/:id/media', authenticate, async (req, res) => {
+  try {
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('stories')
+      .select('id, media_type, media_url')
+      .eq('id', req.params.id)
+      .gt('expires_at', now)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) {
+      return res.status(410).json({ message: 'Este estado ya expiró o no está disponible' })
+    }
+    res.json({
+      id: data.id,
+      mediaType: data.media_type,
+      mediaUrl: data.media_url
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('stories')
+      .select('id, user_id, media_type, media_url, caption, created_at, expires_at')
       .eq('id', req.params.id)
       .gt('expires_at', now)
       .maybeSingle()
