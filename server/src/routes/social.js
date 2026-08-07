@@ -59,26 +59,226 @@ function nestComments(flat = []) {
   return roots
 }
 
+const POST_FEED_COLUMNS =
+  'id,user_id,content,images,mood,poll,post_type,badge_data,workout_data,shared_from,created_at,updated_at'
+
+const MAX_FEED_FOLLOWING = 80
+
 async function getProfilesMap(ids) {
   const unique = [...new Set((ids || []).filter(Boolean))]
   if (!unique.length) return {}
-  const { data } = await supabaseAdmin
-    .from('profiles')
-    .select('id, name, username, avatar, stats, email')
-    .in('id', unique)
-  return Object.fromEntries((data || []).map((p) => [p.id, p]))
+  // Chunk large ID lists (PostgREST URL / payload limits)
+  const chunkSize = 80
+  const chunks = []
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    chunks.push(unique.slice(i, i + chunkSize))
+  }
+  const maps = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, username, avatar, stats')
+        .in('id', chunk)
+      return data || []
+    })
+  )
+  return Object.fromEntries(maps.flat().map((p) => [p.id, p]))
+}
+
+/** Aggregate comment counts without shipping every comment row. */
+async function getCommentCountsByPost(postIds) {
+  if (!postIds.length) return {}
+  const { data, error } = await supabaseAdmin.rpc('feed_comment_counts', { pids: postIds })
+  if (!error && Array.isArray(data)) {
+    return Object.fromEntries(data.map((r) => [r.post_id, Number(r.cnt) || 0]))
+  }
+  // Safe fallback: head+count per post (avoids loading every comment row)
+  const pairs = await Promise.all(
+    postIds.map(async (id) => {
+      const { count } = await supabaseAdmin
+        .from('post_comments')
+        .select('id', { count: 'exact', head: true })
+        .eq('post_id', id)
+      return [id, count || 0]
+    })
+  )
+  return Object.fromEntries(pairs)
+}
+
+/** Aggregate reaction emoji counts without shipping every liker. */
+async function getReactionStatsByPost(postIds) {
+  if (!postIds.length) return {}
+  const { data, error } = await supabaseAdmin.rpc('feed_reaction_stats', { pids: postIds })
+  if (!error && Array.isArray(data)) {
+    const byPost = {}
+    for (const r of data) {
+      if (!byPost[r.post_id]) byPost[r.post_id] = {}
+      const emoji = normalizeReactionEmoji(r.emoji) || r.emoji || '❤️'
+      byPost[r.post_id][emoji] = Number(r.cnt) || 0
+    }
+    return byPost
+  }
+  // Safe fallback: capped row scan (RPC preferred)
+  let res = await supabaseAdmin
+    .from('post_likes')
+    .select('post_id, emoji')
+    .in('post_id', postIds)
+    .limit(3000)
+  if (res.error && isMissingEmojiColumn(res.error)) {
+    res = await supabaseAdmin
+      .from('post_likes')
+      .select('post_id')
+      .in('post_id', postIds)
+      .limit(3000)
+  }
+  const byPost = {}
+  for (const l of res.data || []) {
+    if (!byPost[l.post_id]) byPost[l.post_id] = {}
+    const emoji = normalizeReactionEmoji(l.emoji) || l.emoji || '❤️'
+    byPost[l.post_id][emoji] = (byPost[l.post_id][emoji] || 0) + 1
+  }
+  return byPost
+}
+
+async function enrichPostsLite(posts, viewerId = null) {
+  if (!posts?.length) return []
+
+  const postIds = posts.map((p) => p.id)
+  const sharedIds = [...new Set(posts.map((p) => p.shared_from).filter(Boolean))]
+
+  const [commentCountByPost, reactionSummaryByPost, myLikesRes, sharedRes] = await Promise.all([
+    getCommentCountsByPost(postIds),
+    getReactionStatsByPost(postIds),
+    viewerId
+      ? supabaseAdmin
+          .from('post_likes')
+          .select('post_id, emoji')
+          .in('post_id', postIds)
+          .eq('user_id', viewerId)
+          .then(async (res) => {
+            if (res.error && isMissingEmojiColumn(res.error)) {
+              return supabaseAdmin
+                .from('post_likes')
+                .select('post_id')
+                .in('post_id', postIds)
+                .eq('user_id', viewerId)
+            }
+            return res
+          })
+      : Promise.resolve({ data: [] }),
+    sharedIds.length
+      ? supabaseAdmin.from('posts').select(POST_FEED_COLUMNS).in('id', sharedIds)
+      : Promise.resolve({ data: [] })
+  ])
+
+  const myReactionByPost = {}
+  for (const l of myLikesRes.data || []) {
+    myReactionByPost[l.post_id] = normalizeReactionEmoji(l.emoji) || l.emoji || '❤️'
+  }
+
+  const sharedRows = sharedRes.data || []
+  const authorIds = [
+    ...posts.map((p) => p.user_id),
+    ...sharedRows.map((p) => p.user_id)
+  ]
+  const userMap = await getProfilesMap(authorIds)
+  const sharedMap = Object.fromEntries(sharedRows.map((p) => [p.id, p]))
+
+  return posts.map((row) => {
+    const author = userMap[row.user_id]
+    const mappedAuthor = author
+      ? {
+          _id: author.id,
+          id: author.id,
+          name: author.name,
+          username: author.username || null,
+          avatar: author.avatar,
+          stats: author.stats
+        }
+      : row.user_id
+
+    let sharedFrom = null
+    if (row.shared_from && sharedMap[row.shared_from]) {
+      const s = sharedMap[row.shared_from]
+      const sAuthor = userMap[s.user_id]
+      let nestedWorkout = s.workout_data || null
+      if (!nestedWorkout && s.content && String(s.content).includes('[workout]')) {
+        try {
+          const match = String(s.content).match(/\[workout\]([\s\S]*?)\[\/workout\]/)
+          if (match) nestedWorkout = JSON.parse(match[1])
+        } catch {
+          /* ignore */
+        }
+      }
+      sharedFrom = {
+        _id: s.id,
+        id: s.id,
+        user: sAuthor
+          ? {
+              _id: sAuthor.id,
+              id: sAuthor.id,
+              name: sAuthor.name,
+              username: sAuthor.username || null,
+              avatar: sAuthor.avatar,
+              stats: sAuthor.stats
+            }
+          : s.user_id,
+        content: s.content,
+        images: s.images || [],
+        mood: s.mood || null,
+        poll: s.poll || null,
+        badgeData: s.badge_data || null,
+        workoutData: nestedWorkout,
+        postType: s.post_type || 'text',
+        createdAt: s.created_at
+      }
+    }
+
+    let workoutData = row.workout_data || null
+    if (!workoutData && row.content && String(row.content).includes('[workout]')) {
+      try {
+        const match = String(row.content).match(/\[workout\]([\s\S]*?)\[\/workout\]/)
+        if (match) workoutData = JSON.parse(match[1])
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const summaryMap = reactionSummaryByPost[row.id] || {}
+    const reactionSummary = Object.entries(summaryMap)
+      .map(([emoji, count]) => ({ emoji, count }))
+      .sort((a, b) => b.count - a.count)
+    const likesCount = reactionSummary.reduce((sum, r) => sum + (r.count || 0), 0)
+
+    return {
+      ...mapPost(row, {
+        user: mappedAuthor,
+        likes: [],
+        comments: [],
+        workoutData
+      }),
+      likesCount,
+      myReaction: viewerId ? myReactionByPost[row.id] || null : null,
+      reactionSummary,
+      reactors: [],
+      sharedFrom,
+      commentsCount: commentCountByPost[row.id] || 0,
+      commentsLoaded: false
+    }
+  })
 }
 
 async function enrichPosts(posts, viewerId = null, options = {}) {
   const lite = Boolean(options.lite)
   if (!posts?.length) return []
+  if (lite) return enrichPostsLite(posts, viewerId)
 
   const postIds = posts.map((p) => p.id)
   const sharedIds = [...new Set(posts.map((p) => p.shared_from).filter(Boolean))]
 
   const likesQuery = supabaseAdmin
     .from('post_likes')
-    .select(lite ? 'post_id, user_id, emoji' : 'post_id, user_id, emoji')
+    .select('post_id, user_id, emoji')
     .in('post_id', postIds)
     .then(async (res) => {
       if (res.error && isMissingEmojiColumn(res.error)) {
@@ -87,24 +287,22 @@ async function enrichPosts(posts, viewerId = null, options = {}) {
       return res
     })
 
-  const commentsQuery = lite
-    ? supabaseAdmin.from('post_comments').select('post_id').in('post_id', postIds)
-    : supabaseAdmin
-        .from('post_comments')
-        .select('*')
-        .in('post_id', postIds)
-        .order('created_at', { ascending: true })
+  const commentsQuery = supabaseAdmin
+    .from('post_comments')
+    .select('*')
+    .in('post_id', postIds)
+    .order('created_at', { ascending: true })
 
   const [{ data: likes }, { data: comments }, { data: sharedRows }] = await Promise.all([
     likesQuery,
     commentsQuery,
     sharedIds.length
-      ? supabaseAdmin.from('posts').select('*').in('id', sharedIds)
+      ? supabaseAdmin.from('posts').select(POST_FEED_COLUMNS).in('id', sharedIds)
       : Promise.resolve({ data: [] })
   ])
 
-  const likeUserIds = lite ? [] : (likes || []).map((l) => l.user_id)
-  const commentUserIds = lite ? [] : (comments || []).map((c) => c.user_id)
+  const likeUserIds = (likes || []).map((l) => l.user_id)
+  const commentUserIds = (comments || []).map((c) => c.user_id)
   const authorIds = [
     ...posts.map((p) => p.user_id),
     ...(sharedRows || []).map((p) => p.user_id),
@@ -127,19 +325,12 @@ async function enrichPosts(posts, viewerId = null, options = {}) {
   }
 
   const commentsByPost = {}
-  const commentCountByPost = {}
-  if (lite) {
-    for (const c of comments || []) {
-      commentCountByPost[c.post_id] = (commentCountByPost[c.post_id] || 0) + 1
-    }
-  } else {
-    for (const c of comments || []) {
-      if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = []
-      commentsByPost[c.post_id].push(mapComment(c, userMap))
-    }
-    for (const pid of Object.keys(commentsByPost)) {
-      commentsByPost[pid] = nestComments(commentsByPost[pid])
-    }
+  for (const c of comments || []) {
+    if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = []
+    commentsByPost[c.post_id].push(mapComment(c, userMap))
+  }
+  for (const pid of Object.keys(commentsByPost)) {
+    commentsByPost[pid] = nestComments(commentsByPost[pid])
   }
 
   const sharedMap = Object.fromEntries((sharedRows || []).map((p) => [p.id, p]))
@@ -195,36 +386,33 @@ async function enrichPosts(posts, viewerId = null, options = {}) {
       .map(([emoji, count]) => ({ emoji, count }))
       .sort((a, b) => b.count - a.count)
 
-    const reactors = lite
-      ? []
-      : Object.entries(reactionByPostUser[row.id] || {}).map(([uid, emoji]) => {
-          const u = userMap[uid]
-          return {
-            userId: uid,
-            emoji,
-            name: u?.name || 'Usuario',
-            username: u?.username || null,
-            avatar: u?.avatar || null
-          }
-        })
+    const reactors = Object.entries(reactionByPostUser[row.id] || {}).map(([uid, emoji]) => {
+      const u = userMap[uid]
+      return {
+        userId: uid,
+        emoji,
+        name: u?.name || 'Usuario',
+        username: u?.username || null,
+        avatar: u?.avatar || null
+      }
+    })
 
-    const mappedComments = lite ? [] : commentsByPost[row.id] || []
-    const commentsCount = lite
-      ? commentCountByPost[row.id] || 0
-      : undefined
+    const mappedComments = commentsByPost[row.id] || []
+    const likesArr = likesByPost[row.id] || []
 
     return {
       ...mapPost(row, {
         user: mappedAuthor,
-        likes: likesByPost[row.id] || [],
+        likes: likesArr,
         comments: mappedComments,
         workoutData
       }),
+      likesCount: likesArr.length,
       myReaction: viewerId ? reactionByPostUser[row.id]?.[viewerId] || null : null,
       reactionSummary,
       reactors,
       sharedFrom,
-      ...(lite ? { commentsCount, commentsLoaded: false } : { commentsLoaded: true })
+      commentsLoaded: true
     }
   })
 }
@@ -254,21 +442,25 @@ async function bumpSocialInteractions(userId) {
 
 // Get feed (own posts + posts from users you follow) — paginated + lite enrich
 router.get('/feed', authenticate, async (req, res) => {
+  const started = Date.now()
   try {
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 30)
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20)
     const before = req.query.before || null
 
-    const { data: following } = await supabaseAdmin
+    const { data: following, error: followErr } = await supabaseAdmin
       .from('follows')
       .select('following_id')
       .eq('follower_id', req.user.id)
+      .limit(MAX_FEED_FOLLOWING)
+
+    if (followErr) throw followErr
 
     const followingIds = (following || []).map((f) => f.following_id)
     const feedUserIds = [...new Set([req.user.id, ...followingIds])]
 
     let query = supabaseAdmin
       .from('posts')
-      .select('*')
+      .select(POST_FEED_COLUMNS)
       .in('user_id', feedUserIds)
       .order('created_at', { ascending: false })
       .limit(limit + 1)
@@ -286,12 +478,14 @@ router.get('/feed', authenticate, async (req, res) => {
     const enriched = await enrichPosts(page, req.user.id, { lite: true })
     const nextCursor = page.length ? page[page.length - 1].created_at : null
 
+    res.setHeader('Server-Timing', `feed;dur=${Date.now() - started}`)
     res.json({
       posts: enriched,
       hasMore,
       nextCursor
     })
   } catch (error) {
+    console.error('[feed] error', error?.message || error, `ms=${Date.now() - started}`)
     res.status(500).json({ message: 'Error al obtener feed', error: error.message })
   }
 })

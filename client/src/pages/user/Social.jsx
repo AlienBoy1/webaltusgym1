@@ -61,6 +61,7 @@ export default function Social() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
+  const [feedError, setFeedError] = useState(null)
   const [nextCursor, setNextCursor] = useState(null)
   const loadMoreRef = useRef(null)
   const fetchingMoreRef = useRef(false)
@@ -131,17 +132,33 @@ export default function Social() {
       setLoadingMore(true)
     } else {
       setLoading(true)
+      setFeedError(null)
     }
-    try {
-      const before = append ? nextCursor : undefined
-      const { data } = await api.get('/social/feed', {
+    const before = append ? nextCursor : undefined
+    const attempt = async () =>
+      api.get('/social/feed', {
         params: {
-          limit: 10,
+          limit: 8,
           ...(before ? { before } : {})
-        }
+        },
+        timeout: 18000
       })
+
+    try {
+      let data
+      try {
+        ;({ data } = await attempt())
+      } catch (firstErr) {
+        const retryable =
+          firstErr?.code === 'ECONNABORTED' ||
+          !firstErr?.response ||
+          firstErr?.response?.status >= 500
+        if (!retryable) throw firstErr
+        ;({ data } = await attempt())
+      }
+
       const list = Array.isArray(data) ? data : data?.posts || []
-      const more = Array.isArray(data) ? list.length >= 10 : Boolean(data?.hasMore)
+      const more = Array.isArray(data) ? list.length >= 8 : Boolean(data?.hasMore)
       const cursor = Array.isArray(data)
         ? list[list.length - 1]?.createdAt || null
         : data?.nextCursor || null
@@ -153,10 +170,24 @@ export default function Social() {
       })
       setHasMore(more)
       setNextCursor(cursor)
+      setFeedError(null)
     } catch (error) {
       console.error('Error fetching posts:', error)
-      if (!append) setPosts([])
-      toast.error('No se pudieron cargar las publicaciones')
+      if (!append) {
+        setPosts([])
+        setFeedError(
+          error?.code === 'ECONNABORTED'
+            ? 'La comunidad tardó demasiado en responder.'
+            : 'No se pudieron cargar las publicaciones.'
+        )
+        toast.error(
+          error?.code === 'ECONNABORTED'
+            ? 'La comunidad tardó demasiado. Reintenta.'
+            : 'No se pudieron cargar las publicaciones'
+        )
+      } else {
+        toast.error('No se pudo cargar más publicaciones')
+      }
     } finally {
       setLoading(false)
       setLoadingMore(false)
@@ -386,6 +417,9 @@ export default function Social() {
           return {
             ...post,
             likes,
+            likesCount: Array.isArray(data.reactionSummary)
+              ? data.reactionSummary.reduce((s, r) => s + (r.count || 0), 0)
+              : reactionSummary.reduce((s, r) => s + (r.count || 0), 0),
             myReaction: nextReaction,
             reactionSummary: Array.isArray(data.reactionSummary) ? data.reactionSummary : reactionSummary,
             reactors
@@ -710,6 +744,21 @@ export default function Social() {
       {/* Posts Feed */}
       {loading ? (
         <SocialFeedSkeleton count={4} />
+      ) : feedError ? (
+        <div className="card py-12 text-center">
+          <p className="text-5xl mb-3">⚠️</p>
+          <p className="text-[color:var(--text-primary)] font-medium">{feedError}</p>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+            Revisa tu conexión e inténtalo de nuevo.
+          </p>
+          <button
+            type="button"
+            onClick={() => fetchPosts({ append: false })}
+            className="btn-primary mt-5 px-5 py-2.5 text-sm"
+          >
+            Reintentar
+          </button>
+        </div>
       ) : posts.length === 0 ? (
         <div className="space-y-4">
           <div className="text-center py-12 text-gray-400">
@@ -1037,7 +1086,11 @@ export default function Social() {
                 >
                   <PostReactionButton
                     myReaction={myReaction}
-                    likesCount={post.likes?.length || 0}
+                    likesCount={
+                      typeof post.likesCount === 'number'
+                        ? post.likesCount
+                        : post.likes?.length || 0
+                    }
                     reactionSummary={post.reactionSummary || []}
                     onReact={(emoji) => handleReact(post._id, emoji)}
                     onShowReactors={() => setReactorsPost(post)}
