@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FiX, FiUpload, FiCheck, FiActivity, FiTarget, FiZap, FiTrendingUp,
@@ -13,7 +14,7 @@ const MAX_OUTPUT = 1024
 const JPEG_QUALITY = 0.92
 const MIN_ZOOM = 1
 const MAX_ZOOM = 4
-const VIEWPORT = 280
+const DEFAULT_VIEWPORT = 260
 
 const exerciseAvatars = [
   { id: 'muscle', Icon: FiActivity, gradient: 'from-orange-500 to-red-600', label: 'Fuerza' },
@@ -62,6 +63,13 @@ function pinchDistance(t1, t2) {
   return Math.hypot(dx, dy)
 }
 
+function computeViewportSize() {
+  if (typeof window === 'undefined') return DEFAULT_VIEWPORT
+  const byWidth = window.innerWidth - 48
+  const byHeight = Math.floor(window.innerHeight * 0.34)
+  return Math.max(180, Math.min(DEFAULT_VIEWPORT, byWidth, byHeight))
+}
+
 export default function AvatarPicker({ isOpen, onClose, onSave }) {
   const { user, refreshUser } = useAuthStore()
   const [selectedAvatar, setSelectedAvatar] = useState('')
@@ -71,6 +79,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [viewportSize, setViewportSize] = useState(DEFAULT_VIEWPORT)
 
   const fileInputRef = useRef(null)
   const canvasRef = useRef(null)
@@ -81,10 +90,12 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
   const offsetRef = useRef(offset)
   const zoomRef = useRef(zoom)
   const imgSizeRef = useRef(imgSize)
+  const viewportSizeRef = useRef(viewportSize)
 
   offsetRef.current = offset
   zoomRef.current = zoom
   imgSizeRef.current = imgSize
+  viewportSizeRef.current = viewportSize
 
   const revokeObjectUrl = useCallback(() => {
     if (objectUrlRef.current) {
@@ -106,6 +117,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
   useEffect(() => {
     if (!isOpen) return
     setSelectedAvatar(user?.avatar || '')
+    setViewportSize(computeViewportSize())
   }, [isOpen, user?.avatar])
 
   useEffect(() => {
@@ -114,25 +126,44 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
 
   useEffect(() => () => revokeObjectUrl(), [revokeObjectUrl])
 
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const onResize = () => setViewportSize(computeViewportSize())
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [isOpen])
+
+  // Lock body scroll while open
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [isOpen])
+
   const applyZoom = useCallback((nextZoom, focusX, focusY) => {
     const { w, h } = imgSizeRef.current
+    const vp = viewportSizeRef.current
     if (!w || !h) return
     const z = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM)
-    const base = coverScale(w, h, VIEWPORT)
+    const base = coverScale(w, h, vp)
     const prevScale = base * zoomRef.current
     const nextScale = base * z
     const prev = offsetRef.current
-
-    // Zoom toward focal point inside viewport (defaults to center)
-    const fx = focusX ?? VIEWPORT / 2
-    const fy = focusY ?? VIEWPORT / 2
+    const fx = focusX ?? vp / 2
+    const fy = focusY ?? vp / 2
     const imgX = (fx - prev.x) / prevScale
     const imgY = (fy - prev.y) / prevScale
-    let nx = fx - imgX * nextScale
-    let ny = fy - imgY * nextScale
-    const clamped = clampOffset(nx, ny, w, h, nextScale, VIEWPORT)
+    const nx = fx - imgX * nextScale
+    const ny = fy - imgY * nextScale
     setZoom(z)
-    setOffset(clamped)
+    setOffset(clampOffset(nx, ny, w, h, nextScale, vp))
   }, [])
 
   const handleAvatarSelect = (avatarId) => {
@@ -158,13 +189,15 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
     revokeObjectUrl()
     const url = URL.createObjectURL(file)
     objectUrlRef.current = url
+    const vp = computeViewportSize()
+    setViewportSize(vp)
 
     const img = new Image()
     img.onload = () => {
       const w = img.naturalWidth
       const h = img.naturalHeight
-      const base = coverScale(w, h, VIEWPORT)
-      const center = centeredOffset(w, h, base, VIEWPORT)
+      const base = coverScale(w, h, vp)
+      const center = centeredOffset(w, h, base, vp)
       setImgSize({ w, h })
       setZoom(1)
       setOffset(center)
@@ -181,7 +214,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
 
   const getAbsoluteScale = useCallback(() => {
     const { w, h } = imgSizeRef.current
-    return coverScale(w, h, VIEWPORT) * zoomRef.current
+    return coverScale(w, h, viewportSizeRef.current) * zoomRef.current
   }, [])
 
   const onPointerDown = (e) => {
@@ -203,7 +236,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
     const scale = getAbsoluteScale()
     const nx = drag.origX + (e.clientX - drag.startX)
     const ny = drag.origY + (e.clientY - drag.startY)
-    setOffset(clampOffset(nx, ny, w, h, scale, VIEWPORT))
+    setOffset(clampOffset(nx, ny, w, h, scale, viewportSizeRef.current))
   }
 
   const onPointerUp = (e) => {
@@ -251,7 +284,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
       const scale = getAbsoluteScale()
       const nx = dragRef.current.origX + (t.clientX - dragRef.current.startX)
       const ny = dragRef.current.origY + (t.clientY - dragRef.current.startY)
-      setOffset(clampOffset(nx, ny, w, h, scale, VIEWPORT))
+      setOffset(clampOffset(nx, ny, w, h, scale, viewportSizeRef.current))
     }
   }
 
@@ -270,31 +303,30 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
     }
   }
 
-  const onWheel = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const rect = viewportRef.current?.getBoundingClientRect()
-    const fx = e.clientX - (rect?.left ?? 0)
-    const fy = e.clientY - (rect?.top ?? 0)
-    const delta = e.deltaY > 0 ? -0.08 : 0.08
-    applyZoom(zoomRef.current + delta, fx, fy)
-  }
-
   useEffect(() => {
     const el = viewportRef.current
-    if (!el || step !== 'crop') return
-    const handler = (e) => onWheel(e)
+    if (!el || step !== 'crop') return undefined
+    const handler = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const rect = viewportRef.current?.getBoundingClientRect()
+      const fx = e.clientX - (rect?.left ?? 0)
+      const fy = e.clientY - (rect?.top ?? 0)
+      const delta = e.deltaY > 0 ? -0.08 : 0.08
+      applyZoom(zoomRef.current + delta, fx, fy)
+    }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [step, cropSrc])
+  }, [step, cropSrc, applyZoom])
 
   const exportCroppedImage = () => {
     const { w, h } = imgSize
     const canvas = canvasRef.current
+    const vp = viewportSize
     if (!canvas || !cropSrc || !w || !h) return null
 
-    const scale = coverScale(w, h, VIEWPORT) * zoom
-    const srcSize = VIEWPORT / scale
+    const scale = coverScale(w, h, vp) * zoom
+    const srcSize = vp / scale
     const sx = -offset.x / scale
     const sy = -offset.y / scale
     const outSize = Math.min(MAX_OUTPUT, Math.max(1, Math.round(srcSize)))
@@ -308,7 +340,6 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
 
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    // Sync path via already-loaded blob URL — draw after brief load
     return new Promise((resolve, reject) => {
       img.onload = () => {
         try {
@@ -329,6 +360,16 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
     })
   }
 
+  const persistAvatar = async (avatarValue) => {
+    await api.put('/users/profile', { avatar: avatarValue })
+    await refreshUser()
+    onSave?.(avatarValue)
+    toast.success('Avatar actualizado correctamente')
+    setSelectedAvatar('')
+    resetCrop()
+    onClose()
+  }
+
   const handleUsePhoto = async () => {
     try {
       setSaving(true)
@@ -337,11 +378,34 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
         toast.error('Error al procesar la imagen')
         return
       }
+      revokeObjectUrl()
+      setCropSrc(null)
+      setImgSize({ w: 0, h: 0 })
+      setZoom(1)
+      setOffset({ x: 0, y: 0 })
       setSelectedAvatar(dataUrl)
-      resetCrop()
+      setStep('pick')
+      if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error) {
       console.error('Error exporting crop:', error)
       toast.error('Error al procesar la imagen')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCropAndSave = async () => {
+    try {
+      setSaving(true)
+      const dataUrl = await exportCroppedImage()
+      if (!dataUrl) {
+        toast.error('Error al procesar la imagen')
+        return
+      }
+      await persistAvatar(dataUrl)
+    } catch (error) {
+      console.error('Error saving cropped avatar:', error)
+      toast.error(error.response?.data?.message || 'Error al guardar avatar')
     } finally {
       setSaving(false)
     }
@@ -352,16 +416,9 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
       toast.error('Por favor selecciona un avatar')
       return
     }
-
     try {
       setSaving(true)
-      await api.put('/users/profile', { avatar: selectedAvatar })
-      await refreshUser()
-      toast.success('Avatar actualizado correctamente')
-      onSave?.(selectedAvatar)
-      onClose()
-      setSelectedAvatar('')
-      resetCrop()
+      await persistAvatar(selectedAvatar)
     } catch (error) {
       console.error('Error saving avatar:', error)
       toast.error(error.response?.data?.message || 'Error al guardar avatar')
@@ -377,48 +434,61 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
 
   if (!isOpen) return null
 
-  const absScale = imgSize.w ? coverScale(imgSize.w, imgSize.h, VIEWPORT) * zoom : 1
+  const absScale = imgSize.w ? coverScale(imgSize.w, imgSize.h, viewportSize) * zoom : 1
   const selectedIcon = selectedAvatar?.startsWith('icon:')
     ? exerciseAvatars.find((a) => a.id === selectedAvatar.replace('icon:', ''))
     : null
 
-  return (
+  const modal = (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70">
+      <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/75 p-0 sm:p-4">
+        <button
+          type="button"
+          className="absolute inset-0 cursor-default"
+          aria-label="Cerrar"
+          onClick={handleClose}
+        />
         <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 24, scale: 0.98 }}
-          className="w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl"
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 28 }}
+          className="relative z-10 flex w-full sm:max-w-lg flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl"
+          style={{
+            maxHeight: 'min(92dvh, 100%)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+          }}
           role="dialog"
           aria-modal="true"
           aria-label="Seleccionar avatar"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-            <h2 className="font-display text-xl sm:text-2xl text-[color:var(--text-primary)]">
+          {/* Header */}
+          <div className="flex shrink-0 items-center justify-between border-b border-[color:var(--border-subtle)] px-4 py-3">
+            <h2 className="font-display text-xl text-[color:var(--text-primary)]">
               {step === 'crop' ? 'Ajustar foto' : 'Seleccionar Avatar'}
             </h2>
             <button
               type="button"
               onClick={handleClose}
-              className="p-2 rounded-lg text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-muted)] transition-colors"
+              className="rounded-lg p-2 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--bg-muted)]"
               aria-label="Cerrar"
             >
-              <FiX size={24} />
+              <FiX size={22} />
             </button>
           </div>
 
-          <div className="p-4 sm:p-6">
+          {/* Scrollable body */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
             {step === 'crop' ? (
-              <div className="flex flex-col items-center gap-5">
-                <p className="text-sm text-center text-[color:var(--text-secondary)]">
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-center text-sm text-[color:var(--text-secondary)]">
                   Arrastra para mover · pellizca o usa el control para acercar
                 </p>
 
                 <div
                   ref={viewportRef}
-                  className="relative touch-none select-none cursor-grab active:cursor-grabbing rounded-full overflow-hidden bg-black shadow-lg ring-2 ring-[color:var(--border-subtle)]"
-                  style={{ width: VIEWPORT, height: VIEWPORT, maxWidth: '100%' }}
+                  className="relative touch-none select-none cursor-grab overflow-hidden rounded-full bg-black shadow-lg ring-2 ring-[color:var(--border-subtle)] active:cursor-grabbing"
+                  style={{ width: viewportSize, height: viewportSize, maxWidth: '100%' }}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
@@ -433,7 +503,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                       src={cropSrc}
                       alt=""
                       draggable={false}
-                      className="absolute top-0 left-0 max-w-none pointer-events-none"
+                      className="pointer-events-none absolute left-0 top-0 max-w-none"
                       style={{
                         width: imgSize.w * absScale,
                         height: imgSize.h * absScale,
@@ -441,7 +511,6 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                       }}
                     />
                   )}
-                  {/* Soft edge hint */}
                   <div
                     className="pointer-events-none absolute inset-0 rounded-full"
                     style={{ boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.25)' }}
@@ -465,35 +534,14 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                     aria-label="Zoom"
                   />
                 </div>
-
-                <div className="flex w-full gap-3">
-                  <button
-                    type="button"
-                    onClick={resetCrop}
-                    disabled={saving}
-                    className="btn-secondary flex-1"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleUsePhoto}
-                    disabled={saving}
-                    className="btn-primary flex-1 flex items-center justify-center gap-2"
-                  >
-                    <FiCheck size={20} />
-                    {saving ? 'Procesando...' : 'Usar foto'}
-                  </button>
-                </div>
               </div>
             ) : (
               <>
-                {/* Preview */}
-                <div className="text-center mb-6">
+                <div className="mb-5 text-center">
                   <div className="inline-block relative">
                     {selectedIcon ? (
                       <div
-                        className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br ${selectedIcon.gradient} flex items-center justify-center mb-2`}
+                        className={`mb-2 flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br sm:h-32 sm:w-32 ${selectedIcon.gradient}`}
                       >
                         {(() => {
                           const PreviewIcon = selectedIcon.Icon
@@ -501,23 +549,22 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                         })()}
                       </div>
                     ) : selectedAvatar?.startsWith('data:') || selectedAvatar?.startsWith('http') ? (
-                      <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden mb-2 ring-2 ring-[color:var(--border-subtle)]">
-                        <img src={selectedAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                      <div className="mb-2 h-28 w-28 overflow-hidden rounded-full ring-2 ring-[color:var(--border-subtle)] sm:h-32 sm:w-32">
+                        <img src={selectedAvatar} alt="Avatar" className="h-full w-full object-cover" />
                       </div>
                     ) : (
-                      <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-4xl font-bold mb-2">
+                      <div className="mb-2 flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-4xl font-bold sm:h-32 sm:w-32">
                         {user?.name?.charAt(0) || 'U'}
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Exercise Avatars Grid */}
-                <div className="mb-6">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 text-[color:var(--text-primary)]">
+                <div className="mb-5">
+                  <h3 className="mb-3 text-base font-semibold text-[color:var(--text-primary)]">
                     Iconos de Ejercicio
                   </h3>
-                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 sm:gap-4">
                     {exerciseAvatars.map((avatar) => {
                       const IconComponent = avatar.Icon
                       const isSelected = selectedAvatar === `icon:${avatar.id}`
@@ -526,7 +573,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                           key={avatar.id}
                           type="button"
                           onClick={() => handleAvatarSelect(avatar.id)}
-                          className={`relative aspect-square w-full max-w-[4.5rem] mx-auto rounded-full bg-gradient-to-br ${avatar.gradient} flex items-center justify-center transition-all hover:scale-105 ${
+                          className={`relative mx-auto flex aspect-square w-full max-w-[4.5rem] items-center justify-center rounded-full bg-gradient-to-br transition-all hover:scale-105 ${avatar.gradient} ${
                             isSelected
                               ? 'ring-4 ring-[color:var(--color-primary)] ring-offset-2 ring-offset-[color:var(--bg-elevated)] shadow-lg'
                               : ''
@@ -537,7 +584,7 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                         >
                           <IconComponent size={28} className="text-white" />
                           {isSelected && (
-                            <div className="absolute -top-1 -right-1 w-6 h-6 bg-[color:var(--color-primary)] rounded-full flex items-center justify-center shadow-lg">
+                            <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[color:var(--color-primary)] shadow-lg">
                               <FiCheck size={12} className="text-white" />
                             </div>
                           )}
@@ -547,9 +594,8 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                   </div>
                 </div>
 
-                {/* Upload Image */}
-                <div className="mb-6">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 text-[color:var(--text-primary)]">
+                <div className="mb-2">
+                  <h3 className="mb-3 text-base font-semibold text-[color:var(--text-primary)]">
                     Subir Imagen
                   </h3>
                   <input
@@ -563,43 +609,72 @@ export default function AvatarPicker({ isOpen, onClose, onSave }) {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={saving}
-                    className="btn-secondary w-full flex items-center justify-center gap-2"
+                    className="btn-secondary flex w-full items-center justify-center gap-2"
                   >
                     <FiUpload size={20} />
                     Subir Foto
                   </button>
-                  <p className="mt-2 text-xs text-center text-[color:var(--text-muted)]">
+                  <p className="mt-2 text-center text-xs text-[color:var(--text-muted)]">
                     Máximo 15MB · se exporta hasta 1024×1024
                   </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="btn-secondary flex-1"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={!selectedAvatar || saving}
-                    className="btn-primary flex-1 flex items-center justify-center gap-2"
-                  >
-                    <FiCheck size={20} />
-                    {saving ? 'Guardando...' : 'Guardar'}
-                  </button>
                 </div>
               </>
             )}
           </div>
 
-          {/* Hidden canvas for export */}
+          {/* Sticky footer — always visible */}
+          <div className="shrink-0 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-4 py-3">
+            {step === 'crop' ? (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={resetCrop}
+                  disabled={saving}
+                  className="btn-secondary flex-1"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUsePhoto}
+                  disabled={saving}
+                  className="btn-secondary flex-1"
+                >
+                  Vista previa
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCropAndSave}
+                  disabled={saving}
+                  className="btn-primary flex flex-1 items-center justify-center gap-2"
+                >
+                  <FiCheck size={18} />
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button type="button" onClick={handleClose} className="btn-secondary flex-1">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!selectedAvatar || saving}
+                  className="btn-primary flex flex-1 items-center justify-center gap-2"
+                >
+                  <FiCheck size={18} />
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
           <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
         </motion.div>
       </div>
     </AnimatePresence>
   )
+
+  return createPortal(modal, document.body)
 }
