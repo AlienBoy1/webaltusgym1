@@ -399,6 +399,31 @@ export default function AppTutorial() {
         await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, settleMs)))
         if (gen !== alignGen.current) return
 
+        // Force demo steps always use the explanatory surface (empty accounts)
+        if (step.forceDemo && step.demo) {
+          setRect(null)
+          setUseDemo(true)
+          await new Promise((r) => {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(() => window.setTimeout(r, 80))
+            })
+          })
+          if (gen !== alignGen.current) return
+          const demoFound = getTargetRect(step.target)
+          if (demoFound) {
+            setRect(demoFound)
+            const h = cardRef.current?.offsetHeight || 200
+            setCardStyle(
+              placeCardNear(demoFound, h, 340, {
+                belowAvatarMenu: Boolean(step?.openAvatarMenu),
+                preferMidX: demoFound.midX
+              })
+            )
+          }
+          setReady(true)
+          return
+        }
+
         let found = getTargetRect(step.target)
         if (needsMenu && !found) {
           // Keep trying menu item before falling back to panel
@@ -420,14 +445,29 @@ export default function AppTutorial() {
         }
 
         if (step.demo) {
+          // Drop stale spotlight from prior step (e.g. empty list) before mounting demo
+          setRect(null)
           setUseDemo(true)
           await new Promise((r) => {
             window.requestAnimationFrame(() => {
-              window.requestAnimationFrame(() => window.setTimeout(r, 50))
+              window.requestAnimationFrame(() => window.setTimeout(r, 80))
             })
           })
           if (gen !== alignGen.current) return
-          measure()
+          // Prefer the demo surface even if a tiny mismatch exists
+          const demoFound = getTargetRect(step.target)
+          if (demoFound) {
+            setRect(demoFound)
+            const h = cardRef.current?.offsetHeight || 200
+            setCardStyle(
+              placeCardNear(demoFound, h, 340, {
+                belowAvatarMenu: Boolean(step?.openAvatarMenu),
+                preferMidX: demoFound.midX
+              })
+            )
+          } else {
+            measure()
+          }
           setReady(true)
           return
         }

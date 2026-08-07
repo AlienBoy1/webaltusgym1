@@ -6,19 +6,21 @@ import { useAuthStore } from '../store/authStore'
 import {
   FREE_ERA_END_ISO,
   freeEraEndLabel,
-  isPastFreeEra
+  isPastFreeEra,
+  isPaidEraLive
 } from '../utils/membershipLifecycle'
-import { canStartTutorials, subscribeAppGate } from '../utils/appGate'
+import { subscribeAppGate } from '../utils/appGate'
+import { TUTORIAL_CLOSED_EVENT } from './AppTutorial'
 
-const NOTICE_KEY = 'qyntra_membership_expiry_notice'
+const OPT_OUT_KEY = 'qyntra_membership_expiry_notice'
 
-function noticeStorageKey(userId) {
-  return userId ? `${NOTICE_KEY}:${userId}:2026` : null
+function optOutKey(userId) {
+  return userId ? `${OPT_OUT_KEY}:${userId}:2026` : null
 }
 
 function hasOptedOut(userId) {
-  const key = noticeStorageKey(userId)
-  if (!key) return true
+  const key = optOutKey(userId)
+  if (!key) return false
   try {
     return localStorage.getItem(key) === '1'
   } catch {
@@ -27,7 +29,7 @@ function hasOptedOut(userId) {
 }
 
 function markOptedOut(userId) {
-  const key = noticeStorageKey(userId)
+  const key = optOutKey(userId)
   if (!key) return
   try {
     localStorage.setItem(key, '1')
@@ -36,56 +38,73 @@ function markOptedOut(userId) {
   }
 }
 
+function isLegacyMembership(membership) {
+  if (!membership) return true
+  if (membership.__paidEra === true || membership.era === 'paid') return false
+  return true
+}
+
 /**
- * Free membership ends Dec 31, 2026 23:59 (Mexico City).
- * Shows on every login unless the user taps "No volver a recordar".
- * "Entendido" only closes it for the current session.
+ * Shows free-membership expiry warning on every login/session start
+ * until the user taps "No volver a recordar".
  */
 export default function MembershipExpiryNotice() {
   const user = useAuthStore((s) => s.user)
   const membershipNotice = useAuthStore((s) => s.membershipNotice)
+  const authSessionTick = useAuthStore((s) => s.authSessionTick)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const clearMembershipNotice = useAuthStore((s) => s.clearMembershipNotice)
   const [open, setOpen] = useState(false)
-  const closedThisSessionRef = useRef(false)
+  const closedForTickRef = useRef(-1)
 
-  // New login notice → allow showing again this session
   useEffect(() => {
-    if (membershipNotice) {
-      closedThisSessionRef.current = false
+    // New login/session → allow modal again (unless permanently opted out)
+    if (authSessionTick > 0) {
+      closedForTickRef.current = -1
     }
-  }, [membershipNotice])
+  }, [authSessionTick])
 
   useEffect(() => {
     const tryOpen = () => {
+      if (!isAuthenticated) return
       const u = useAuthStore.getState().user
       if (!u?.id && !u?._id) return
       if (!u.username) return
-      if (!canStartTutorials()) return
+      if (isPaidEraLive()) return
       if (document.body.dataset.qyntraTutorial === '1') return
-      if (closedThisSessionRef.current) return
+
+      const tick = useAuthStore.getState().authSessionTick || 0
+      if (closedForTickRef.current === tick && tick > 0) return
 
       const uid = u.id || u._id
       if (hasOptedOut(uid)) return
-
-      const membership = u.membership
-      const isLegacy =
-        membership?.isLegacyFree !== false &&
-        membership?.era !== 'paid' &&
-        membership?.__paidEra !== true
-
-      if (!isLegacy && !useAuthStore.getState().membershipNotice) return
+      if (!isLegacyMembership(u.membership)) return
 
       setOpen(true)
     }
 
     tryOpen()
+    const t1 = window.setTimeout(tryOpen, 600)
+    const t2 = window.setTimeout(tryOpen, 1800)
     const unsub = subscribeAppGate(() => tryOpen())
-    const t = window.setTimeout(tryOpen, 1200)
+    const onTutorialClosed = () => window.setTimeout(tryOpen, 350)
+    window.addEventListener(TUTORIAL_CLOSED_EVENT, onTutorialClosed)
     return () => {
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
       unsub()
-      window.clearTimeout(t)
+      window.removeEventListener(TUTORIAL_CLOSED_EVENT, onTutorialClosed)
     }
-  }, [user?.id, user?._id, user?.username, user?.membership?.endDate, membershipNotice])
+  }, [
+    isAuthenticated,
+    user?.id,
+    user?._id,
+    user?.username,
+    user?.membership?.plan,
+    user?.membership?.status,
+    membershipNotice,
+    authSessionTick
+  ])
 
   const endsLabel = freeEraEndLabel()
   const expired = isPastFreeEra() || membershipNotice?.type === 'expired'
@@ -95,14 +114,14 @@ export default function MembershipExpiryNotice() {
     : `Tu membresía gratuita vence el ${endsLabel}. A partir de enero 2027 se habilitarán los planes de pago en Qyntra.`
 
   const closeForSession = () => {
-    closedThisSessionRef.current = true
+    closedForTickRef.current = useAuthStore.getState().authSessionTick || 0
     setOpen(false)
   }
 
   const dontRemindAgain = () => {
     const uid = user?.id || user?._id
     markOptedOut(uid)
-    closedThisSessionRef.current = true
+    closedForTickRef.current = useAuthStore.getState().authSessionTick || 0
     clearMembershipNotice?.()
     setOpen(false)
   }

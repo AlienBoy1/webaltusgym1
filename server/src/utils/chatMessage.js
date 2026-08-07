@@ -30,6 +30,16 @@ function previewLabel(text, attachment) {
   if (attachment?.type === 'post') {
     return text?.trim() || `📝 ${attachment.authorName || 'Publicación'} · ${attachment.snippet || 'Qyntra Gym'}`
   }
+  if (attachment?.type === 'image') {
+    return text?.trim() || '📷 Foto'
+  }
+  if (attachment?.type === 'file') {
+    const fileName = attachment.name || attachment.fileName || 'Archivo'
+    return text?.trim() || `📎 ${fileName}`
+  }
+  if (attachment?.type === 'audio') {
+    return text?.trim() || '🎤 Mensaje de voz'
+  }
   return text || ''
 }
 

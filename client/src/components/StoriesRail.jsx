@@ -27,6 +27,7 @@ import MentionInput, { MentionText } from './MentionInput'
 import { dispatchStoryClose, dispatchStoryOpen } from '../utils/presence'
 import ProtectedMedia from './ProtectedMedia'
 import { compressImageFile } from '../utils/compressImage'
+import UserNoteBadge from './UserNoteBadge'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -897,10 +898,11 @@ export default function StoriesRail({
                 onClick={() => openGroup(idx)}
                 className="flex w-[72px] shrink-0 flex-col items-center gap-1.5"
               >
-                <div className={`rounded-full p-[2px] ${ring}`}>
+                <div className={`relative rounded-full p-[2px] ${ring}`}>
                   <div className="rounded-full bg-elevated p-[2px]">
                     <Avatar avatar={group.user?.avatar} name={group.user?.name} size="story" />
                   </div>
+                  <UserNoteBadge userId={uid} maxChars={28} />
                 </div>
                 <span className="w-full truncate text-center text-[11px] text-app-secondary">
                   {group.user?.name?.split(' ')[0] || 'User'}

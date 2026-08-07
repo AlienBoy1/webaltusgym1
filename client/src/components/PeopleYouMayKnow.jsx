@@ -5,6 +5,7 @@ import { FiUserPlus, FiUser, FiMessageCircle } from 'react-icons/fi'
 import api from '../utils/api'
 import { Avatar } from '../utils/avatarUtils'
 import toast from 'react-hot-toast'
+import UserNoteBadge from './UserNoteBadge'
 
 export default function PeopleYouMayKnow() {
   const navigate = useNavigate()
@@ -135,7 +136,10 @@ export default function PeopleYouMayKnow() {
                 transition={{ delay: Math.min(i * 0.05, 0.3) }}
                 className="w-40 flex-shrink-0 snap-start rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-3.5 flex flex-col items-center text-center"
               >
-                <Avatar avatar={person.avatar} name={person.name} size="lg" />
+                <div className="relative">
+                  <Avatar avatar={person.avatar} name={person.name} size="lg" />
+                  <UserNoteBadge userId={pid} />
+                </div>
                 <p className="mt-2.5 font-semibold text-sm truncate w-full">{person.name}</p>
                 {person.username ? (
                   <p className="text-[11px] text-primary-500 mt-0.5 truncate w-full">@{person.username}</p>

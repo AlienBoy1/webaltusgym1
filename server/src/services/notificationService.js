@@ -138,16 +138,20 @@ export async function notifyFreeMembershipCountdown(userId, membership = {}) {
   if (!userId) return null
   if (membership?.__paidEra === true || membership?.era === 'paid') return null
 
-  // Replace prior free-era countdown rows so each login refreshes one unread item
+  // Always replace ANY prior membership countdown rows (read or unread)
+  // so each login shows a fresh card with updated days remaining.
   try {
     const { data: existing } = await supabaseAdmin
       .from('notifications')
-      .select('id, related_data')
+      .select('id, related_data, type')
       .eq('user_id', userId)
       .eq('type', 'membership')
 
     const staleIds = (existing || [])
-      .filter((row) => row.related_data?.kind === 'free_era_days')
+      .filter((row) => {
+        const kind = row.related_data?.kind
+        return !kind || kind === 'free_era_days'
+      })
       .map((row) => row.id)
 
     if (staleIds.length) {

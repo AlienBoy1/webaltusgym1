@@ -17,6 +17,8 @@ import { getStorageAccessGranted, setStorageAccessGranted } from '../../utils/st
 import { useAppDialog } from '../../components/AppDialog'
 import GoogleIcon from '../../components/GoogleIcon'
 import { getGoogleLinkedStatus, startGoogleLink } from '../../utils/googleAuth'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 const settingsSections = [
   { id: 'account', title: 'Cuenta', icon: FiLink, color: 'primary' },
@@ -243,7 +245,13 @@ export default function UserSettings() {
   
   return (
     <div data-tour="tour-settings-panel" className="max-w-4xl mx-auto space-y-6">
-      <h1 className="font-display text-3xl">Configuración</h1>
+      <div className="flex items-center gap-2.5">
+        <h1 className="font-display text-3xl">Configuración</h1>
+        <TutorialHelpButton
+          tutorialId={TUTORIAL_IDS.PRIVACY_PERMISSIONS}
+          message="La configuración tiene un tutorial para privacidad, permisos y ajustes de entrenamiento."
+        />
+      </div>
       
       <div className="grid md:grid-cols-3 gap-6">
         <div className="space-y-2">

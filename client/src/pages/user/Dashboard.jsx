@@ -12,6 +12,9 @@ import {
   membershipStatusLabel,
   paidEraStartLabel
 } from '../../utils/membershipLifecycle'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import ChatShortcutsRail from '../../components/ChatShortcutsRail'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 const MOTIVATIONAL_MESSAGES = [
   'Cada serie cuenta. Hoy sumas un paso más hacia tu mejor versión.',
@@ -163,9 +166,15 @@ export default function Dashboard() {
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.25 }}
-            className="font-display mb-4 text-3xl tracking-wide md:text-4xl"
+            className="mb-4 flex items-center gap-2.5 font-display text-3xl tracking-wide md:text-4xl"
           >
-            {user?.name || 'Atleta'}
+            <span>{user?.name || 'Atleta'}</span>
+            <TutorialHelpButton
+              tutorialId={TUTORIAL_IDS.QUICK_START}
+              size="sm"
+              className="border-white/25 bg-white/15 text-white hover:border-white/40 hover:bg-white/25 hover:text-white"
+              message="El inicio tiene un tutorial rápido para conocer el menú, comunidad, entrenos y accesos."
+            />
           </motion.h1>
           <div className="space-y-2">
             <div className="rounded-2xl border border-white/20 bg-black/25 px-4 py-3 backdrop-blur-md">
@@ -374,6 +383,8 @@ export default function Dashboard() {
           Racha actual: {user?.stats?.currentStreak || 0} días
         </p>
       </motion.div>
+
+      <ChatShortcutsRail />
     </div>
   )
 }

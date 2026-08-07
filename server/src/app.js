@@ -12,6 +12,7 @@ import chatRoutes from './routes/chat.js'
 import classRoutes from './routes/classes.js'
 import challengeRoutes from './routes/challenges.js'
 import storyRoutes from './routes/stories.js'
+import noteRoutes from './routes/notes.js'
 import { isSupabaseConfigured } from './lib/supabase.js'
 
 dotenv.config()
@@ -68,6 +69,7 @@ app.use('/api/chat', chatRoutes)
 app.use('/api/classes', classRoutes)
 app.use('/api/challenges', challengeRoutes)
 app.use('/api/stories', storyRoutes)
+app.use('/api/notes', noteRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({

@@ -78,8 +78,12 @@ export const useAuthStore = create((set, get) => ({
   initializing: true,
   authIntent: null,
   membershipNotice: null,
+  /** Bumps on each credential/session login so UI can re-show once-per-login prompts */
+  authSessionTick: 0,
 
   clearMembershipNotice: () => set({ membershipNotice: null }),
+
+  bumpAuthSession: () => set({ authSessionTick: (get().authSessionTick || 0) + 1 }),
 
   loginWithSession: async (token, refreshToken, userPayload, { remember = true, membershipNotice = null } = {}) => {
     if (!token || !refreshToken || !userPayload) {
@@ -99,7 +103,8 @@ export const useAuthStore = create((set, get) => ({
         rememberMe: remember,
         loading: false,
         authIntent: null,
-        membershipNotice: membershipNotice || null
+        membershipNotice: membershipNotice || null,
+        authSessionTick: (get().authSessionTick || 0) + 1
       })
       return { success: true }
     } catch (error) {
@@ -124,7 +129,8 @@ export const useAuthStore = create((set, get) => ({
         rememberMe: remember,
         loading: false,
         authIntent: null,
-        membershipNotice: data.membershipNotice || null
+        membershipNotice: data.membershipNotice || null,
+        authSessionTick: (get().authSessionTick || 0) + 1
       })
       return { success: true }
     } catch (error) {
@@ -158,7 +164,8 @@ export const useAuthStore = create((set, get) => ({
         rememberMe: remember,
         loading: false,
         authIntent: null,
-        membershipNotice: data.membershipNotice || null
+        membershipNotice: data.membershipNotice || null,
+        authSessionTick: (get().authSessionTick || 0) + 1
       })
       return { success: true }
     } catch (error) {
@@ -399,7 +406,9 @@ export const useAuthStore = create((set, get) => ({
         isAuthenticated: true,
         token: getStoredToken() || token,
         refreshToken: getStoredRefreshToken() || refreshToken,
-        membershipNotice: data.membershipNotice || null
+        membershipNotice: data.membershipNotice || null,
+        // Treat session restore as a login for once-per-session prompts
+        authSessionTick: (get().authSessionTick || 0) + 1
       })
       return true
     } catch (error) {

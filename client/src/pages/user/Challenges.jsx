@@ -10,6 +10,8 @@ import { es } from 'date-fns/locale'
 import { Avatar } from '../../utils/avatarUtils'
 import { useConfetti } from '../../components/Confetti'
 import { setChallengeTimerActive } from '../../utils/presence'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 function formatElapsed(ms) {
   const totalSec = Math.floor(ms / 1000)
@@ -438,7 +440,13 @@ export default function Challenges() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl">Retos</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-3xl">Retos</h1>
+          <TutorialHelpButton
+            tutorialId={TUTORIAL_IDS.CHALLENGES}
+            message="Esta pantalla tiene un tutorial para crear, unirte y completar retos."
+          />
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-accent-yellow">
             <FiAward />

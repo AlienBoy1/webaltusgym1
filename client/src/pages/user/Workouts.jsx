@@ -31,6 +31,8 @@ import {
   clearWorkoutNotification,
   sendWorkoutNotification
 } from '../../utils/workoutSession'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 const DEFAULT_REST_SECONDS = 60
@@ -871,9 +873,17 @@ export default function Workouts() {
             >
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,245,255,0.07),transparent_70%)]" />
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-cyan/40 to-transparent" />
-              <p className="relative text-[11px] font-semibold uppercase tracking-[0.4em] text-accent-cyan sm:text-xs">
-                Descanso
-              </p>
+              <div className="relative flex items-center justify-center gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.4em] text-accent-cyan sm:text-xs">
+                  Descanso
+                </p>
+                <TutorialHelpButton
+                  tutorialId={TUTORIAL_IDS.REST_TIMES}
+                  size="sm"
+                  className="pointer-events-auto"
+                  message="El temporizador de descanso tiene un tutorial para configurar y entender los tiempos entre ejercicios."
+                />
+              </div>
               <div className="relative mx-auto mt-8 flex max-w-xs justify-center sm:mt-10">
                 <Timer remaining={restRemaining} total={restTotal} size="lg" />
               </div>
@@ -1148,7 +1158,13 @@ export default function Workouts() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div>
-          <h1 className="font-display text-3xl text-app sm:text-5xl">Entrenamientos</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-3xl text-app sm:text-5xl">Entrenamientos</h1>
+            <TutorialHelpButton
+              tutorialId={TUTORIAL_IDS.WORKOUTS}
+              message="Esta pantalla tiene un tutorial para crear rutinas, iniciar sesiones y completar ejercicios."
+            />
+          </div>
           <p className="mt-2 max-w-lg text-sm text-app-secondary sm:text-base">
             Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.
           </p>

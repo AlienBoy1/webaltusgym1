@@ -6,9 +6,40 @@ import { encodeChatContent, decodeChatContent, formatChatMessage } from '../util
 
 const router = express.Router()
 
+const SHARED_ATTACHMENT_TYPES = new Set(['image', 'file', 'audio', 'post'])
+
+async function getChatClearsMap(userId) {
+  const { data } = await supabaseAdmin
+    .from('chat_clears')
+    .select('peer_id, cleared_at')
+    .eq('user_id', userId)
+  return Object.fromEntries((data || []).map((row) => [row.peer_id, row.cleared_at]))
+}
+
+async function getChatClear(userId, peerId) {
+  const { data } = await supabaseAdmin
+    .from('chat_clears')
+    .select('cleared_at')
+    .eq('user_id', userId)
+    .eq('peer_id', peerId)
+    .maybeSingle()
+  return data?.cleared_at || null
+}
+
+function isAfterClear(message, clearedAt) {
+  if (!clearedAt) return true
+  return new Date(message.created_at) > new Date(clearedAt)
+}
+
+function normalizeRoutineDays(days) {
+  if (!Array.isArray(days)) return []
+  return [...new Set(days.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
+}
+
 router.get('/conversations', authenticate, async (req, res) => {
   try {
     const userId = req.user.id
+    const clearsMap = await getChatClearsMap(userId)
     // Cap scan — enough for inbox preview without loading full history
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
@@ -22,6 +53,9 @@ router.get('/conversations', authenticate, async (req, res) => {
     const conversationMap = new Map()
     for (const msg of messages || []) {
       const partnerId = msg.from_user_id === userId ? msg.to_user_id : msg.from_user_id
+      const clearedAt = clearsMap[partnerId]
+      if (!isAfterClear(msg, clearedAt)) continue
+
       const preview = decodeChatContent(msg.content).preview
       const isInboundUnread =
         msg.to_user_id === userId && msg.from_user_id !== userId && msg.read !== true
@@ -44,7 +78,7 @@ router.get('/conversations', authenticate, async (req, res) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, avatar')
+      .select('id, name, username, avatar')
       .in('id', partnerIds)
 
     const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]))
@@ -62,6 +96,7 @@ router.get('/conversations', authenticate, async (req, res) => {
           id: otherId,
           otherId,
           name: user.name,
+          username: user.username || null,
           avatar,
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
@@ -82,6 +117,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
     const otherId = req.params.userId
+    const clearedAt = await getChatClear(myId, otherId)
 
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
@@ -94,6 +130,8 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
     if (error) throw error
 
+    const visible = (messages || []).filter((m) => isAfterClear(m, clearedAt))
+
     const now = new Date().toISOString()
     await supabaseAdmin
       .from('messages')
@@ -102,7 +140,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       .eq('to_user_id', myId)
       .or('read.eq.false,delivered.eq.false')
 
-    res.json((messages || []).map((m) => {
+    res.json(visible.map((m) => {
       if (m.from_user_id === otherId && m.to_user_id === myId) {
         return formatChatMessage({ ...m, read: true, delivered: true }, myId)
       }
@@ -112,6 +150,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
     try {
       const myId = req.user.id
       const otherId = req.params.userId
+      const clearedAt = await getChatClear(myId, otherId)
       const { data: messages } = await supabaseAdmin
         .from('messages')
         .select('*')
@@ -120,13 +159,14 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
         )
         .order('created_at', { ascending: true })
         .limit(300)
+      const visible = (messages || []).filter((m) => isAfterClear(m, clearedAt))
       await supabaseAdmin
         .from('messages')
         .update({ read: true })
         .eq('from_user_id', otherId)
         .eq('to_user_id', myId)
         .eq('read', false)
-      res.json((messages || []).map((m) => formatChatMessage(m, myId)))
+      res.json(visible.map((m) => formatChatMessage(m, myId)))
     } catch (err2) {
       res.status(500).json({ message: 'Error', error: error.message })
     }
@@ -166,6 +206,89 @@ router.post('/read/:userId', authenticate, async (req, res) => {
     res.json({ ok: true })
   } catch (error) {
     res.json({ ok: false })
+  }
+})
+
+router.post('/clear/:userId', authenticate, async (req, res) => {
+  try {
+    const myId = req.user.id
+    const peerId = req.params.userId
+    const clearedAt = new Date().toISOString()
+    const { error } = await supabaseAdmin
+      .from('chat_clears')
+      .upsert(
+        { user_id: myId, peer_id: peerId, cleared_at: clearedAt },
+        { onConflict: 'user_id,peer_id' }
+      )
+    if (error) throw error
+    res.json({ ok: true, clearedAt })
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+router.get('/shared/:userId', authenticate, async (req, res) => {
+  try {
+    const myId = req.user.id
+    const otherId = req.params.userId
+    const clearedAt = await getChatClear(myId, otherId)
+
+    const { data: messages, error } = await supabaseAdmin
+      .from('messages')
+      .select('id, from_user_id, to_user_id, content, created_at')
+      .or(
+        `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
+      )
+      .order('created_at', { ascending: false })
+      .limit(300)
+
+    if (error) throw error
+
+    const shared = (messages || [])
+      .filter((m) => isAfterClear(m, clearedAt))
+      .map((m) => {
+        const decoded = decodeChatContent(m.content)
+        return { m, decoded }
+      })
+      .filter(({ decoded }) => decoded.attachment && SHARED_ATTACHMENT_TYPES.has(decoded.attachment.type))
+      .map(({ m, decoded }) => ({
+        id: m.id,
+        from: m.from_user_id === myId ? 'me' : 'other',
+        createdAt: m.created_at,
+        text: decoded.text,
+        attachment: decoded.attachment
+      }))
+
+    res.json(shared)
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
+  }
+})
+
+router.get('/partner/:userId/public-routines', authenticate, async (req, res) => {
+  try {
+    const partnerId = req.params.userId
+    const { data, error } = await supabaseAdmin
+      .from('workout_routines')
+      .select('id, name, color, exercises, days, updated_at')
+      .eq('user_id', partnerId)
+      .eq('is_public', true)
+      .order('updated_at', { ascending: false })
+
+    if (error) throw error
+
+    const routines = (data || []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      color: row.color || 'primary',
+      exerciseCount: Array.isArray(row.exercises) ? row.exercises.length : 0,
+      days: normalizeRoutineDays(row.days),
+      updatedAt: row.updated_at
+    }))
+
+    res.json(routines)
+  } catch (error) {
+    res.status(500).json({ message: 'Error', error: error.message })
   }
 })
 

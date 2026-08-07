@@ -15,6 +15,7 @@ export const TUTORIAL_IDS = {
   PROFILE_EDIT: 'profile_edit',
   WORKOUTS: 'workouts',
   COMMUNITY: 'community',
+  CHAT: 'chat',
   CHALLENGES: 'challenges',
   CLASSES: 'classes',
   INVITES: 'invites',
@@ -76,6 +77,15 @@ export const TUTORIAL_CATALOG = [
     description: 'Publica, reacciona, comenta y comparte historias.',
     completionKey: 'qyntra_tutorial_community_done',
     settingsKey: 'tutorialCommunityCompleted'
+  },
+  {
+    id: TUTORIAL_IDS.CHAT,
+    title: 'Mensajes y chat',
+    short: 'Conversaciones y compartir',
+    icon: '💬',
+    description: 'Inbox, enviar mensajes, ver respuestas y compartir contenido con otros usuarios.',
+    completionKey: 'qyntra_tutorial_chat_done',
+    settingsKey: 'tutorialChatCompleted'
   },
   {
     id: TUTORIAL_IDS.CHALLENGES,
@@ -262,6 +272,15 @@ const PROFILE_STEPS = [
     body: 'Toca el avatar para ver o cambiar tu foto (y ver historias si tienes). Es lo primero que ve tu comunidad.'
   },
   {
+    id: 'profile-notes',
+    path: '/profile',
+    target: 'tour-profile-notes',
+    demo: 'profile-notes',
+    forceDemo: true,
+    title: 'Notas en tu perfil',
+    body: 'La nube junto a tu foto es una nota temporal (24 h). Comparte lo que piensas; solo tú ves las respuestas privadas.'
+  },
+  {
     id: 'profile-edit',
     path: '/profile',
     target: 'tour-profile-edit',
@@ -393,6 +412,59 @@ const COMMUNITY_STEPS = [
   }
 ]
 
+const CHAT_STEPS = [
+  {
+    id: 'chat-inbox',
+    path: '/chat',
+    target: 'tour-chat-inbox',
+    title: 'Tu bandeja de mensajes',
+    body: 'Aquí ves todas tus conversaciones: último mensaje, hora y avisos sin leer.'
+  },
+  {
+    id: 'chat-new',
+    path: '/chat',
+    target: 'tour-chat-new',
+    title: 'Nueva conversación',
+    body: 'Pulsa + para buscar a alguien de la comunidad e iniciar un chat.'
+  },
+  {
+    id: 'chat-thread',
+    path: '/chat',
+    target: 'tour-chat-thread-demo',
+    demo: 'chat-thread',
+    forceDemo: true,
+    title: 'Así se ve un chat',
+    body: 'Los mensajes salientes van a la derecha y los recibidos a la izquierda, con hora y estado de lectura.'
+  },
+  {
+    id: 'chat-compose',
+    path: '/chat',
+    target: 'tour-chat-compose-demo',
+    demo: 'chat-compose',
+    forceDemo: true,
+    title: 'Enviar un mensaje',
+    body: 'Escribe texto, añade emojis, fotos, archivos o un audio. El botón enviar aparece listo cuando hay contenido.'
+  },
+  {
+    id: 'chat-share',
+    path: '/chat',
+    target: 'tour-chat-share-demo',
+    demo: 'chat-share',
+    forceDemo: true,
+    title: 'Compartir contenido',
+    body: 'También puedes enviar publicaciones o estados al chat; llegan como tarjetas para abrir en un toque.'
+  },
+  {
+    id: 'chat-options',
+    path: '/chat',
+    target: 'tour-chat-options-demo',
+    demo: 'chat-options',
+    forceDemo: true,
+    title: 'Menú del chat',
+    body: 'Los tres puntos abren opciones: archivos compartidos, rutinas públicas, estilo del fondo, vaciar chat y acceso directo.'
+  }
+]
+
 const CHALLENGE_STEPS = [
   {
     id: 'ch-nav',
@@ -420,6 +492,7 @@ const CHALLENGE_STEPS = [
     path: '/challenges',
     target: 'tour-challenge-join',
     demo: 'challenge-join',
+    forceDemo: true,
     title: 'Inscribirte a un reto',
     body: 'En Disponibles, Unirse al Reto te suma como participante. Luego podrás iniciarlo.'
   },
@@ -428,6 +501,7 @@ const CHALLENGE_STEPS = [
     path: '/challenges',
     target: 'tour-challenge-start',
     demo: 'challenge-start',
+    forceDemo: true,
     title: 'Iniciar el reto',
     body: 'Dentro del detalle, Iniciar Reto arranca tu sesión y empieza a contar tu progreso.'
   },
@@ -436,6 +510,7 @@ const CHALLENGE_STEPS = [
     path: '/challenges',
     target: 'tour-challenge-progress',
     demo: 'challenge-progress',
+    forceDemo: true,
     title: 'Marcar progreso',
     body: 'Actualiza tu avance (km, reps, días…) y confirma. Así el reto refleja tu ritmo real.'
   },
@@ -444,6 +519,7 @@ const CHALLENGE_STEPS = [
     path: '/challenges',
     target: 'tour-challenge-complete',
     demo: 'challenge-complete',
+    forceDemo: true,
     title: 'Finalizar y ganar XP',
     body: 'Al alcanzar el objetivo, Completar y Obtener XP cierra el reto y suma recompensa.'
   }
@@ -622,6 +698,7 @@ export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.PROFILE_EDIT]: PROFILE_STEPS,
   [TUTORIAL_IDS.WORKOUTS]: WORKOUT_STEPS,
   [TUTORIAL_IDS.COMMUNITY]: COMMUNITY_STEPS,
+  [TUTORIAL_IDS.CHAT]: CHAT_STEPS,
   [TUTORIAL_IDS.CHALLENGES]: CHALLENGE_STEPS,
   [TUTORIAL_IDS.CLASSES]: CLASS_STEPS,
   [TUTORIAL_IDS.INVITES]: INVITE_STEPS,

@@ -20,6 +20,7 @@ import { useAuthStore } from '../../store/authStore'
 import BadgesModal from '../../components/BadgesModal'
 import ProfileFeed from '../../components/ProfileFeed'
 import ProfileAvatar from '../../components/ProfileAvatar'
+import ProfileNotes from '../../components/ProfileNotes'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import SharePostSheet from '../../components/SharePostSheet'
 import PostReactorsModal from '../../components/PostReactorsModal'
@@ -462,6 +463,12 @@ export default function UserProfile() {
             onViewStory={openStory}
           />
           </div>
+          <ProfileNotes
+            profileUserId={user._id || user.id}
+            isOwner={isOwnProfile}
+            avatar={user.avatar}
+            name={user.name}
+          />
         </div>
 
         <h1 className="font-display text-2xl mb-1">{user.name}</h1>

@@ -169,6 +169,107 @@ export default function TutorialDemoSurface({ demoId }) {
     )
   }
 
+  if (demoId === 'profile-notes') {
+    return (
+      <div data-tour="tour-profile-notes" className={`${shell} flex flex-col items-center px-5 py-6`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Nota
+        </p>
+        <div className="relative mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-4 py-3 text-center text-sm text-[color:var(--text-primary)]">
+          Entrenando piernas hoy 💪
+          <span className="absolute -bottom-1.5 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-b border-r border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]" />
+        </div>
+        <div className="mt-4 flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.2)] text-xl font-bold text-[color:var(--color-primary)]">
+          Q
+        </div>
+        <p className="mt-3 text-center text-xs text-[color:var(--text-muted)]">Visible 24 h · respuestas privadas</p>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-thread') {
+    return (
+      <div data-tour="tour-chat-thread-demo" className={`${shell} space-y-2 p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Chat
+        </p>
+        <div className="mr-auto max-w-[80%] rounded-2xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2 text-sm">
+          ¿Entrenamos juntos mañana?
+          <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">10:21</p>
+        </div>
+        <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-[color:var(--color-primary)] px-3 py-2 text-sm text-white">
+          ¡Dale! A las 7 en el gym.
+          <p className="mt-1 text-right text-[10px] text-white/75">10:22 · leído</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-compose') {
+    return (
+      <div data-tour="tour-chat-compose-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Enviar mensaje
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">😊</span>
+          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">📷</span>
+          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">📎</span>
+          <span className="rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]">🎤</span>
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-3 py-2.5">
+          <span className="flex-1 text-sm text-[color:var(--text-muted)]">Escribe un mensaje…</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-white">
+            <FiShare2 size={14} className="rotate-45" />
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-share') {
+    return (
+      <div data-tour="tour-chat-share-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Contenido compartido
+          </p>
+        </div>
+        <div className="m-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] p-3">
+          <p className="text-xs font-semibold text-[color:var(--text-primary)]">Publicación · Miembro Qyntra</p>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">Nuevo PR en sentadilla 💪</p>
+          <div
+            className="mt-2 h-16 rounded-lg"
+            style={{
+              background:
+                'linear-gradient(135deg, rgba(var(--color-primary-rgb),0.3), rgba(var(--color-accent-rgb),0.15))'
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'chat-options') {
+    return (
+      <div data-tour="tour-chat-options-demo" className={`${shell} p-2`}>
+        <p className="px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Opciones del chat
+        </p>
+        {['Archivos y publicaciones', 'Ver entrenamientos', 'Estilo del chat', 'Vaciar chat', 'Crear acceso directo'].map(
+          (label) => (
+            <div
+              key={label}
+              className="rounded-xl px-3 py-2.5 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-muted)]"
+            >
+              {label}
+            </div>
+          )
+        )}
+      </div>
+    )
+  }
+
   if (demoId === 'class-enroll') {
     return (
       <div data-tour="tour-class-enroll" className={`${shell} p-4`}>

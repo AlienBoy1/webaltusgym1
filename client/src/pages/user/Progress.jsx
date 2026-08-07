@@ -4,6 +4,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart,
 import { FiTrendingUp, FiTrendingDown, FiAward, FiTarget } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 export default function Progress() {
   const { user } = useAuthStore()
@@ -85,7 +87,13 @@ export default function Progress() {
   
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl">Mi Progreso</h1>
+      <div className="flex items-center gap-2.5">
+        <h1 className="font-display text-3xl">Mi Progreso</h1>
+        <TutorialHelpButton
+          tutorialId={TUTORIAL_IDS.PROGRESS}
+          message="Esta pantalla tiene un tutorial para medir avances, ver estadísticas y celebrar logros."
+        />
+      </div>
       
       {/* Stats Overview */}
       <div data-tour="tour-progress-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">

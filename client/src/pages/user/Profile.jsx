@@ -16,6 +16,9 @@ import { Avatar } from '../../utils/avatarUtils'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import ProtectedMedia from '../../components/ProtectedMedia'
 import { openTutorialHub } from '../../components/AppTutorial'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import ProfileNotes from '../../components/ProfileNotes'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 import {
   FEATURE_LABELS,
   FREE_ERA_END_ISO,
@@ -778,6 +781,12 @@ export default function Profile() {
               <FiCamera size={16} />
             </button>
             </div>
+            <ProfileNotes
+              profileUserId={user?._id || user?.id}
+              isOwner
+              avatar={displayAvatar}
+              name={user?.name}
+            />
           </div>
 
           {editing ? (
@@ -799,7 +808,14 @@ export default function Profile() {
             </div>
           ) : (
             <div className="pointer-events-auto">
-              <h1 className="font-display mb-1 text-2xl sm:text-3xl">{user?.name || 'Usuario'}</h1>
+              <div className="mb-1 flex items-center justify-center gap-2">
+                <h1 className="font-display text-2xl sm:text-3xl">{user?.name || 'Usuario'}</h1>
+                <TutorialHelpButton
+                  tutorialId={TUTORIAL_IDS.PROFILE_EDIT}
+                  size="sm"
+                  message="Tu perfil tiene un tutorial para editar foto, portada, insignias y llegar a la configuración."
+                />
+              </div>
               <p className="mb-3 break-all text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
                 {user?.username ? `@${user.username}` : 'Sin username'}
               </p>
@@ -847,13 +863,18 @@ export default function Profile() {
               >
                 <FiShare2 size={16} /> Compartir perfil
               </button>
+              <TutorialHelpButton
+                tutorialId={TUTORIAL_IDS.INVITES}
+                size="sm"
+                message="Hay un tutorial para invitar amigos, compartir tu perfil y promocionar avances."
+              />
               <button
                 type="button"
                 data-tour="tour-profile-tutorials"
                 onClick={() => openTutorialHub()}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] text-[color:var(--color-primary)] hover:bg-[rgba(var(--color-primary-rgb),0.12)]"
-                aria-label="Tutoriales"
-                title="Tutoriales"
+                aria-label="Centro de tutoriales"
+                title="Centro de tutoriales"
               >
                 <FiHelpCircle size={18} />
               </button>

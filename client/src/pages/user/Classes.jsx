@@ -5,6 +5,8 @@ import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import ProtectedMedia from '../../components/ProtectedMedia'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 const DAYS = [
   { id: 1, label: 'Lunes' },
@@ -124,7 +126,13 @@ export default function Classes() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl">Clases Grupales</h1>
+      <div className="flex items-center gap-2.5">
+        <h1 className="font-display text-3xl">Clases Grupales</h1>
+        <TutorialHelpButton
+          tutorialId={TUTORIAL_IDS.CLASSES}
+          message="Esta pantalla tiene un tutorial para consultar la agenda e inscribirte a una clase."
+        />
+      </div>
 
       {/* Day Selector */}
       <div data-tour="tour-classes-list" className="space-y-6">

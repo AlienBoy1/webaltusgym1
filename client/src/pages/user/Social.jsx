@@ -25,6 +25,9 @@ import PostDetailSheet from '../../components/PostDetailSheet'
 import PostCommentsList from '../../components/PostCommentsList'
 import PostImageViewer from '../../components/PostImageViewer'
 import SocialFeedSkeleton from '../../components/SocialFeedSkeleton'
+import TutorialHelpButton from '../../components/TutorialHelpButton'
+import UserNoteBadge from '../../components/UserNoteBadge'
+import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { countComments } from '../../utils/commentTree'
 import { compressImageFile } from '../../utils/compressImage'
 
@@ -570,7 +573,14 @@ export default function Social() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-display text-2xl sm:text-3xl tracking-wide">Comunidad</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl sm:text-3xl tracking-wide">Comunidad</h1>
+            <TutorialHelpButton
+              tutorialId={TUTORIAL_IDS.COMMUNITY}
+              size="sm"
+              message="Esta pantalla tiene un tutorial para publicar, reaccionar, comentar y compartir historias."
+            />
+          </div>
           <p className="text-gray-500 text-xs sm:text-sm mt-0.5 hidden sm:block">
             Comparte tu progreso con quienes sigues
           </p>
@@ -850,8 +860,9 @@ export default function Social() {
               >
                 {/* Post Header */}
                 <div className="flex items-start gap-3 mb-3 sm:mb-4">
-                  <Link to={`/user/${post.user?._id}`} className="flex-shrink-0" data-no-post-open>
+                  <Link to={`/user/${post.user?._id}`} className="relative flex-shrink-0" data-no-post-open>
                     <Avatar avatar={post.user?.avatar} name={post.user?.name} size="md" />
+                    <UserNoteBadge userId={post.user?._id || post.user?.id} />
                   </Link>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
