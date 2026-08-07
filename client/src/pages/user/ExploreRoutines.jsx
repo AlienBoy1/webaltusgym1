@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiArrowLeft, FiCompass, FiUsers } from 'react-icons/fi'
+import { formatDistanceToNow } from 'date-fns'
+import { es } from 'date-fns/locale'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import { Avatar } from '../../utils/avatarUtils'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
+
+function creatorDisplayName(user) {
+  if (!user) return 'Usuario'
+  if (user.username) return `@${user.username}`
+  return user.name || 'Usuario'
+}
 
 export default function ExploreRoutines() {
   const [routines, setRoutines] = useState([])
@@ -111,36 +119,50 @@ export default function ExploreRoutines() {
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {routines.map((routine, i) => (
-            <motion.button
-              key={routine.id || routine._id}
-              type="button"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-              onClick={() => setSelected(routine)}
-              className="rounded-[1.5rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] p-5 text-left transition hover:-translate-y-0.5 hover:border-[rgba(var(--color-primary-rgb),0.45)]"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <Avatar avatar={routine.user?.avatar} name={routine.user?.name} size="sm" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{routine.user?.name}</p>
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-muted)]">GymRat</p>
+          {routines.map((routine, i) => {
+            const createdLabel = routine.createdAt
+              ? formatDistanceToNow(new Date(routine.createdAt), { addSuffix: true, locale: es })
+              : null
+            return (
+              <motion.button
+                key={routine.id || routine._id}
+                type="button"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                onClick={() => setSelected(routine)}
+                className="rounded-[1.5rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] p-5 text-left transition hover:-translate-y-0.5 hover:border-[rgba(var(--color-primary-rgb),0.45)]"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <Avatar
+                    avatar={routine.user?.avatar}
+                    name={routine.user?.name || routine.user?.username}
+                    size="sm"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{creatorDisplayName(routine.user)}</p>
+                    <p className="truncate text-[11px] text-[color:var(--text-muted)]">
+                      {routine.user?.username && routine.user?.name
+                        ? routine.user.name
+                        : 'GymRat'}
+                      {createdLabel ? ` · ${createdLabel}` : ''}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <h2 className="font-display text-2xl tracking-wide">{routine.name}</h2>
-              <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
-                {(routine.exercises || []).length} ejercicios
-              </p>
-              <ul className="mt-3 space-y-1">
-                {(routine.exercises || []).slice(0, 3).map((ex, idx) => (
-                  <li key={idx} className="truncate text-xs text-[color:var(--text-muted)]">
-                    {ex.name} · {ex.sets}×{ex.reps}
-                  </li>
-                ))}
-              </ul>
-            </motion.button>
-          ))}
+                <h2 className="font-display text-2xl tracking-wide">{routine.name}</h2>
+                <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
+                  {(routine.exercises || []).length} ejercicios
+                </p>
+                <ul className="mt-3 space-y-1">
+                  {(routine.exercises || []).slice(0, 3).map((ex, idx) => (
+                    <li key={idx} className="truncate text-xs text-[color:var(--text-muted)]">
+                      {ex.name} · {ex.sets}×{ex.reps}
+                    </li>
+                  ))}
+                </ul>
+              </motion.button>
+            )
+          })}
         </div>
       )}
 

@@ -35,15 +35,7 @@ async function getProfilesMap(ids) {
     .from('profiles')
     .select('id, name, username, avatar')
     .in('id', unique)
-  return Object.fromEntries(
-    (data || []).map((p) => {
-      let avatar = p.avatar || null
-      if (avatar && String(avatar).startsWith('data:') && String(avatar).length > 12000) {
-        avatar = null
-      }
-      return [p.id, { ...p, avatar }]
-    })
-  )
+  return Object.fromEntries((data || []).map((p) => [p.id, p]))
 }
 
 async function enrichStories(rows, viewerId) {
@@ -583,7 +575,13 @@ router.get('/:id/viewers', authenticate, async (req, res) => {
         return {
           userId: uid,
           user: profile
-            ? { _id: uid, id: uid, name: profile.name, avatar: profile.avatar }
+            ? {
+                _id: uid,
+                id: uid,
+                name: profile.name,
+                username: profile.username || null,
+                avatar: profile.avatar
+              }
             : { _id: uid, id: uid, name: 'Usuario' },
           viewedAt: view?.viewed_at || null,
           reaction: reactionByUser[uid] || null

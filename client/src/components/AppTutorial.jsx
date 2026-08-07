@@ -17,6 +17,7 @@ import { canStartTutorials, subscribeAppGate } from '../utils/appGate'
 export const TUTORIAL_STORAGE_KEY = 'qyntra_tutorial_done'
 export const TUTORIAL_START_EVENT = 'qyntra:start-tutorial'
 export const TUTORIAL_HUB_EVENT = 'qyntra:open-tutorial-hub'
+export const TUTORIAL_CLOSED_EVENT = 'qyntra:tutorial-closed'
 
 export function openAppTutorial(tutorialId = TUTORIAL_IDS.QUICK_START) {
   window.dispatchEvent(
@@ -24,8 +25,8 @@ export function openAppTutorial(tutorialId = TUTORIAL_IDS.QUICK_START) {
   )
 }
 
-export function openTutorialHub() {
-  window.dispatchEvent(new CustomEvent(TUTORIAL_HUB_EVENT))
+export function openTutorialHub(options = {}) {
+  window.dispatchEvent(new CustomEvent(TUTORIAL_HUB_EVENT, { detail: options || {} }))
 }
 
 function setAvatarMenuOpen(open) {
@@ -39,11 +40,29 @@ const HEADER_SAFE = 64
 const BOTTOM_SAFE_MOBILE = 88
 const MAX_WAIT = 40
 
-function pathMatches(current, expected) {
+function parseTourPath(path) {
+  if (!path) return { pathname: '/', search: '' }
+  const q = path.indexOf('?')
+  const rawPath = q >= 0 ? path.slice(0, q) : path
+  const rawSearch = q >= 0 ? path.slice(q + 1) : ''
+  return {
+    pathname: (rawPath || '/').replace(/\/+$/, '') || '/',
+    search: rawSearch
+  }
+}
+
+function pathMatches(currentPathname, expected, currentSearch = '') {
   if (!expected) return true
-  const a = (current || '').replace(/\/+$/, '') || '/'
-  const b = (expected || '').replace(/\/+$/, '') || '/'
-  return a === b
+  const exp = parseTourPath(expected)
+  const a = (currentPathname || '').replace(/\/+$/, '') || '/'
+  if (a !== exp.pathname) return false
+  if (!exp.search) return true
+  const want = new URLSearchParams(exp.search)
+  const have = new URLSearchParams((currentSearch || '').replace(/^\?/, ''))
+  for (const [key, value] of want.entries()) {
+    if (have.get(key) !== value) return false
+  }
+  return true
 }
 
 function isUsableTourEl(el) {
@@ -315,6 +334,7 @@ export default function AppTutorial() {
   const completingRef = useRef(false)
   const cardRef = useRef(null)
   const alignGen = useRef(0)
+  const hadOpenRef = useRef(false)
 
   const steps = getTutorialSteps(tutorialId)
   const meta = getTutorialMeta(tutorialId)
@@ -353,13 +373,14 @@ export default function AppTutorial() {
     const needsMenu = Boolean(step.openAvatarMenu)
     setAvatarMenuOpen(needsMenu)
 
-    if (step.path && !pathMatches(window.location.pathname, step.path)) {
+    if (step.path && !pathMatches(window.location.pathname, step.path, window.location.search)) {
       navigate(step.path)
     }
 
     let tries = 0
     while (tries < MAX_WAIT && gen === alignGen.current) {
-      const onPath = !step.path || pathMatches(window.location.pathname, step.path)
+      const onPath =
+        !step.path || pathMatches(window.location.pathname, step.path, window.location.search)
       if (onPath) {
         if (needsMenu) setAvatarMenuOpen(true)
 
@@ -585,7 +606,15 @@ export default function AppTutorial() {
   }
 
   useEffect(() => {
-    if (!open) delete document.body.dataset.qyntraTutorial
+    if (open) {
+      hadOpenRef.current = true
+      return
+    }
+    delete document.body.dataset.qyntraTutorial
+    if (hadOpenRef.current) {
+      hadOpenRef.current = false
+      window.dispatchEvent(new CustomEvent(TUTORIAL_CLOSED_EVENT))
+    }
   }, [open])
 
   if (!open || !step) return null

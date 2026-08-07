@@ -18,8 +18,24 @@ export const TUTORIAL_IDS = {
   CHALLENGES: 'challenges',
   CLASSES: 'classes',
   INVITES: 'invites',
-  PROGRESS: 'progress'
+  PROGRESS: 'progress',
+  REST_TIMES: 'rest_times'
 }
+
+/**
+ * Catalog IDs that existed before the "new tutorial" spotlight system.
+ * On first run we seed these as already-known so only truly new entries get promoted.
+ */
+export const PRE_SPOTLIGHT_TUTORIAL_IDS = [
+  TUTORIAL_IDS.QUICK_START,
+  TUTORIAL_IDS.PROFILE_EDIT,
+  TUTORIAL_IDS.WORKOUTS,
+  TUTORIAL_IDS.COMMUNITY,
+  TUTORIAL_IDS.CHALLENGES,
+  TUTORIAL_IDS.CLASSES,
+  TUTORIAL_IDS.INVITES,
+  TUTORIAL_IDS.PROGRESS
+]
 
 export const TUTORIAL_CATALOG = [
   {
@@ -94,6 +110,15 @@ export const TUTORIAL_CATALOG = [
     description: 'Mide avances, mira estadísticas y celebra logros.',
     completionKey: 'qyntra_tutorial_progress_done',
     settingsKey: 'tutorialProgressCompleted'
+  },
+  {
+    id: TUTORIAL_IDS.REST_TIMES,
+    title: 'Tiempos de descanso',
+    short: 'Configura descansos entre ejercicios',
+    icon: '⏱️',
+    description: 'Ajusta el timer de descanso, el auto-inicio y las alertas desde Configuración.',
+    completionKey: 'qyntra_tutorial_rest_times_done',
+    settingsKey: 'tutorialRestTimesCompleted'
   }
 ]
 
@@ -495,6 +520,41 @@ const PROGRESS_STEPS = [
   }
 ]
 
+const REST_TIMES_STEPS = [
+  {
+    id: 'rt-settings-nav',
+    path: '/settings?section=workout',
+    target: 'tour-settings-workout-section',
+    demo: 'settings-workout-nav',
+    title: 'Ajustes de entrenamiento',
+    body: 'En Configuración → Entrenamiento controlas cómo se comporta el descanso entre ejercicios.'
+  },
+  {
+    id: 'rt-duration',
+    path: '/settings?section=workout',
+    target: 'tour-settings-rest-timer',
+    demo: 'settings-rest-timer',
+    title: 'Duración del descanso',
+    body: 'Desliza para definir los segundos por defecto (15–180). Ese valor se usa al completar un ejercicio en sesión.'
+  },
+  {
+    id: 'rt-autostart',
+    path: '/settings?section=workout',
+    target: 'tour-settings-rest-autostart',
+    demo: 'settings-rest-autostart',
+    title: 'Auto-iniciar timer',
+    body: 'Si está activo, el temporizador arranca solo al completar. Ideal para mantener el ritmo sin tocar la pantalla.'
+  },
+  {
+    id: 'rt-session',
+    path: '/workouts',
+    target: 'tour-workout-rest-timer',
+    demo: 'workout-rest',
+    title: 'En la sesión',
+    body: 'Durante el entreno verás la cuenta atrás. Puedes esperar o saltar el descanso si ya estás listo.'
+  }
+]
+
 export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.QUICK_START]: QUICK_START_STEPS,
   [TUTORIAL_IDS.PROFILE_EDIT]: PROFILE_STEPS,
@@ -503,7 +563,8 @@ export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.CHALLENGES]: CHALLENGE_STEPS,
   [TUTORIAL_IDS.CLASSES]: CLASS_STEPS,
   [TUTORIAL_IDS.INVITES]: INVITE_STEPS,
-  [TUTORIAL_IDS.PROGRESS]: PROGRESS_STEPS
+  [TUTORIAL_IDS.PROGRESS]: PROGRESS_STEPS,
+  [TUTORIAL_IDS.REST_TIMES]: REST_TIMES_STEPS
 }
 
 export function getTutorialMeta(id) {

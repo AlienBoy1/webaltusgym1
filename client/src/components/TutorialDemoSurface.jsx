@@ -187,5 +187,51 @@ export default function TutorialDemoSurface({ demoId }) {
     )
   }
 
+  if (demoId === 'settings-workout-nav') {
+    return (
+      <div data-tour="tour-settings-workout-section" className={`${shell} p-3`}>
+        <div className="flex items-center gap-3 rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] px-3 py-3 text-[color:var(--color-primary)]">
+          <FiTarget size={18} />
+          <span className="flex-1 text-sm font-semibold">Entrenamiento</span>
+          <span className="text-xs opacity-70">›</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-rest-timer') {
+    return (
+      <div data-tour="tour-settings-rest-timer" className={`${shell} px-4 py-5`}>
+        <p className="text-sm font-medium text-[color:var(--text-primary)]">Timer de Descanso</p>
+        <div className="mt-3 h-2 rounded-full bg-[color:var(--bg-muted)]">
+          <div className="h-full w-1/3 rounded-full bg-[color:var(--color-primary)]" />
+        </div>
+        <p className="mt-3 text-center font-display text-3xl tabular-nums text-[color:var(--color-primary)]">
+          60s
+        </p>
+        <p className="mt-1 text-center text-[11px] text-[color:var(--text-muted)]">
+          Se usa al completar un ejercicio
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-rest-autostart') {
+    return (
+      <div
+        data-tour="tour-settings-rest-autostart"
+        className={`${shell} flex items-center justify-between gap-3 px-4 py-4`}
+      >
+        <div>
+          <p className="text-sm font-medium text-[color:var(--text-primary)]">Auto-iniciar Timer</p>
+          <p className="text-xs text-[color:var(--text-muted)]">Al completar el ejercicio</p>
+        </div>
+        <div className="h-6 w-11 rounded-full bg-[color:var(--color-primary)] p-0.5">
+          <div className="ml-auto h-5 w-5 rounded-full bg-white" />
+        </div>
+      </div>
+    )
+  }
+
   return null
 }

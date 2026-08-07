@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiBookOpen, FiCheck, FiPlay, FiX } from 'react-icons/fi'
@@ -8,20 +8,39 @@ import { openAppTutorial, TUTORIAL_HUB_EVENT } from './AppTutorial'
 
 /**
  * Native premium sheet listing every structured app tutorial (per-user "Visto").
+ * Supports highlightIds to pulse new tutorials after an update.
  */
 export default function TutorialHub() {
   const user = useAuthStore((s) => s.user)
   const [open, setOpen] = useState(false)
+  const [highlightIds, setHighlightIds] = useState([])
+  const itemRefs = useRef({})
 
   useEffect(() => {
-    const onOpen = () => setOpen(true)
+    const onOpen = (event) => {
+      const ids = Array.isArray(event?.detail?.highlightIds)
+        ? event.detail.highlightIds.filter(Boolean)
+        : []
+      setHighlightIds(ids)
+      setOpen(true)
+    }
     window.addEventListener(TUTORIAL_HUB_EVENT, onOpen)
     return () => window.removeEventListener(TUTORIAL_HUB_EVENT, onOpen)
   }, [])
 
+  useEffect(() => {
+    if (!open || !highlightIds.length) return undefined
+    const firstId = highlightIds[0]
+    const t = window.setTimeout(() => {
+      itemRefs.current[firstId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 280)
+    return () => window.clearTimeout(t)
+  }, [open, highlightIds])
+
   if (typeof document === 'undefined') return null
 
   const doneCount = TUTORIAL_CATALOG.filter((item) => hasCompletedTutorial(user, item.id)).length
+  const highlightSet = new Set(highlightIds)
 
   return createPortal(
     <AnimatePresence>
@@ -36,7 +55,10 @@ export default function TutorialHub() {
             type="button"
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             aria-label="Cerrar"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false)
+              setHighlightIds([])
+            }}
           />
           <motion.div
             initial={{ y: 44, opacity: 0 }}
@@ -60,13 +82,18 @@ export default function TutorialHub() {
                   <div className="min-w-0">
                     <h2 className="font-display text-xl tracking-wide">Tutoriales</h2>
                     <p className="text-xs text-[color:var(--text-muted)]">
-                      {doneCount}/{TUTORIAL_CATALOG.length} completados · solo esta cuenta
+                      {highlightIds.length
+                        ? `${highlightIds.length} nuevo${highlightIds.length === 1 ? '' : 's'} para ti`
+                        : `${doneCount}/${TUTORIAL_CATALOG.length} completados · solo esta cuenta`}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false)
+                    setHighlightIds([])
+                  }}
                   className="rounded-lg p-2 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
                 >
                   <FiX size={18} />
@@ -77,21 +104,39 @@ export default function TutorialHub() {
             <div className="flex-1 space-y-2 overflow-y-auto overscroll-contain p-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
               {TUTORIAL_CATALOG.map((item) => {
                 const done = hasCompletedTutorial(user, item.id)
+                const highlighted = highlightSet.has(item.id)
                 return (
                   <button
                     key={item.id}
+                    ref={(el) => {
+                      itemRefs.current[item.id] = el
+                    }}
                     type="button"
                     onClick={() => {
                       setOpen(false)
+                      setHighlightIds([])
                       window.setTimeout(() => openAppTutorial(item.id), 200)
                     }}
-                    className="group flex w-full items-start gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/40 px-3.5 py-3.5 text-left transition hover:border-[color:var(--color-primary)] hover:bg-[rgba(var(--color-primary-rgb),0.1)]"
+                    className={`group relative flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3.5 text-left transition ${
+                      highlighted
+                        ? 'border-[color:var(--color-primary)] bg-[rgba(var(--color-primary-rgb),0.12)] shadow-[0_0_0_1px_rgba(var(--color-primary-rgb),0.35)]'
+                        : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/40 hover:border-[color:var(--color-primary)] hover:bg-[rgba(var(--color-primary-rgb),0.1)]'
+                    }`}
                   >
+                    {highlighted && (
+                      <span
+                        className="pointer-events-none absolute inset-0 rounded-2xl"
+                        style={{
+                          animation: 'qyntra-tutorial-pulse 1.8s ease-in-out 3',
+                          boxShadow: '0 0 0 0 rgba(var(--color-primary-rgb), 0.45)'
+                        }}
+                      />
+                    )}
                     <span className="mt-0.5 text-2xl leading-none" aria-hidden>
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-[color:var(--text-primary)]">{item.title}</span>
                         {done ? (
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-green-500">

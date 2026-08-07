@@ -9,6 +9,7 @@ import InviteFriendsModal from '../components/InviteFriendsModal'
 import UsernameSetupModal from '../components/UsernameSetupModal'
 import AppTutorial, { openTutorialHub } from '../components/AppTutorial'
 import TutorialHub from '../components/TutorialHub'
+import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import { initSocket, disconnectSocket } from '../utils/socket'
 import api from '../utils/api'
 import { Link } from 'react-router-dom'
@@ -683,6 +684,7 @@ export default function MainLayout() {
       <UsernameSetupModal open={Boolean(user && !user.username)} />
       <AppTutorial />
       <TutorialHub />
+      <NewTutorialPrompt />
     </div>
     </StoryViewerProvider>
   )

@@ -248,8 +248,13 @@ export default function UserSettings() {
       <div className="grid md:grid-cols-3 gap-6">
         <div className="space-y-2">
           {settingsSections.map((section) => (
-            <button key={section.id} onClick={() => setActiveSection(section.id)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeSection === section.id ? 'bg-primary-500/10 text-primary-500' : 'text-gray-400 hover:bg-dark-200 hover:text-white'}`}>
+            <button
+              key={section.id}
+              type="button"
+              data-tour={section.id === 'workout' ? 'tour-settings-workout-section' : undefined}
+              onClick={() => setActiveSection(section.id)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeSection === section.id ? 'bg-primary-500/10 text-primary-500' : 'text-gray-400 hover:bg-dark-200 hover:text-white'}`}
+            >
               <section.icon size={20} /><span className="flex-1 text-left">{section.title}</span><FiChevronRight size={16} />
             </button>
           ))}
@@ -420,18 +425,22 @@ export default function UserSettings() {
               <div className="space-y-6">
                 <h2 className="font-display text-xl flex items-center gap-2"><FiActivity className="text-accent-green" /> Entrenamiento</h2>
                 <div className="space-y-4">
-                  <div className="py-3 border-b border-white/5">
+                  <div data-tour="tour-settings-rest-timer" className="py-3 border-b border-white/5">
                     <div className="flex items-center gap-3 mb-3"><FiClock className="text-gray-400" /><div><div className="font-medium">Timer de Descanso (segundos)</div></div></div>
                     <input type="range" min="15" max="180" step="15" value={settings.workout?.restTimerDefault || 60} onChange={(e) => updateSetting('workout', 'restTimerDefault', parseInt(e.target.value))} className="w-full" />
                     <div className="text-center text-primary-500 font-semibold mt-2">{settings.workout?.restTimerDefault || 60}s</div>
                   </div>
                   {[
-                    { key: 'autoStartTimer', label: 'Auto-iniciar Timer', desc: 'Iniciar timer al completar serie' },
+                    { key: 'autoStartTimer', label: 'Auto-iniciar Timer', desc: 'Iniciar timer al completar serie', tour: 'tour-settings-rest-autostart' },
                     { key: 'vibration', label: 'Vibración', desc: 'Vibrar al terminar descanso' },
                     { key: 'sound', label: 'Sonido', desc: 'Alertas con sonido' },
                     { key: 'keepScreenOn', label: 'Pantalla Siempre Encendida', desc: 'Evitar que se apague' },
                   ].map((item, i) => (
-                    <div key={item.key} className={`flex items-center justify-between py-3 ${i < 3 ? 'border-b border-white/5' : ''}`}>
+                    <div
+                      key={item.key}
+                      data-tour={item.tour}
+                      className={`flex items-center justify-between py-3 ${i < 3 ? 'border-b border-white/5' : ''}`}
+                    >
                       <div><div className="font-medium">{item.label}</div><div className="text-gray-400 text-sm">{item.desc}</div></div>
                       <Toggle enabled={settings.workout?.[item.key]} onChange={(v) => updateSetting('workout', item.key, v)} />
                     </div>

@@ -73,7 +73,13 @@ function mapRoutine(row, user = null) {
     isPublic: Boolean(row.is_public),
     userId: row.user_id,
     user: user
-      ? { _id: user.id, id: user.id, name: user.name, avatar: user.avatar }
+      ? {
+          _id: user.id,
+          id: user.id,
+          name: user.name,
+          username: user.username || null,
+          avatar: user.avatar
+        }
       : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -115,7 +121,7 @@ router.get('/routines/explore', authenticate, async (req, res) => {
 
     const { data: publicProfiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, avatar, settings')
+      .select('id, name, username, avatar, settings')
       .neq('id', req.user.id)
 
     const openProfileIds = (publicProfiles || [])
@@ -143,7 +149,7 @@ router.get('/routines/explore', authenticate, async (req, res) => {
     if (missing.length) {
       const { data: extra } = await supabaseAdmin
         .from('profiles')
-        .select('id, name, avatar, settings')
+        .select('id, name, username, avatar, settings')
         .in('id', missing)
       for (const p of extra || []) profileMap[p.id] = p
     }
@@ -161,6 +167,7 @@ router.get('/routines/explore', authenticate, async (req, res) => {
           ? {
               id: row.user_id,
               name: profileMap[row.user_id].name,
+              username: profileMap[row.user_id].username || null,
               avatar: profileMap[row.user_id].avatar
             }
           : null)

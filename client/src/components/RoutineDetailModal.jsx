@@ -2,8 +2,16 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiX, FiUsers, FiInfo, FiPlus } from 'react-icons/fi'
+import { formatDistanceToNow } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { Avatar } from '../utils/avatarUtils'
 import toast from 'react-hot-toast'
+
+function creatorDisplayName(user) {
+  if (!user) return 'Usuario'
+  if (user.username) return `@${user.username}`
+  return user.name || 'Usuario'
+}
 
 /**
  * Modal to inspect a shared/public routine, with GymRat explain + adopt action.
@@ -22,6 +30,9 @@ export default function RoutineDetailModal({
 
   const exercises = routine.exercises || []
   const creator = author || routine.user || routine.author
+  const createdLabel = routine.createdAt
+    ? formatDistanceToNow(new Date(routine.createdAt), { addSuffix: true, locale: es })
+    : null
 
   return createPortal(
     <AnimatePresence>
@@ -48,8 +59,26 @@ export default function RoutineDetailModal({
                 <h2 className="mt-1 font-display text-3xl tracking-wide truncate">{routine.name}</h2>
                 {creator && (
                   <div className="mt-2 flex items-center gap-2 text-sm text-[color:var(--text-secondary)]">
-                    <Avatar avatar={creator.avatar} name={creator.name} size="sm" />
-                    <span>Creada por <strong className="text-[color:var(--text-primary)]">{creator.name}</strong></span>
+                    <Avatar
+                      avatar={creator.avatar}
+                      name={creator.name || creator.username}
+                      size="sm"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate">
+                        Creada por{' '}
+                        <strong className="text-[color:var(--text-primary)]">
+                          {creatorDisplayName(creator)}
+                        </strong>
+                      </p>
+                      {(creator.username && creator.name) || createdLabel ? (
+                        <p className="truncate text-xs text-[color:var(--text-muted)]">
+                          {creator.username && creator.name ? creator.name : null}
+                          {creator.username && creator.name && createdLabel ? ' · ' : null}
+                          {createdLabel}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </div>
