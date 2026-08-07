@@ -12,6 +12,7 @@ import { formatDistanceToNow, format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Avatar } from '../../utils/avatarUtils'
 import StoriesRail from '../../components/StoriesRail'
+import FeedPostImages from '../../components/FeedPostImages'
 import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
 import PostReactionButton from '../../components/PostReactionButton'
 import SharedPostAttachment from '../../components/SharedPostAttachment'
@@ -23,9 +24,9 @@ import MentionInput, { MentionText } from '../../components/MentionInput'
 import PostDetailSheet from '../../components/PostDetailSheet'
 import PostCommentsList from '../../components/PostCommentsList'
 import PostImageViewer from '../../components/PostImageViewer'
-import ProtectedMedia from '../../components/ProtectedMedia'
 import SocialFeedSkeleton from '../../components/SocialFeedSkeleton'
 import { countComments } from '../../utils/commentTree'
+import { compressImageFile } from '../../utils/compressImage'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 
@@ -63,6 +64,7 @@ export default function Social() {
   const [hasMore, setHasMore] = useState(false)
   const [feedError, setFeedError] = useState(null)
   const [nextCursor, setNextCursor] = useState(null)
+  const [storiesReady, setStoriesReady] = useState(false)
   const loadMoreRef = useRef(null)
   const fetchingMoreRef = useRef(false)
   const [posting, setPosting] = useState(false)
@@ -193,8 +195,19 @@ export default function Social() {
       setLoading(false)
       setLoadingMore(false)
       fetchingMoreRef.current = false
+      if (!append) setStoriesReady(true)
     }
   }, [nextCursor])
+
+  const handleFeedImagesHydrated = useCallback((postId, images) => {
+    setPosts((prev) =>
+      prev.map((p) =>
+        (p._id || p.id) === postId
+          ? { ...p, images, imagesOmitted: false }
+          : p
+      )
+    )
+  }, [])
 
   useEffect(() => {
     fetchPosts({ append: false })
@@ -310,15 +323,9 @@ export default function Social() {
 
     setPosting(true)
     try {
-      // Convert images to base64
+      // Compress before upload — raw camera base64 was timing out the feed
       const images = await Promise.all(
-        selectedImages.map(img => {
-          return new Promise((resolve) => {
-            const reader = new FileReader()
-            reader.onload = (e) => resolve(e.target.result)
-            reader.readAsDataURL(img.file)
-          })
-        })
+        selectedImages.map((img) => compressImageFile(img.file, { maxDim: 1280, quality: 0.72 }))
       )
 
       const postData = {
@@ -544,7 +551,9 @@ export default function Social() {
       </div>
 
       <div data-tour="tour-stories-rail">
-        <StoriesRail />
+        {storiesReady ? <StoriesRail /> : (
+          <div className="h-[88px] rounded-2xl bg-[color:var(--bg-elevated)]/60 animate-pulse" aria-hidden />
+        )}
       </div>
 
       {/* Compose Post */}
@@ -994,46 +1003,25 @@ export default function Social() {
                   </div>
                 )}
 
-                {/* Post Images — omit on reshares (live in attachment) */}
-                {!post.sharedFrom && post.images && post.images.length > 0 && (
-                  <div
-                    data-no-post-open
-                    className={`mb-3 sm:mb-4 grid gap-1.5 sm:gap-2 ${
-                      post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                    }`}
-                  >
-                    {post.images.map((img, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        data-protected-media="1"
-                        onClick={() => setImageViewer({ post, index: idx })}
-                        className="group relative overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-                      >
-                        <ProtectedMedia
-                          src={img}
-                          alt={`Post ${idx + 1}`}
-                          loading="lazy"
-                          decoding="async"
-                          className={`w-full object-cover transition duration-300 group-hover:scale-[1.02] ${
-                            post.images.length === 1
-                              ? 'max-h-[280px] sm:max-h-[400px]'
-                              : 'h-36 sm:h-48'
-                          }`}
-                        />
-                        <span className="pointer-events-none absolute inset-0 bg-black/0 transition group-hover:bg-black/10" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {!post.sharedFrom && post.imagesOmitted && !(post.images && post.images.length) && (
-                  <button
-                    type="button"
-                    onClick={() => setDetailPost(post)}
-                    className="mb-3 sm:mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-elevated)] px-4 py-8 text-sm font-medium text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-hover)]"
-                  >
-                    📷 Ver fotos
-                  </button>
+                {/* Post images — list stays light; media hydrates when visible */}
+                {!post.sharedFrom && (
+                  <FeedPostImages
+                    postId={post._id || post.id}
+                    images={post.images}
+                    imagesOmitted={
+                      Boolean(post.imagesOmitted) ||
+                      (((post.postType === 'image' || post.postType === 'mixed') &&
+                        !(post.images && post.images.length)))
+                    }
+                    eager={posts.indexOf(post) < 2}
+                    onHydrated={handleFeedImagesHydrated}
+                    onOpenViewer={(index, imgs) =>
+                      setImageViewer({
+                        post: { ...post, images: imgs || post.images },
+                        index
+                      })
+                    }
+                  />
                 )}
 
                 {/* Poll */}

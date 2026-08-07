@@ -551,7 +551,7 @@ function mapFeedRpcPost(row) {
   }
 }
 
-// Get feed (own posts + posts from users you follow) — prefer single RPC, fallback lite enrich
+// Prefer single-RPC feed page, then lite enrich without heavy base64 images.
 router.get('/feed', authenticate, async (req, res) => {
   const started = Date.now()
   try {
@@ -618,6 +618,44 @@ router.get('/feed', authenticate, async (req, res) => {
   } catch (error) {
     console.error('[feed] error', error?.message || error, `ms=${Date.now() - started}`)
     res.status(500).json({ message: 'Error al obtener feed', error: error.message })
+  }
+})
+
+/** Lazy media for feed cards (keeps /feed payload tiny). */
+router.get('/:id/images', authenticate, async (req, res) => {
+  try {
+    const { data: post, error } = await supabaseAdmin
+      .from('posts')
+      .select('id, user_id, images')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (error) throw error
+    if (!post) return res.status(404).json({ message: 'Publicación no encontrada' })
+
+    if (post.user_id !== req.user.id) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('settings')
+        .eq('id', post.user_id)
+        .maybeSingle()
+      const isPublic = profile?.settings?.privacy?.profilePublic !== false
+      if (!isPublic) {
+        const { data: follow } = await supabaseAdmin
+          .from('follows')
+          .select('id')
+          .eq('follower_id', req.user.id)
+          .eq('following_id', post.user_id)
+          .maybeSingle()
+        if (!follow) {
+          return res.status(403).json({ message: 'Esta publicación no está disponible' })
+        }
+      }
+    }
+
+    res.setHeader('Cache-Control', 'private, max-age=120')
+    res.json({ images: Array.isArray(post.images) ? post.images : [] })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener imágenes', error: error.message })
   }
 })
 
@@ -744,6 +782,17 @@ router.post('/', authenticate, async (req, res) => {
   try {
     const { content, images, mood, poll, postType, badgeData, workoutData } = req.body
 
+    const imageList = Array.isArray(images) ? images : []
+    const MAX_IMAGE_CHARS = 900_000
+    for (const img of imageList) {
+      if (typeof img === 'string' && img.length > MAX_IMAGE_CHARS) {
+        return res.status(413).json({
+          message:
+            'Una imagen es demasiado pesada. La app la comprimirá al publicar; si el error continúa, usa otra foto.'
+        })
+      }
+    }
+
     let finalPostType = postType || 'text'
     const isRoutineShare =
       postType === 'routine' || Boolean(workoutData?.isRoutine) || Boolean(workoutData?.shareKind === 'routine')
@@ -753,9 +802,9 @@ router.post('/', authenticate, async (req, res) => {
       finalPostType = 'workout'
     } else if (badgeData) {
       finalPostType = 'badge'
-    } else if (images && images.length > 0 && content) {
+    } else if (imageList.length > 0 && content) {
       finalPostType = 'mixed'
-    } else if (images && images.length > 0) {
+    } else if (imageList.length > 0) {
       finalPostType = 'image'
     } else if (poll) {
       finalPostType = 'poll'
@@ -766,7 +815,7 @@ router.post('/', authenticate, async (req, res) => {
     const insertPayload = {
       user_id: req.user.id,
       content: content || '',
-      images: images || [],
+      images: imageList,
       mood: mood || null,
       poll: poll
         ? {
