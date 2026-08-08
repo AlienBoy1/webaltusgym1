@@ -43,8 +43,36 @@ function mapParticipant(row, userMap, includeLevel = false) {
     startedAt: row.started_at || null,
     pausedAt: row.paused_at || null,
     accumulatedMs: Number(row.accumulated_ms) || 0,
-    lastProgressAt: row.last_progress_at || null
+    lastProgressAt: row.last_progress_at || null,
+    resultValue: row.result_value != null ? Number(row.result_value) : null,
+    resultUnit: row.result_unit || null
   }
+}
+
+function getChallengeGoalMode(challenge) {
+  return challenge?.goal_mode || challenge?.reward?.goalMode || 'quantity'
+}
+
+function isTimeGoalChallenge(challenge) {
+  if (!challenge) return false
+  if (getChallengeGoalMode(challenge) === 'time') return true
+  const unit = String(challenge.unit || '').toLowerCase()
+  return ['min', 'mins', 'minuto', 'minutos', 'seg', 'segundos'].includes(unit)
+}
+
+function getTimeGoalMs(challenge) {
+  const goal = Number(challenge?.goal) || 0
+  const unit = String(challenge?.unit || '').toLowerCase()
+  if (unit === 'seg' || unit === 'segundos') return Math.max(0, goal * 1000)
+  return Math.max(0, goal * 60 * 1000)
+}
+
+function computeElapsedMs(participant) {
+  let ms = Number(participant?.accumulated_ms) || 0
+  if (participant?.status === 'active' && participant?.started_at) {
+    ms += Date.now() - new Date(participant.started_at).getTime()
+  }
+  return ms
 }
 
 async function hydrateChallenge(row, { includeLevel = false, sortParticipants = false } = {}) {
@@ -94,6 +122,7 @@ async function createChallengeWithJoin({
   type,
   goal,
   unit,
+  goalMode = 'quantity',
   startDate,
   endDate,
   reward,
@@ -107,22 +136,51 @@ async function createChallengeWithJoin({
     xp = await getDefaultXpForType(type)
   }
 
-  const { data: challenge, error } = await supabaseAdmin
+  const mode = goalMode === 'time' ? 'time' : 'quantity'
+  const resolvedUnit =
+    unit ||
+    (mode === 'time'
+      ? 'min'
+      : (
+          await supabaseAdmin
+            .from('challenge_types')
+            .select('unit')
+            .eq('id', type)
+            .maybeSingle()
+        ).data?.unit) ||
+      null
+
+  const rewardPayload = { ...(reward || {}), xp, featured, isPublic, goalMode: mode }
+
+  const insertPayload = {
+    title,
+    description: description || null,
+    type,
+    goal,
+    unit: resolvedUnit,
+    start_date: startDate,
+    end_date: endDate,
+    reward: rewardPayload,
+    image: image || null,
+    created_by: createdBy,
+    goal_mode: mode
+  }
+
+  let { data: challenge, error } = await supabaseAdmin
     .from('challenges')
-    .insert({
-      title,
-      description: description || null,
-      type,
-      goal,
-      unit: unit || null,
-      start_date: startDate,
-      end_date: endDate,
-      reward: { ...(reward || {}), xp, featured, isPublic },
-      image: image || null,
-      created_by: createdBy
-    })
+    .insert(insertPayload)
     .select('*')
     .single()
+
+  // Fallback if goal_mode column not migrated yet
+  if (error && String(error.message || '').toLowerCase().includes('goal_mode')) {
+    delete insertPayload.goal_mode
+    ;({ data: challenge, error } = await supabaseAdmin
+      .from('challenges')
+      .insert(insertPayload)
+      .select('*')
+      .single())
+  }
 
   if (error) throw error
 
@@ -314,8 +372,19 @@ router.get('/:id', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { title, type, goal, startDate, endDate, reward, targetUsers, description, unit, image } =
-      req.body
+    const {
+      title,
+      type,
+      goal,
+      startDate,
+      endDate,
+      reward,
+      targetUsers,
+      description,
+      unit,
+      image,
+      goalMode
+    } = req.body
 
     if (!title || !type || !goal || !startDate || !endDate) {
       return res.status(400).json({ message: 'Faltan campos requeridos' })
@@ -340,6 +409,7 @@ router.post('/', authenticate, async (req, res) => {
         type,
         goal,
         unit,
+        goalMode,
         startDate,
         endDate,
         reward: reward || {},
@@ -378,6 +448,7 @@ router.post('/', authenticate, async (req, res) => {
         type,
         goal,
         unit,
+        goalMode,
         startDate,
         endDate,
         reward: reward || {},
@@ -688,6 +759,8 @@ router.put('/:id/progress', authenticate, async (req, res) => {
 
 router.post('/:id/complete', authenticate, async (req, res) => {
   try {
+    const { exerciseResult, resultUnit, timeReached } = req.body || {}
+
     const { data: challenge } = await supabaseAdmin
       .from('challenges')
       .select('*')
@@ -713,28 +786,76 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'Ya completaste este reto' })
     }
 
-    if (Number(participant.progress) < Number(challenge.goal)) {
+    const timeGoal = isTimeGoalChallenge(challenge)
+    const targetMs = getTimeGoalMs(challenge)
+    let finalAccumulatedMs = computeElapsedMs(participant)
+
+    // Cap time-goal chronometer at the objective
+    if (timeGoal && targetMs > 0 && finalAccumulatedMs > targetMs) {
+      finalAccumulatedMs = targetMs
+    }
+
+    const timeObjectiveMet = timeGoal && targetMs > 0 && finalAccumulatedMs >= targetMs
+    let progressValue = Number(participant.progress) || 0
+
+    if (timeObjectiveMet || (timeReached && timeGoal)) {
+      if (!timeObjectiveMet && !(timeReached && finalAccumulatedMs >= targetMs * 0.98)) {
+        return res.status(400).json({ message: 'Aún no has alcanzado el tiempo objetivo del reto' })
+      }
+      progressValue = Number(challenge.goal)
+    } else if (progressValue < Number(challenge.goal)) {
       return res.status(400).json({ message: 'No has alcanzado el objetivo del reto' })
+    }
+
+    if (timeGoal && (exerciseResult === undefined || exerciseResult === null || exerciseResult === '')) {
+      return res.status(400).json({
+        message: 'Registra tu resultado de ejercicio (repeticiones o km) para completar el reto'
+      })
+    }
+
+    const parsedResult =
+      exerciseResult !== undefined && exerciseResult !== null && exerciseResult !== ''
+        ? Number(exerciseResult)
+        : null
+
+    if (parsedResult != null && (Number.isNaN(parsedResult) || parsedResult < 0)) {
+      return res.status(400).json({ message: 'Resultado de ejercicio inválido' })
     }
 
     const completedAt = new Date().toISOString()
 
-    // Compute final elapsed time
-    let finalAccumulatedMs = Number(participant.accumulated_ms) || 0
-    if (participant.status === 'active' && participant.started_at) {
-      finalAccumulatedMs += Date.now() - new Date(participant.started_at).getTime()
+    const updatePayload = {
+      completed: true,
+      status: 'completed',
+      completed_at: completedAt,
+      accumulated_ms: finalAccumulatedMs,
+      progress: progressValue,
+      paused_at: completedAt,
+      started_at: null
     }
 
-    await supabaseAdmin
+    if (parsedResult != null) {
+      updatePayload.result_value = parsedResult
+      updatePayload.result_unit = resultUnit || null
+    }
+
+    let { error: completeErr } = await supabaseAdmin
       .from('challenge_participants')
-      .update({
-        completed: true,
-        status: 'completed',
-        completed_at: completedAt,
-        accumulated_ms: finalAccumulatedMs
-      })
+      .update(updatePayload)
       .eq('challenge_id', challenge.id)
       .eq('user_id', req.user.id)
+
+    if (completeErr && String(completeErr.message || '').toLowerCase().includes('result_')) {
+      delete updatePayload.result_value
+      delete updatePayload.result_unit
+      ;({ error: completeErr } = await supabaseAdmin
+        .from('challenge_participants')
+        .update(updatePayload)
+        .eq('challenge_id', challenge.id)
+        .eq('user_id', req.user.id))
+    }
+
+    if (completeErr) throw completeErr
 
     const { data: user } = await supabaseAdmin
       .from('profiles')
@@ -852,10 +973,12 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       xpAwarded: challenge.reward?.xp || 100,
       participant: {
         user: req.user.id,
-        progress: Number(participant.progress) || 0,
+        progress: progressValue,
         completed: true,
         completedAt,
-        accumulatedMs: finalAccumulatedMs
+        accumulatedMs: finalAccumulatedMs,
+        resultValue: parsedResult,
+        resultUnit: resultUnit || null
       },
       challengeData: {
         challengeId: challenge.id,
@@ -863,9 +986,12 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         type: challenge.type,
         goal: challenge.goal,
         unit: challenge.unit,
+        goalMode: getChallengeGoalMode(challenge),
         xpAwarded: challenge.reward?.xp || 100,
         accumulatedMs: finalAccumulatedMs,
-        createdBy: challenge.created_by
+        createdBy: challenge.created_by,
+        resultValue: parsedResult,
+        resultUnit: resultUnit || null
       },
       motivationalMessage: randomMessage,
       unlockedBadges: unlockedBadges.map((b) => ({ id: b.id, name: b.name, icon: b.icon })),

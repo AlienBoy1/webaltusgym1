@@ -19,6 +19,7 @@ import { openTutorialHub } from '../../components/AppTutorial'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import ProfileNotes from '../../components/ProfileNotes'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
+import { buildChallengeSharePayload } from '../../utils/challengeUtils'
 import {
   FEATURE_LABELS,
   FREE_ERA_END_ISO,
@@ -360,19 +361,14 @@ function MyChallengesSection() {
       (p.user?._id || p.user) === user?._id
     )
     try {
-      await api.post('/social', {
-        content: `¡Completé el reto "${challenge.title}"! 🏆`,
-        postType: 'challenge',
-        workoutData: {
-          shareKind: 'challenge',
-          challengeTitle: challenge.title,
-          challengeType: challenge.type,
-          challengeGoal: challenge.goal,
-          challengeUnit: challenge.unit,
-          xpAwarded: challenge.reward?.xp || 100,
-          accumulatedMs: participant?.accumulatedMs || 0
-        }
+      const payload = buildChallengeSharePayload(challenge, {
+        shareMode: 'completed',
+        xpAwarded: challenge.reward?.xp || 100,
+        accumulatedMs: participant?.accumulatedMs || 0,
+        resultValue: participant?.resultValue,
+        resultUnit: participant?.resultUnit
       })
+      await api.post('/social', payload)
       toast.success('Compartido en Comunidad')
       setSelected(null)
       navigate('/social')

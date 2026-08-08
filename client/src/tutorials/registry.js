@@ -42,6 +42,10 @@ export const PRE_SPOTLIGHT_TUTORIAL_IDS = [
 ]
 
 export const TUTORIAL_CATALOG = [
+  /**
+   * contentVersion: bump (integer) when tutorial content changes so all users
+   * get an "Actualización de tutorial" prompt (not "Nuevo"). Default is 1.
+   */
   {
     id: TUTORIAL_IDS.QUICK_START,
     title: 'Inicio rápido',
@@ -102,11 +106,13 @@ export const TUTORIAL_CATALOG = [
   {
     id: TUTORIAL_IDS.CHALLENGES,
     title: 'Retos',
-    short: 'Crear, unirse y completar',
+    short: 'Tiempo, compartir e invitar',
     icon: '🏆',
-    description: 'Crea o únete a un reto, inicia, marca progreso y finalízalo.',
+    description:
+      'Crea retos por cantidad o tiempo, invita a la comunidad o comparte imagen a WhatsApp/IG/FB, y completa con XP.',
     completionKey: 'qyntra_tutorial_challenges_done',
-    settingsKey: 'tutorialChallengesCompleted'
+    settingsKey: 'tutorialChallengesCompleted',
+    contentVersion: 2
   },
   {
     id: TUTORIAL_IDS.CLASSES,
@@ -563,21 +569,21 @@ const CHALLENGE_STEPS = [
     path: '/challenges',
     target: 'nav-challenges',
     title: 'Retos',
-    body: 'Compite por metas con XP según el tipo de reto.'
+    body: 'Compite por metas con XP. Ahora también puedes crear retos por tiempo e invitar a toda la comunidad.'
   },
   {
     id: 'ch-create',
     path: '/challenges',
     target: 'tour-challenges-create',
     title: 'Crear un reto',
-    body: 'Define título, tipo, objetivo y fechas. Cada tipo otorga XP distinto.'
+    body: 'Define título, tipo y fechas. Elige objetivo por Cantidad o por Tiempo: el cronómetro cuenta hasta la meta y luego registras reps o km.'
   },
   {
     id: 'ch-tabs',
     path: '/challenges',
     target: 'tour-challenges-list',
     title: 'Mis retos y disponibles',
-    body: 'Cambia entre Mis Retos y Disponibles para ver los tuyos o unirte a nuevos.'
+    body: 'Cambia entre Mis Retos y Disponibles. Desde cualquier card puedes Invitar para publicar o compartir fuera de la app.'
   },
   {
     id: 'ch-join',
@@ -586,7 +592,16 @@ const CHALLENGE_STEPS = [
     demo: 'challenge-join',
     forceDemo: true,
     title: 'Inscribirte a un reto',
-    body: 'En Disponibles, Unirse al Reto te suma como participante. Luego podrás iniciarlo.'
+    body: 'En Disponibles, Unirse al Reto te suma como participante. También puedes unirte desde una publicación de reto en Comunidad.'
+  },
+  {
+    id: 'ch-invite',
+    path: '/challenges',
+    target: 'tour-challenge-invite',
+    demo: 'challenge-invite',
+    forceDemo: true,
+    title: 'Compartir e invitar',
+    body: 'Toca Invitar: Comunidad publica la invitación en el feed (con Ver participantes). Invitar al reto genera una imagen para historias en WhatsApp, Instagram o Facebook.'
   },
   {
     id: 'ch-start',
@@ -595,7 +610,7 @@ const CHALLENGE_STEPS = [
     demo: 'challenge-start',
     forceDemo: true,
     title: 'Iniciar el reto',
-    body: 'Dentro del detalle, Iniciar Reto arranca tu sesión y empieza a contar tu progreso.'
+    body: 'Dentro del detalle, Iniciar Reto arranca tu sesión. Si el objetivo es tiempo, el cronómetro va de 0 hasta la meta y se completa solo.'
   },
   {
     id: 'ch-progress',
@@ -603,8 +618,8 @@ const CHALLENGE_STEPS = [
     target: 'tour-challenge-progress',
     demo: 'challenge-progress',
     forceDemo: true,
-    title: 'Marcar progreso',
-    body: 'Actualiza tu avance (km, reps, días…) y confirma. Así el reto refleja tu ritmo real.'
+    title: 'Progreso y resultado',
+    body: 'En retos por cantidad actualiza tu avance. En retos por tiempo, al llegar a la meta registra repeticiones o kilómetros según el tipo.'
   },
   {
     id: 'ch-complete',
@@ -612,8 +627,8 @@ const CHALLENGE_STEPS = [
     target: 'tour-challenge-complete',
     demo: 'challenge-complete',
     forceDemo: true,
-    title: 'Finalizar y ganar XP',
-    body: 'Al alcanzar el objetivo, Completar y Obtener XP cierra el reto y suma recompensa.'
+    title: 'Finalizar, XP y compartirlo',
+    body: 'Al completar recibes XP y puedes publicar el logro en Comunidad. Cuando el reto caduca, las invitaciones del feed se eliminan solas.'
   }
 ]
 

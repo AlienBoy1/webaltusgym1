@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FiBookOpen } from 'react-icons/fi'
+import { FiBookOpen, FiRefreshCw } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import { TUTORIAL_IDS, hasCompletedTutorial } from '../tutorials/registry'
-import { getUnnotifiedTutorials, markTutorialsKnown } from '../tutorials/spotlight'
+import {
+  getPendingTutorialNotices,
+  acknowledgeTutorialVersions
+} from '../tutorials/spotlight'
 import {
   canStartTutorials,
   subscribeAppGate,
@@ -14,8 +17,8 @@ import {
 import { openTutorialHub, TUTORIAL_CLOSED_EVENT } from './AppTutorial'
 
 /**
- * After updates / gate settle: list EVERY catalog tutorial the user hasn't
- * been notified about since they last acknowledged (seeded on first run).
+ * After updates / gate settle: surface brand-new tutorials AND content updates
+ * (contentVersion bumps) with the right copy ("Nuevo" vs "Actualización").
  */
 export default function NewTutorialPrompt() {
   const user = useAuthStore((s) => s.user)
@@ -30,7 +33,7 @@ export default function NewTutorialPrompt() {
       return
     }
     const ids = payload.ids
-    markTutorialsKnown(user, ids)
+    acknowledgeTutorialVersions(user, ids)
     setPayload(null)
     setTutorialBlocking(false)
     if (openHub) {
@@ -59,11 +62,11 @@ export default function NewTutorialPrompt() {
       if (payload) return
       if (document.body.dataset.qyntraTutorial === '1') return
 
-      const fresh = getUnnotifiedTutorials(u)
+      const fresh = getPendingTutorialNotices(u)
       if (!fresh.length) return
 
       const key = fresh
-        .map((t) => t.id)
+        .map((t) => `${t.kind}:${t.id}`)
         .sort()
         .join('|')
       if (offeredIdsRef.current === key) return
@@ -100,10 +103,37 @@ export default function NewTutorialPrompt() {
   if (typeof document === 'undefined' || !payload) return null
 
   const count = payload.items.length
-  const title =
-    count === 1
-      ? payload.items[0]?.title || 'Nuevo tutorial'
-      : `${count} tutoriales nuevos`
+  const allUpdates = payload.items.every((i) => i.kind === 'update')
+  const allNew = payload.items.every((i) => i.kind === 'new')
+
+  const eyebrow = allUpdates
+    ? count === 1
+      ? 'Actualización de tutorial'
+      : 'Actualizaciones de tutoriales'
+    : allNew
+      ? count === 1
+        ? 'Nuevo tutorial'
+        : 'Nuevos tutoriales'
+      : 'Tutoriales'
+
+  const title = (() => {
+    if (count === 1) return payload.items[0]?.title || eyebrow
+    if (allUpdates) return `${count} tutoriales actualizados`
+    if (allNew) return `${count} tutoriales nuevos`
+    return `${count} tutoriales`
+  })()
+
+  const description = allUpdates
+    ? count === 1
+      ? 'Este tutorial se actualizó con funciones nuevas. Revísalo para no perderte nada.'
+      : 'Hay tutoriales actualizados con cambios importantes. Revísalos en el centro de tutoriales.'
+    : allNew
+      ? count === 1
+        ? 'Hay un tutorial nuevo desde tu última visita. Ábrelo ahora o más tarde desde el menú.'
+        : 'Estos tutoriales se agregaron desde tu última visita. Revísalos todos en el centro de tutoriales.'
+      : 'Hay tutoriales nuevos y actualizaciones listas para ti.'
+
+  const Icon = allUpdates ? FiRefreshCw : FiBookOpen
 
   return createPortal(
     <AnimatePresence>
@@ -129,26 +159,36 @@ export default function NewTutorialPrompt() {
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-28 opacity-90"
               style={{
-                background:
-                  'radial-gradient(90% 120% at 15% 0%, rgba(var(--color-primary-rgb),0.22), transparent 70%)'
+                background: allUpdates
+                  ? 'radial-gradient(90% 120% at 15% 0%, rgba(250,204,21,0.2), transparent 70%)'
+                  : 'radial-gradient(90% 120% at 15% 0%, rgba(var(--color-primary-rgb),0.22), transparent 70%)'
               }}
             />
             <div className="relative px-5 pt-5 pb-4">
               <div className="flex items-start gap-3">
-                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgba(var(--color-primary-rgb),0.16)] text-[color:var(--color-primary)]">
-                  <FiBookOpen size={22} />
+                <span
+                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
+                  style={{
+                    background: allUpdates
+                      ? 'rgba(250,204,21,0.16)'
+                      : 'rgba(var(--color-primary-rgb),0.16)',
+                    color: allUpdates ? '#FACC15' : 'var(--color-primary)'
+                  }}
+                >
+                  <Icon size={22} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-primary)]">
-                    {count === 1 ? 'Nuevo tutorial' : 'Nuevos tutoriales'}
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-[0.22em]"
+                    style={{ color: allUpdates ? '#FACC15' : 'var(--color-primary)' }}
+                  >
+                    {eyebrow}
                   </p>
                   <h2 className="mt-1 font-display text-2xl tracking-wide text-[color:var(--text-primary)]">
                     {title}
                   </h2>
                   <p className="mt-1.5 text-sm leading-relaxed text-[color:var(--text-secondary)]">
-                    {count === 1
-                      ? 'Hay un tutorial nuevo desde tu última visita. Ábrelo ahora o más tarde desde el menú.'
-                      : 'Estos tutoriales se agregaron desde tu última visita. Revísalos todos en el centro de tutoriales.'}
+                    {description}
                   </p>
                 </div>
               </div>
@@ -163,9 +203,20 @@ export default function NewTutorialPrompt() {
                       {item.icon || '📘'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
-                        {item.title}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
+                          {item.title}
+                        </p>
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                            item.kind === 'update'
+                              ? 'bg-accent-yellow/15 text-accent-yellow'
+                              : 'bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]'
+                          }`}
+                        >
+                          {item.kind === 'update' ? 'Actualizado' : 'Nuevo'}
+                        </span>
+                      </div>
                       <p className="truncate text-xs text-[color:var(--text-muted)]">
                         {item.short || item.description}
                       </p>

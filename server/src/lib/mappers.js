@@ -147,6 +147,8 @@ export function mapClass(row, extras = {}) {
 
 export function mapChallenge(row, extras = {}) {
   if (!row) return null
+  const reward = row.reward || {}
+  const goalMode = row.goal_mode || reward.goalMode || 'quantity'
   return {
     _id: row.id,
     id: row.id,
@@ -155,10 +157,11 @@ export function mapChallenge(row, extras = {}) {
     type: row.type,
     goal: row.goal,
     unit: row.unit,
+    goalMode,
     image: row.image,
     startDate: row.start_date,
     endDate: row.end_date,
-    reward: row.reward || {},
+    reward,
     createdBy: row.created_by,
     participants: extras.participants || [],
     createdAt: row.created_at

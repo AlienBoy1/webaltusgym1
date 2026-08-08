@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { FiBookOpen, FiCheck, FiPlay, FiX } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
 import { TUTORIAL_CATALOG, hasCompletedTutorial } from '../tutorials/registry'
+import { getTutorialBadge } from '../tutorials/spotlight'
 import { openAppTutorial, TUTORIAL_HUB_EVENT } from './AppTutorial'
 
 /**
@@ -103,7 +104,7 @@ export default function TutorialHub() {
 
             <div className="flex-1 space-y-2 overflow-y-auto overscroll-contain p-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
               {TUTORIAL_CATALOG.map((item) => {
-                const done = hasCompletedTutorial(user, item.id)
+                const badge = getTutorialBadge(user, item.id)
                 const highlighted = highlightSet.has(item.id)
                 return (
                   <button
@@ -138,9 +139,13 @@ export default function TutorialHub() {
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-[color:var(--text-primary)]">{item.title}</span>
-                        {done ? (
+                        {badge === 'seen' ? (
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-green-500">
                             <FiCheck size={10} /> Visto
+                          </span>
+                        ) : badge === 'updated' ? (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-accent-yellow/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-yellow">
+                            Actualizado
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-[rgba(var(--color-primary-rgb),0.14)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--color-primary)]">

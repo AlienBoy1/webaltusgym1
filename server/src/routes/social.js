@@ -9,6 +9,54 @@ const router = express.Router()
 
 const POST_REACTION_EMOJIS = new Set(['❤️', '💪', '🧴', '🔥', '⚡', '🏆'])
 
+let lastChallengePostCleanup = 0
+
+/** Auto-remove community invite posts when their challenge has expired. */
+export async function cleanupExpiredChallengePosts() {
+  const now = Date.now()
+  if (now - lastChallengePostCleanup < 60_000) return
+  lastChallengePostCleanup = now
+
+  try {
+    const nowIso = new Date().toISOString()
+    const { data: expiredChallenges } = await supabaseAdmin
+      .from('challenges')
+      .select('id')
+      .lt('end_date', nowIso)
+      .limit(200)
+
+    const expiredIds = new Set((expiredChallenges || []).map((c) => String(c.id)))
+
+    const { data: posts } = await supabaseAdmin
+      .from('posts')
+      .select('id, workout_data, post_type')
+      .or('post_type.eq.challenge,workout_data.not.is.null')
+      .order('created_at', { ascending: false })
+      .limit(400)
+
+    const toDelete = (posts || []).filter((p) => {
+      const wd = p.workout_data
+      if (!wd || typeof wd !== 'object') return false
+      if (wd.shareKind !== 'challenge' && p.post_type !== 'challenge') return false
+      // Keep completed achievement posts; remove invites (and legacy without shareMode)
+      if (wd.shareMode === 'completed') return false
+      if (wd.challengeId && expiredIds.has(String(wd.challengeId))) return true
+      const end = wd.challengeEndDate || wd.endDate
+      if (end && new Date(end).getTime() < now) return true
+      return false
+    })
+
+    if (!toDelete.length) return
+
+    const ids = toDelete.map((p) => p.id)
+    await supabaseAdmin.from('post_likes').delete().in('post_id', ids)
+    await supabaseAdmin.from('post_comments').delete().in('post_id', ids)
+    await supabaseAdmin.from('posts').delete().in('id', ids)
+  } catch (err) {
+    console.warn('cleanupExpiredChallengePosts:', err?.message || err)
+  }
+}
+
 function isMissingEmojiColumn(error) {
   const msg = String(error?.message || error?.details || '')
   const code = String(error?.code || '')
@@ -633,6 +681,9 @@ function mapFeedRpcPost(row) {
 router.get('/feed', authenticate, async (req, res) => {
   const started = Date.now()
   try {
+    // Fire-and-forget: remove expired challenge invite posts
+    cleanupExpiredChallengePosts().catch(() => {})
+
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20)
     const before = req.query.before || null
 
@@ -909,9 +960,13 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     let finalPostType = postType || 'text'
+    const isChallengeShare =
+      postType === 'challenge' || Boolean(workoutData?.shareKind === 'challenge')
     const isRoutineShare =
       postType === 'routine' || Boolean(workoutData?.isRoutine) || Boolean(workoutData?.shareKind === 'routine')
-    if (workoutData && isRoutineShare) {
+    if (workoutData && isChallengeShare) {
+      finalPostType = 'challenge'
+    } else if (workoutData && isRoutineShare) {
       finalPostType = 'routine'
     } else if (workoutData) {
       finalPostType = 'workout'

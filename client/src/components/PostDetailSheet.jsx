@@ -15,6 +15,7 @@ import PostReactorsModal from './PostReactorsModal'
 import PostImageViewer from './PostImageViewer'
 import ProtectedMedia from './ProtectedMedia'
 import SharedPostAttachment from './SharedPostAttachment'
+import ChallengePostCard from './ChallengePostCard'
 import { countComments, normalizeCommentTree } from '../utils/commentTree'
 import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 import toast from 'react-hot-toast'
@@ -161,11 +162,15 @@ export default function PostDetailSheet({
   const created = post?.createdAt || post?.created_at
   const workout = post?.workoutData || post?.workout_data
   const commentsCount = countComments(post?.comments)
+  const isChallenge =
+    workout &&
+    (post?.postType === 'challenge' || workout.shareKind === 'challenge')
   const isRoutine =
     workout &&
+    !isChallenge &&
     (post?.postType === 'routine' || workout.isRoutine || workout.shareKind === 'routine')
   const isCompletedWorkout =
-    workout && !isRoutine && (post?.postType === 'workout' || Boolean(workout))
+    workout && !isRoutine && !isChallenge && (post?.postType === 'workout' || Boolean(workout))
 
   const contentText = post?.content
     ? String(post.content).includes('[workout]')
@@ -283,6 +288,13 @@ export default function PostDetailSheet({
                     </p>
                   </div>
                 </header>
+
+                {/* Challenge share card */}
+                {!post.sharedFrom && isChallenge && (
+                  <div className="mx-4 mb-4">
+                    <ChallengePostCard data={workout} />
+                  </div>
+                )}
 
                 {/* Completed workout card */}
                 {!post.sharedFrom && isCompletedWorkout && (

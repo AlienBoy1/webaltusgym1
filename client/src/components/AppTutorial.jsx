@@ -11,6 +11,7 @@ import {
   hasCompletedTutorial
 } from '../tutorials/registry'
 import { userIdOf, writeLocalCompletion } from '../tutorials/completion'
+import { markTutorialCompletedVersion } from '../tutorials/spotlight'
 import TutorialDemoSurface from './TutorialDemoSurface'
 import { canStartTutorials, subscribeAppGate, setTutorialBlocking } from '../utils/appGate'
 import { showBadgeUnlockCelebration } from './BadgeUnlockCelebration'
@@ -610,6 +611,7 @@ export default function AppTutorial() {
     const currentMeta = getTutorialMeta(tutorialId)
     const uid = userIdOf(user)
     writeLocalCompletion(currentMeta.completionKey, uid)
+    markTutorialCompletedVersion(user, tutorialId)
 
     if (tutorialId === TUTORIAL_IDS.QUICK_START) {
       try {

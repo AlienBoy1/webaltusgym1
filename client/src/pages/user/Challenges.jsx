@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiTarget, FiAward, FiUsers, FiClock, FiTrendingUp, FiPlus, FiX, FiCheck, FiEdit2, FiPlay, FiPause, FiShare2 } from 'react-icons/fi'
@@ -12,18 +12,24 @@ import { useConfetti } from '../../components/Confetti'
 import { setChallengeTimerActive } from '../../utils/presence'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
+import { useAppDialog } from '../../components/AppDialog'
+import ShareChallengeSheet from '../../components/ShareChallengeSheet'
+import {
+  formatElapsed,
+  formatChallengeGoal,
+  getExerciseResultMeta,
+  getTimeGoalMs,
+  isTimeGoalChallenge,
+  buildChallengeSharePayload
+} from '../../utils/challengeUtils'
 
-function formatElapsed(ms) {
-  const totalSec = Math.floor(ms / 1000)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  const s = totalSec % 60
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function ChallengeTimer({ participant }) {
+function ChallengeTimer({ participant, targetMs = 0, onTargetReached }) {
   const [elapsed, setElapsed] = useState(0)
+  const reachedRef = useRef(false)
+
+  useEffect(() => {
+    reachedRef.current = false
+  }, [participant?.startedAt, participant?.status, targetMs])
 
   useEffect(() => {
     const calc = () => {
@@ -34,27 +40,58 @@ function ChallengeTimer({ participant }) {
       }
       return acc
     }
-    setElapsed(calc())
 
+    const tick = () => {
+      const value = calc()
+      const display = targetMs > 0 ? Math.min(value, targetMs) : value
+      setElapsed(display)
+
+      if (
+        targetMs > 0 &&
+        participant.status === 'active' &&
+        value >= targetMs &&
+        !reachedRef.current
+      ) {
+        reachedRef.current = true
+        onTargetReached?.(targetMs)
+      }
+    }
+
+    tick()
     if (participant.status !== 'active') return
-    const id = setInterval(() => setElapsed(calc()), 1000)
+    const id = setInterval(tick, 250)
     return () => clearInterval(id)
-  }, [participant.status, participant.startedAt, participant.accumulatedMs])
+  }, [participant.status, participant.startedAt, participant.accumulatedMs, targetMs, onTargetReached])
+
+  const progressPct = targetMs > 0 ? Math.min(100, (elapsed / targetMs) * 100) : null
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <FiClock size={14} className="text-primary-500" />
-      <span className="font-mono tabular-nums text-primary-500 font-semibold">
-        {formatElapsed(elapsed)}
-      </span>
-      {participant.status === 'active' && (
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-green opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-green" />
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-sm">
+        <FiClock size={14} className="text-primary-500" />
+        <span className="font-mono tabular-nums text-primary-500 font-semibold">
+          {formatElapsed(elapsed)}
+          {targetMs > 0 && (
+            <span className="text-gray-500 font-normal"> / {formatElapsed(targetMs)}</span>
+          )}
         </span>
-      )}
-      {participant.status === 'paused' && (
-        <span className="text-xs text-yellow-400">(pausado)</span>
+        {participant.status === 'active' && (
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-green opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-green" />
+          </span>
+        )}
+        {participant.status === 'paused' && (
+          <span className="text-xs text-yellow-400">(pausado)</span>
+        )}
+      </div>
+      {progressPct != null && (
+        <div className="h-1.5 bg-dark-300 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary-500 to-accent-yellow transition-all"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
       )}
     </div>
   )
@@ -63,6 +100,7 @@ function ChallengeTimer({ participant }) {
 export default function Challenges() {
   const { user, refreshUser } = useAuthStore()
   const navigate = useNavigate()
+  const dialog = useAppDialog()
   const { celebration } = useConfetti()
   const [challenges, setChallenges] = useState([])
   const [myChallenges, setMyChallenges] = useState([])
@@ -75,17 +113,28 @@ export default function Challenges() {
   const [following, setFollowing] = useState([])
   const [challengeTypes, setChallengeTypes] = useState([])
   const [sessionLoading, setSessionLoading] = useState(false)
+  const timeCompleteLock = useRef(false)
 
   const [createForm, setCreateForm] = useState({
     title: '',
     description: '',
     type: 'workouts',
     goal: '',
+    goalMode: 'quantity',
     startDate: '',
     endDate: '',
     reward: { xp: 0 },
     targetUsers: []
   })
+
+  const [completionData, setCompletionData] = useState(null)
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
+  const [sharingChallenge, setSharingChallenge] = useState(false)
+  const [showResultModal, setShowResultModal] = useState(false)
+  const [resultChallenge, setResultChallenge] = useState(null)
+  const [resultInput, setResultInput] = useState('')
+  const [submittingResult, setSubmittingResult] = useState(false)
+  const [shareChallengeTarget, setShareChallengeTarget] = useState(null)
 
   useEffect(() => {
     fetchChallenges()
@@ -181,7 +230,13 @@ export default function Challenges() {
   }
 
   const handleLeaveChallenge = async (challengeId) => {
-    if (!confirm('¿Estás seguro de que quieres abandonar este reto?')) return
+    const ok = await dialog.confirm('¿Estás seguro de que quieres abandonar este reto?', {
+      title: 'Abandonar reto',
+      confirmLabel: 'Abandonar',
+      cancelLabel: 'Cancelar',
+      tone: 'danger'
+    })
+    if (!ok) return
     try {
       await api.delete(`/challenges/${challengeId}/leave`)
       setChallengeTimerActive(false)
@@ -292,10 +347,98 @@ export default function Challenges() {
     }
   }
 
-  const [completionData, setCompletionData] = useState(null)
-  const [showCompletionModal, setShowCompletionModal] = useState(false)
-  const [showSharePrompt, setShowSharePrompt] = useState(false)
-  const [sharingChallenge, setSharingChallenge] = useState(false)
+  const openTimeResultModal = useCallback((challenge) => {
+    if (!challenge) return
+    setResultChallenge(challenge)
+    setResultInput('')
+    setShowResultModal(true)
+  }, [])
+
+  const handleTimeTargetReached = useCallback(
+    async (challenge) => {
+      if (!challenge || timeCompleteLock.current) return
+      timeCompleteLock.current = true
+      try {
+        setChallengeTimerActive(false)
+        try {
+          await api.post(`/challenges/${challenge._id}/pause`)
+        } catch {
+          /* may already be paused */
+        }
+        await fetchChallengeDetails(challenge._id)
+        await fetchMyChallenges()
+        openTimeResultModal(challenge)
+        toast.success('¡Tiempo objetivo alcanzado! Registra tu resultado', { duration: 4000 })
+      } finally {
+        setTimeout(() => {
+          timeCompleteLock.current = false
+        }, 2000)
+      }
+    },
+    [openTimeResultModal]
+  )
+
+  const applyCompletionSuccess = async (challenge, data) => {
+    setChallengeTimerActive(false)
+    celebration()
+    setCompletionData({
+      challengeId: challenge._id || challenge.id,
+      challengeTitle: challenge.title,
+      challengeDescription: challenge.description,
+      challengeType: challenge.type,
+      challengeGoal: challenge.goal,
+      challengeUnit: challenge.unit,
+      goalMode: challenge.goalMode,
+      endDate: challenge.endDate,
+      participantsCount: challenge.participants?.length || 0,
+      createdBy: challenge.createdBy,
+      xpAwarded: data.xpAwarded,
+      motivationalMessage: data.motivationalMessage,
+      unlockedBadges: data.unlockedBadges || [],
+      challengeBadge: data.challengeBadge,
+      nextBadge: data.nextBadge,
+      leveledUp: data.leveledUp,
+      newLevel: data.newLevel,
+      challengeData: data.challengeData,
+      accumulatedMs: data.participant?.accumulatedMs || data.challengeData?.accumulatedMs || 0,
+      resultValue: data.participant?.resultValue ?? data.challengeData?.resultValue ?? null,
+      resultUnit: data.participant?.resultUnit ?? data.challengeData?.resultUnit ?? null
+    })
+    setShowCompletionModal(true)
+    setShowResultModal(false)
+    setResultChallenge(null)
+
+    await Promise.all([
+      fetchChallengeDetails(challenge._id || challenge.id),
+      fetchMyChallenges(),
+      refreshUser()
+    ])
+  }
+
+  const handleSubmitTimeResult = async () => {
+    const challenge = resultChallenge || selectedChallenge
+    if (!challenge) return
+    const meta = getExerciseResultMeta(challenge.type, challenge.description)
+    const value = parseFloat(resultInput)
+    if (Number.isNaN(value) || value < 0) {
+      toast.error('Ingresa un resultado válido')
+      return
+    }
+
+    setSubmittingResult(true)
+    try {
+      const { data } = await api.post(`/challenges/${challenge._id}/complete`, {
+        timeReached: true,
+        exerciseResult: value,
+        resultUnit: meta.unit
+      })
+      await applyCompletionSuccess(challenge, data)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Error al completar reto')
+    } finally {
+      setSubmittingResult(false)
+    }
+  }
 
   const handleComplete = async () => {
     if (!selectedChallenge) return
@@ -309,6 +452,21 @@ export default function Challenges() {
       toast.error('Ya completaste este reto')
       return
     }
+
+    if (isTimeGoalChallenge(selectedChallenge)) {
+      const elapsed =
+        (Number(participant.accumulatedMs) || 0) +
+        (participant.status === 'active' && participant.startedAt
+          ? Date.now() - new Date(participant.startedAt).getTime()
+          : 0)
+      if (elapsed < getTimeGoalMs(selectedChallenge) * 0.98) {
+        toast.error('Aún no has alcanzado el tiempo objetivo')
+        return
+      }
+      openTimeResultModal(selectedChallenge)
+      return
+    }
+
     if ((participant.progress || 0) < selectedChallenge.goal) {
       toast.error('Aún no has alcanzado el objetivo del reto')
       return
@@ -316,32 +474,7 @@ export default function Challenges() {
 
     try {
       const { data } = await api.post(`/challenges/${selectedChallenge._id}/complete`)
-
-      setChallengeTimerActive(false)
-      celebration()
-
-      setCompletionData({
-        challengeTitle: selectedChallenge.title,
-        challengeType: selectedChallenge.type,
-        challengeGoal: selectedChallenge.goal,
-        challengeUnit: selectedChallenge.unit,
-        xpAwarded: data.xpAwarded,
-        motivationalMessage: data.motivationalMessage,
-        unlockedBadges: data.unlockedBadges || [],
-        challengeBadge: data.challengeBadge,
-        nextBadge: data.nextBadge,
-        leveledUp: data.leveledUp,
-        newLevel: data.newLevel,
-        challengeData: data.challengeData,
-        accumulatedMs: data.participant?.accumulatedMs || data.challengeData?.accumulatedMs || 0
-      })
-      setShowCompletionModal(true)
-
-      await Promise.all([
-        fetchChallengeDetails(selectedChallenge._id),
-        fetchMyChallenges(),
-        refreshUser()
-      ])
+      await applyCompletionSuccess(selectedChallenge, data)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al completar reto')
     }
@@ -351,19 +484,30 @@ export default function Challenges() {
     if (!completionData) return
     setSharingChallenge(true)
     try {
-      await api.post('/social', {
-        content: `¡Completé el reto "${completionData.challengeTitle}"! 🏆`,
-        postType: 'challenge',
-        workoutData: {
-          shareKind: 'challenge',
-          challengeTitle: completionData.challengeTitle,
-          challengeType: completionData.challengeType,
-          challengeGoal: completionData.challengeGoal,
-          challengeUnit: completionData.challengeUnit,
+      const payload = buildChallengeSharePayload(
+        {
+          _id: completionData.challengeId,
+          title: completionData.challengeTitle,
+          description: completionData.challengeDescription,
+          type: completionData.challengeType,
+          goal: completionData.challengeGoal,
+          unit: completionData.challengeUnit,
+          goalMode: completionData.goalMode,
+          endDate: completionData.endDate,
+          participants: { length: completionData.participantsCount },
+          participantsCount: completionData.participantsCount,
+          createdBy: completionData.createdBy,
+          reward: { xp: completionData.xpAwarded }
+        },
+        {
+          shareMode: 'completed',
           xpAwarded: completionData.xpAwarded,
-          accumulatedMs: completionData.accumulatedMs
+          accumulatedMs: completionData.accumulatedMs,
+          resultValue: completionData.resultValue,
+          resultUnit: completionData.resultUnit
         }
-      })
+      )
+      await api.post('/social', payload)
       toast.success('Compartido en Comunidad')
       setShowCompletionModal(false)
       setCompletionData(null)
@@ -375,6 +519,12 @@ export default function Challenges() {
     }
   }
 
+  const openShareChallenge = (challenge, e) => {
+    e?.stopPropagation?.()
+    if (!challenge) return
+    setShareChallengeTarget(challenge)
+  }
+
   const handleCreateChallenge = async () => {
     if (!createForm.title || !createForm.type || !createForm.goal || !createForm.startDate || !createForm.endDate) {
       toast.error('Por favor completa todos los campos requeridos')
@@ -383,12 +533,16 @@ export default function Challenges() {
 
     try {
       const xp = createForm.reward.xp || getDefaultXp(createForm.type)
+      const typeInfo = getTypeInfo(createForm.type)
+      const isTime = createForm.goalMode === 'time'
       const challengeData = {
         ...createForm,
         goal: parseFloat(createForm.goal),
+        goalMode: isTime ? 'time' : 'quantity',
+        unit: isTime ? 'min' : typeInfo?.unit || undefined,
         startDate: new Date(createForm.startDate),
         endDate: new Date(createForm.endDate),
-        reward: { xp },
+        reward: { xp, goalMode: isTime ? 'time' : 'quantity' },
         targetUsers: createForm.targetUsers.length > 0 ? createForm.targetUsers : undefined
       }
 
@@ -400,6 +554,7 @@ export default function Challenges() {
         description: '',
         type: 'workouts',
         goal: '',
+        goalMode: 'quantity',
         startDate: '',
         endDate: '',
         reward: { xp: getDefaultXp('workouts') },
@@ -508,7 +663,21 @@ export default function Challenges() {
               const participant = getParticipant(challenge)
               const progress = participant?.progress || 0
               const completed = participant?.completed || false
-              const progressPercent = challenge.goal ? Math.min(100, (progress / challenge.goal) * 100) : 0
+              const isTime = isTimeGoalChallenge(challenge)
+              const timeTarget = isTime ? getTimeGoalMs(challenge) : 0
+              const progressPercent = isTime
+                ? Math.min(
+                    100,
+                    ((((Number(participant?.accumulatedMs) || 0) +
+                      (participant?.status === 'active' && participant?.startedAt
+                        ? Date.now() - new Date(participant.startedAt).getTime()
+                        : 0)) /
+                      (timeTarget || 1)) *
+                      100)
+                  )
+                : challenge.goal
+                  ? Math.min(100, (progress / challenge.goal) * 100)
+                  : 0
               const status = statusLabel(participant?.status)
               const typeInfo = getTypeInfo(challenge.type)
 
@@ -522,17 +691,22 @@ export default function Challenges() {
                   onClick={() => fetchChallengeDetails(challenge._id)}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         {typeInfo && <span className="text-lg">{typeInfo.icon}</span>}
                         <h3 className="font-display text-xl">{challenge.title}</h3>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.color}`}>
                           {status.text}
                         </span>
+                        {isTime && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium text-accent-cyan bg-accent-cyan/20">
+                            Por tiempo
+                          </span>
+                        )}
                       </div>
                       <p className="text-gray-400 text-sm">{challenge.description}</p>
                     </div>
-                    <div className="text-right ml-4">
+                    <div className="text-right ml-4 shrink-0">
                       <div className="text-accent-yellow font-semibold">
                         +{challenge.reward?.xp || 100} XP
                       </div>
@@ -542,19 +716,25 @@ export default function Challenges() {
                     </div>
                   </div>
 
-                  {/* Timer */}
                   {participant && !completed && (participant.status === 'active' || participant.status === 'paused') && (
                     <div className="mb-3">
-                      <ChallengeTimer participant={participant} />
+                      <ChallengeTimer
+                        participant={participant}
+                        targetMs={timeTarget}
+                        onTargetReached={
+                          isTime ? () => handleTimeTargetReached(challenge) : undefined
+                        }
+                      />
                     </div>
                   )}
 
-                  {/* Progress */}
                   <div className="mb-3">
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-400">Progreso</span>
+                      <span className="text-gray-400">{isTime ? 'Tiempo' : 'Progreso'}</span>
                       <span className="text-primary-500 font-semibold">
-                        {progress} / {challenge.goal}
+                        {isTime
+                          ? formatChallengeGoal(challenge)
+                          : `${progress} / ${challenge.goal}`}
                       </span>
                     </div>
                     <div className="h-3 bg-dark-300 rounded-full overflow-hidden">
@@ -569,7 +749,7 @@ export default function Challenges() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm text-gray-400">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-400">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1">
                         <FiUsers size={14} />
@@ -580,17 +760,29 @@ export default function Challenges() {
                         {formatDistanceToNow(new Date(challenge.endDate), { addSuffix: true, locale: es })}
                       </div>
                     </div>
-                    {!completed && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleLeaveChallenge(challenge._id)
-                        }}
-                        className="text-red-500 hover:text-red-400 text-sm"
-                      >
-                        Abandonar
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {!completed && (
+                        <button
+                          data-tour="tour-challenge-invite"
+                          onClick={(e) => openShareChallenge(challenge, e)}
+                          className="text-primary-500 hover:text-primary-400 text-sm inline-flex items-center gap-1"
+                        >
+                          <FiShare2 size={14} />
+                          Invitar
+                        </button>
+                      )}
+                      {!completed && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleLeaveChallenge(challenge._id)
+                          }}
+                          className="text-red-500 hover:text-red-400 text-sm"
+                        >
+                          Abandonar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               )
@@ -633,7 +825,18 @@ export default function Challenges() {
                   </div>
 
                   <h3 className="font-display text-lg mb-2">{challenge.title}</h3>
-                  <p className="text-gray-400 text-sm mb-4">{challenge.description}</p>
+                  <p className="text-gray-400 text-sm mb-2">{challenge.description}</p>
+                  <div className="mb-4 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full bg-dark-200 px-2.5 py-1 text-gray-300">
+                      {isTimeGoalChallenge(challenge) ? '⏱ ' : '🎯 '}
+                      {formatChallengeGoal(challenge) || `${challenge.goal}`}
+                    </span>
+                    {isTimeGoalChallenge(challenge) && (
+                      <span className="rounded-full bg-accent-cyan/20 px-2.5 py-1 text-accent-cyan">
+                        Por tiempo
+                      </span>
+                    )}
+                  </div>
 
                   <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
                     <div className="flex items-center gap-1">
@@ -645,16 +848,27 @@ export default function Challenges() {
                     </div>
                   </div>
 
-                  <button
-                    data-tour={i === 0 ? 'tour-challenge-join' : undefined}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleJoinChallenge(challenge._id)
-                    }}
-                    className="btn-primary w-full"
-                  >
-                    Unirse al Reto
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      data-tour={i === 0 ? 'tour-challenge-join' : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleJoinChallenge(challenge._id)
+                      }}
+                      className="btn-primary flex-1"
+                    >
+                      Unirse al Reto
+                    </button>
+                    <button
+                      type="button"
+                      data-tour={i === 0 ? 'tour-challenge-invite' : undefined}
+                      onClick={(e) => openShareChallenge(challenge, e)}
+                      className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                    >
+                      <FiShare2 size={16} />
+                      Invitar
+                    </button>
+                  </div>
                 </motion.div>
               )
             })
@@ -700,63 +914,113 @@ export default function Challenges() {
                 const participant = getParticipant(selectedChallenge)
                 const progress = participant?.progress || 0
                 const completed = participant?.completed || false
-                const progressPercent = selectedChallenge.goal ? Math.min(100, (progress / selectedChallenge.goal) * 100) : 0
+                const isTime = isTimeGoalChallenge(selectedChallenge)
+                const timeTarget = isTime ? getTimeGoalMs(selectedChallenge) : 0
+                const progressPercent = isTime
+                  ? Math.min(
+                      100,
+                      ((((Number(participant?.accumulatedMs) || 0) +
+                        (participant?.status === 'active' && participant?.startedAt
+                          ? Date.now() - new Date(participant.startedAt).getTime()
+                          : 0)) /
+                        (timeTarget || 1)) *
+                        100)
+                    )
+                  : selectedChallenge.goal
+                    ? Math.min(100, (progress / selectedChallenge.goal) * 100)
+                    : 0
                 const participantStatus = participant?.status || 'joined'
                 const isActive = participantStatus === 'active'
                 const isPaused = participantStatus === 'paused'
                 const isJoined = participantStatus === 'joined'
                 const progressChanged = progressInput !== (participant?.progress?.toString() || '0')
+                const timeReached =
+                  isTime &&
+                  participant &&
+                  ((Number(participant.accumulatedMs) || 0) +
+                    (isActive && participant.startedAt
+                      ? Date.now() - new Date(participant.startedAt).getTime()
+                      : 0)) >=
+                    timeTarget * 0.98
 
                 return (
                   <>
                     {/* Session Timer + Status */}
                     {participant && !completed && (
                       <div className="mb-6 p-4 rounded-xl bg-dark-200">
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-gray-300">Estado:</span>
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusLabel(participantStatus).color}`}>
                               {statusLabel(participantStatus).text}
                             </span>
+                            {isTime && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium text-accent-cyan bg-accent-cyan/20">
+                                Objetivo: {formatChallengeGoal(selectedChallenge)}
+                              </span>
+                            )}
                           </div>
                           {(isActive || isPaused) && (
-                            <ChallengeTimer participant={participant} />
+                            <ChallengeTimer
+                              participant={participant}
+                              targetMs={timeTarget}
+                              onTargetReached={
+                                isTime
+                                  ? () => handleTimeTargetReached(selectedChallenge)
+                                  : undefined
+                              }
+                            />
                           )}
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           {isJoined && (
                             <button
                               data-tour="tour-challenge-start"
                               onClick={() => handleStartChallenge(selectedChallenge._id)}
                               disabled={sessionLoading}
-                              className="btn-primary flex-1 flex items-center justify-center gap-2"
+                              className="btn-primary flex-1 flex items-center justify-center gap-2 min-w-[140px]"
                             >
                               <FiPlay size={16} />
                               {sessionLoading ? 'Iniciando...' : 'Iniciar Reto'}
                             </button>
                           )}
-                          {isActive && (
+                          {isActive && !isTime && (
                             <button
                               onClick={() => handlePauseChallenge(selectedChallenge._id)}
                               disabled={sessionLoading}
-                              className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                              className="btn-secondary flex-1 flex items-center justify-center gap-2 min-w-[140px]"
                             >
                               <FiPause size={16} />
                               {sessionLoading ? 'Pausando...' : 'Pausar Reto'}
+                            </button>
+                          )}
+                          {isActive && isTime && (
+                            <button
+                              onClick={() => handlePauseChallenge(selectedChallenge._id)}
+                              disabled={sessionLoading}
+                              className="btn-secondary flex-1 flex items-center justify-center gap-2 min-w-[140px]"
+                            >
+                              <FiPause size={16} />
+                              {sessionLoading ? 'Pausando...' : 'Pausar'}
                             </button>
                           )}
                           {isPaused && (
                             <button
                               onClick={() => handleResumeChallenge(selectedChallenge._id)}
                               disabled={sessionLoading}
-                              className="btn-primary flex-1 flex items-center justify-center gap-2"
+                              className="btn-primary flex-1 flex items-center justify-center gap-2 min-w-[140px]"
                             >
                               <FiPlay size={16} />
                               {sessionLoading ? 'Reanudando...' : 'Reanudar Reto'}
                             </button>
                           )}
                         </div>
+                        {isTime && (
+                          <p className="mt-3 text-xs text-gray-400">
+                            El cronómetro cuenta de 0 hasta el tiempo objetivo. Al llegar se pausará y podrás registrar repeticiones o km.
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -764,9 +1028,11 @@ export default function Challenges() {
                     {participant && (
                       <div className="mb-6">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-400">Tu Progreso</span>
+                          <span className="text-gray-400">{isTime ? 'Progreso de tiempo' : 'Tu Progreso'}</span>
                           <span className="font-semibold text-primary-500">
-                            {progress} / {selectedChallenge.goal}
+                            {isTime
+                              ? formatChallengeGoal(selectedChallenge)
+                              : `${progress} / ${selectedChallenge.goal}`}
                           </span>
                         </div>
                         <div className="h-4 bg-dark-300 rounded-full overflow-hidden mb-4">
@@ -778,8 +1044,7 @@ export default function Challenges() {
                           />
                         </div>
 
-                        {/* Update Progress */}
-                        {!completed && (
+                        {!completed && !isTime && (
                           <div data-tour="tour-challenge-progress" className="space-y-2">
                             <label className="block text-sm font-medium text-gray-400">
                               Actualizar Progreso
@@ -821,13 +1086,18 @@ export default function Challenges() {
                           <p className="text-xs text-accent-green flex items-center gap-1">
                             <FiCheck size={14} />
                             Reto completado
+                            {participant.resultValue != null && (
+                              <span className="text-gray-400">
+                                · Resultado: {participant.resultValue} {participant.resultUnit || ''}
+                              </span>
+                            )}
                           </p>
                         )}
                       </div>
                     )}
 
                     {/* Actions */}
-                    <div className="flex gap-3 mb-6">
+                    <div className="flex flex-col sm:flex-row gap-3 mb-6">
                       {participant && (
                         <>
                           {!completed && (
@@ -839,7 +1109,18 @@ export default function Challenges() {
                               Abandonar
                             </button>
                           )}
-                          {progress >= selectedChallenge.goal && !completed && (
+                          {!completed && (
+                            <button
+                              type="button"
+                              data-tour="tour-challenge-invite"
+                              onClick={(e) => openShareChallenge(selectedChallenge, e)}
+                              className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                            >
+                              <FiShare2 size={18} />
+                              Invitar
+                            </button>
+                          )}
+                          {!isTime && progress >= selectedChallenge.goal && !completed && (
                             <button
                               data-tour="tour-challenge-complete"
                               onClick={handleComplete}
@@ -847,6 +1128,16 @@ export default function Challenges() {
                             >
                               <FiCheck size={18} />
                               Completar y Obtener XP
+                            </button>
+                          )}
+                          {isTime && timeReached && !completed && (
+                            <button
+                              data-tour="tour-challenge-complete"
+                              onClick={() => openTimeResultModal(selectedChallenge)}
+                              className="btn-primary flex-1 flex items-center justify-center gap-2"
+                            >
+                              <FiCheck size={18} />
+                              Registrar resultado y completar
                             </button>
                           )}
                           {completed && (
@@ -861,12 +1152,23 @@ export default function Challenges() {
                         </>
                       )}
                       {!participant && (
-                        <button
-                          onClick={handleJoinChallenge.bind(null, selectedChallenge._id)}
-                          className="btn-primary w-full"
-                        >
-                          Unirse al Reto
-                        </button>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full">
+                          <button
+                            onClick={handleJoinChallenge.bind(null, selectedChallenge._id)}
+                            className="btn-primary flex-1"
+                          >
+                            Unirse al Reto
+                          </button>
+                          <button
+                            type="button"
+                            data-tour="tour-challenge-invite"
+                            onClick={(e) => openShareChallenge(selectedChallenge, e)}
+                            className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                          >
+                            <FiShare2 size={16} />
+                            Invitar
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -929,11 +1231,20 @@ export default function Challenges() {
                                   </div>
                                   <div className="flex-shrink-0 text-right">
                                     <div className="font-semibold text-primary-500">
-                                      {p.progress || 0} / {selectedChallenge.goal}
+                                      {isTime
+                                        ? formatElapsed(p.accumulatedMs || 0)
+                                        : `${p.progress || 0} / ${selectedChallenge.goal}`}
                                     </div>
-                                    <div className="text-xs text-gray-400">
-                                      {Math.round(((p.progress || 0) / selectedChallenge.goal) * 100)}%
-                                    </div>
+                                    {!isTime && (
+                                      <div className="text-xs text-gray-400">
+                                        {Math.round(((p.progress || 0) / selectedChallenge.goal) * 100)}%
+                                      </div>
+                                    )}
+                                    {p.resultValue != null && (
+                                      <div className="text-xs text-gray-400">
+                                        {p.resultValue} {p.resultUnit || ''}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )
@@ -1049,15 +1360,48 @@ export default function Challenges() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Objetivo *</label>
+                  <label className="block text-sm font-medium mb-2">Tipo de objetivo *</label>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setCreateForm({ ...createForm, goalMode: 'quantity' })}
+                      className={`p-3 rounded-xl text-sm font-medium transition-all ${
+                        createForm.goalMode === 'quantity'
+                          ? 'bg-primary-500/15 border border-primary-500/50 text-white'
+                          : 'bg-dark-200 border border-transparent text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Cantidad
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateForm({ ...createForm, goalMode: 'time' })}
+                      className={`p-3 rounded-xl text-sm font-medium transition-all ${
+                        createForm.goalMode === 'time'
+                          ? 'bg-primary-500/15 border border-primary-500/50 text-white'
+                          : 'bg-dark-200 border border-transparent text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Tiempo (cronómetro)
+                    </button>
+                  </div>
+                  <label className="block text-sm font-medium mb-2">
+                    {createForm.goalMode === 'time' ? 'Tiempo objetivo (minutos) *' : 'Objetivo *'}
+                  </label>
                   <input
                     type="number"
                     value={createForm.goal}
                     onChange={(e) => setCreateForm({ ...createForm, goal: e.target.value })}
                     className="input-field w-full"
-                    placeholder="Ej: 30"
+                    placeholder={createForm.goalMode === 'time' ? 'Ej: 20' : 'Ej: 30'}
                     min="1"
+                    step={createForm.goalMode === 'time' ? '1' : 'any'}
                   />
+                  {createForm.goalMode === 'time' && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Al iniciar, el cronómetro contará de 0 hasta este tiempo. Al completarlo se pedirá registrar repeticiones o km según el tipo/descripción.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1211,6 +1555,80 @@ export default function Challenges() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Time-goal: register exercise result */}
+      <AnimatePresence>
+        {showResultModal && resultChallenge && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="card max-w-md w-full"
+            >
+              {(() => {
+                const meta = getExerciseResultMeta(resultChallenge.type, resultChallenge.description)
+                return (
+                  <>
+                    <div className="mb-5 text-center">
+                      <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary-500/20 text-primary-500">
+                        <FiClock size={28} />
+                      </div>
+                      <h2 className="font-display text-2xl mb-1">Registrar resultado</h2>
+                      <p className="text-sm text-gray-400">
+                        Completaste el tiempo de{' '}
+                        <span className="text-primary-500 font-semibold">
+                          {formatChallengeGoal(resultChallenge)}
+                        </span>
+                        . Indica tu resultado de ejercicio.
+                      </p>
+                    </div>
+                    <label className="block text-sm font-medium mb-2">{meta.label}</label>
+                    <input
+                      type="number"
+                      inputMode={meta.inputMode}
+                      step={meta.step}
+                      min="0"
+                      value={resultInput}
+                      onChange={(e) => setResultInput(e.target.value)}
+                      placeholder={meta.placeholder}
+                      className="input-field w-full text-center text-lg font-semibold mb-2"
+                      autoFocus
+                    />
+                    <p className="text-xs text-gray-500 mb-5">Unidad: {meta.unit}</p>
+                    <div className="flex flex-col-reverse sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary flex-1"
+                        onClick={() => {
+                          setShowResultModal(false)
+                          setResultChallenge(null)
+                        }}
+                      >
+                        Más tarde
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary flex-1"
+                        disabled={submittingResult}
+                        onClick={handleSubmitTimeResult}
+                      >
+                        {submittingResult ? 'Completando...' : 'Completar reto'}
+                      </button>
+                    </div>
+                  </>
+                )
+              })()}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <ShareChallengeSheet
+        open={Boolean(shareChallengeTarget)}
+        challenge={shareChallengeTarget}
+        onClose={() => setShareChallengeTarget(null)}
+      />
     </div>
   )
 }

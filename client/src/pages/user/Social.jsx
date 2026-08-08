@@ -27,6 +27,7 @@ import PostImageViewer from '../../components/PostImageViewer'
 import SocialFeedSkeleton from '../../components/SocialFeedSkeleton'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import UserNoteBadge from '../../components/UserNoteBadge'
+import ChallengePostCard from '../../components/ChallengePostCard'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { countComments } from '../../utils/commentTree'
 import { compressImageFile } from '../../utils/compressImage'
@@ -946,9 +947,20 @@ export default function Social() {
                   </div>
                 )}
 
+                {/* Challenge share */}
+                {!post.sharedFrom &&
+                  post.workoutData &&
+                  (post.postType === 'challenge' || post.workoutData.shareKind === 'challenge') && (
+                    <div className="mb-4" data-no-post-open>
+                      <ChallengePostCard data={post.workoutData} />
+                    </div>
+                  )}
+
                 {/* Routine share (template) vs completed workout — omit on reshares */}
                 {!post.sharedFrom &&
                   post.workoutData &&
+                  post.workoutData.shareKind !== 'challenge' &&
+                  post.postType !== 'challenge' &&
                   (post.postType === 'routine' ||
                     post.workoutData.isRoutine ||
                     post.workoutData.shareKind === 'routine') && (
@@ -991,8 +1003,10 @@ export default function Social() {
                 {!post.sharedFrom &&
                   post.workoutData &&
                   post.postType !== 'routine' &&
+                  post.postType !== 'challenge' &&
                   !post.workoutData.isRoutine &&
                   post.workoutData.shareKind !== 'routine' &&
+                  post.workoutData.shareKind !== 'challenge' &&
                   (post.postType === 'workout' || post.workoutData) && (
                   <button
                     type="button"

@@ -8,6 +8,7 @@ import PostReactionButton from './PostReactionButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import { MentionText } from './MentionInput'
 import ProtectedMedia from './ProtectedMedia'
+import ChallengePostCard from './ChallengePostCard'
 import { countComments } from '../utils/commentTree'
 
 /**
@@ -142,14 +143,23 @@ export default function ProfileFeed({
               </p>
             )}
 
-            {workout && (
+            {workout &&
+              (post.postType === 'challenge' || workout.shareKind === 'challenge') && (
+                <div className="mx-4 mb-3" data-no-post-open>
+                  <ChallengePostCard data={workout} />
+                </div>
+              )}
+
+            {workout &&
+              post.postType !== 'challenge' &&
+              workout.shareKind !== 'challenge' && (
               <button
                 type="button"
                 data-no-post-open
                 onClick={() => onOpenRoutine?.(workout, author)}
                 className="mx-4 mb-3 block w-[calc(100%-2rem)] overflow-hidden rounded-2xl border border-[rgba(var(--color-primary-rgb),0.28)] bg-gradient-to-br from-[rgba(var(--color-primary-rgb),0.14)] to-[rgba(var(--color-accent-rgb),0.08)] p-4 text-left transition hover:border-[rgba(var(--color-primary-rgb),0.5)]"
               >
-                <h4 className="font-display text-xl tracking-wide">{workout.name}</h4>
+                <h4 className="font-display text-xl tracking-wide">{workout.name || workout.challengeTitle}</h4>
                 <p className="mt-2 text-xs text-[color:var(--color-primary)]">Tocar para ver la rutina completa</p>
               </button>
             )}

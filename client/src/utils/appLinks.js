@@ -52,3 +52,32 @@ export function buildPostShareText({ authorName, snippet, postUrl, inviteUrl } =
     `Ver publicación:\n${link}`
   )
 }
+
+/** Deep link to Challenges page */
+export function getChallengesUrl() {
+  const origin = getAppOrigin()
+  const path = '/challenges'
+  return origin ? `${origin}${path}` : path
+}
+
+export function buildChallengeInviteShareText({
+  challengeTitle,
+  goalLabel,
+  unit,
+  xp,
+  inviteUrl
+} = {}) {
+  const title = challengeTitle || 'Reto'
+  const metaParts = []
+  if (goalLabel != null) {
+    metaParts.push(`Meta: ${goalLabel}${unit ? ` ${unit}` : ''}`)
+  }
+  if (xp != null) metaParts.push(`+${xp} XP`)
+  const meta = metaParts.length ? `\n${metaParts.join(' · ')}` : ''
+  const link = inviteUrl || getChallengesUrl() || getInviteUrl()
+  return (
+    `🎯 Qyntra Gym — ¡Únete a este reto!\n` +
+    `${title}${meta}\n\n` +
+    `Entra a Retos aquí:\n${link}`
+  )
+}

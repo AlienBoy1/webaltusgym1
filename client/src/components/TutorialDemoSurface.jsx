@@ -126,6 +126,36 @@ export default function TutorialDemoSurface({ demoId }) {
     )
   }
 
+  if (demoId === 'challenge-invite') {
+    return (
+      <div data-tour="tour-challenge-invite" className={`${shell} overflow-hidden`}>
+        <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+          <p className="text-center font-display text-base text-[color:var(--text-primary)]">Compartir reto</p>
+        </div>
+        <div className="space-y-1 p-3">
+          <div className="flex items-center gap-3 rounded-xl bg-[color:var(--bg-muted)]/60 p-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]">
+              <FiUsers size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[color:var(--text-primary)]">Comunidad</p>
+              <p className="text-[11px] text-[color:var(--text-muted)]">Publicar invitación en el feed</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-accent-yellow/30 bg-accent-yellow/10 p-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-yellow/15 text-accent-yellow">
+              <FiShare2 size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[color:var(--text-primary)]">Invitar al reto</p>
+              <p className="text-[11px] text-[color:var(--text-muted)]">Imagen para WA, IG o Facebook</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (demoId === 'challenge-start') {
     return (
       <div data-tour="tour-challenge-start" className={`${shell} p-4`}>

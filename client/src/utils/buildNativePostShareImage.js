@@ -246,7 +246,9 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     kind === 'routine'
       ? 'RUTINA · COMUNIDAD'
       : kind === 'challenge'
-        ? 'RETO COMPLETADO'
+        ? wd.shareMode === 'invite'
+          ? 'RETO · COMUNIDAD'
+          : 'RETO COMPLETADO'
         : 'ENTRENAMIENTO REALIZADO'
   ctx.fillText(eyebrow, x + 28, y + 42)
 
@@ -337,11 +339,15 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
 
   ctx.fillStyle = accent
   ctx.font = '600 20px Outfit, system-ui, sans-serif'
-  ctx.fillText(
-    kind === 'routine' ? 'Tocar para ver e iniciar esta rutina' : 'Tocar para ver detalle',
-    x + 28,
-    y + innerH - 28
-  )
+  const footer =
+    kind === 'routine'
+      ? 'Tocar para ver e iniciar esta rutina'
+      : kind === 'challenge'
+        ? wd.shareMode === 'invite'
+          ? 'Únete al reto en Qyntra Gym'
+          : 'Reto completado en Qyntra Gym'
+        : 'Tocar para ver detalle'
+  ctx.fillText(footer, x + 28, y + innerH - 28)
 
   return y + innerH
 }

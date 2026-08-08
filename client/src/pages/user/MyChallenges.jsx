@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useAuthStore } from '../../store/authStore'
+import { buildChallengeSharePayload } from '../../utils/challengeUtils'
 
 function formatElapsed(ms) {
   const total = Math.max(0, Math.floor((ms || 0) / 1000))
@@ -54,20 +55,14 @@ export default function MyChallenges() {
     setSharing(true)
     const participant = getParticipant(challenge)
     try {
-      await api.post('/social', {
-        content: `¡Completé el reto "${challenge.title}"! 🏆`,
-        postType: 'challenge',
-        workoutData: {
-          shareKind: 'challenge',
-          challengeTitle: challenge.title,
-          challengeType: challenge.type,
-          challengeGoal: challenge.goal,
-          challengeUnit: challenge.unit,
-          xpAwarded: challenge.reward?.xp || 100,
-          accumulatedMs: participant?.accumulatedMs || 0,
-          creatorName: challenge.createdBy?.name || 'Qyntra'
-        }
+      const payload = buildChallengeSharePayload(challenge, {
+        shareMode: 'completed',
+        xpAwarded: challenge.reward?.xp || 100,
+        accumulatedMs: participant?.accumulatedMs || 0,
+        resultValue: participant?.resultValue,
+        resultUnit: participant?.resultUnit
       })
+      await api.post('/social', payload)
       toast.success('Compartido en Comunidad')
       setSelected(null)
       navigate('/social')
