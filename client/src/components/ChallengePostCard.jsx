@@ -10,9 +10,11 @@ import { es } from 'date-fns/locale'
 import {
   formatChallengeGoal,
   formatElapsed,
-  isTimeGoalChallenge
+  isTimeGoalChallenge,
+  normalizeChallengeExercises
 } from '../utils/challengeUtils'
 import { useAuthStore } from '../store/authStore'
+import FormattedText from './FormattedText'
 
 /**
  * Community feed card for shared challenges (invite or completed).
@@ -115,10 +117,23 @@ export default function ChallengePostCard({ data, className = '' }) {
         </h4>
 
         {data.challengeDescription ? (
-          <p className="mt-1.5 text-sm text-app-secondary line-clamp-3">
-            {data.challengeDescription}
-          </p>
+          <div className="mt-1.5 text-sm text-app-secondary line-clamp-3">
+            <FormattedText text={data.challengeDescription} />
+          </div>
         ) : null}
+
+        {normalizeChallengeExercises(data.exercises).length > 0 && (
+          <ul className="mt-2 space-y-1 text-xs text-app-secondary">
+            {normalizeChallengeExercises(data.exercises)
+              .slice(0, 4)
+              .map((ex) => (
+                <li key={ex.id} className="flex justify-between gap-2">
+                  <span className="truncate">{ex.name}</span>
+                  <span className="shrink-0 text-app">{ex.targetReps} reps</span>
+                </li>
+              ))}
+          </ul>
+        )}
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div className="rounded-xl border border-app bg-elevated p-2.5 text-center">

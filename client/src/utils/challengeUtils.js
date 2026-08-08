@@ -2,6 +2,42 @@
  * Challenge helpers — time goals, exercise result labels, share payloads.
  */
 
+/** Normalize exercise templates from create/API payloads. */
+export function normalizeChallengeExercises(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((ex, index) => {
+      const name = String(ex?.name || '').trim()
+      const targetReps = Number(ex?.targetReps ?? ex?.target_reps ?? ex?.reps)
+      if (!name || !Number.isFinite(targetReps) || targetReps <= 0) return null
+      const id = String(ex?.id || `ex-${index + 1}`)
+      return { id, name, targetReps }
+    })
+    .filter(Boolean)
+}
+
+export function sumExerciseTargets(exercises) {
+  return normalizeChallengeExercises(exercises).reduce((sum, ex) => sum + ex.targetReps, 0)
+}
+
+/** Cap each entry to its exercise target; return { map, total }. */
+export function clampExerciseProgress(exercises, progressInput) {
+  const list = normalizeChallengeExercises(exercises)
+  const src =
+    progressInput && typeof progressInput === 'object' && !Array.isArray(progressInput)
+      ? progressInput
+      : {}
+  const map = {}
+  let total = 0
+  for (const ex of list) {
+    const raw = Number(src[ex.id] ?? src[ex.name] ?? 0)
+    const val = Number.isFinite(raw) ? Math.max(0, Math.min(ex.targetReps, raw)) : 0
+    map[ex.id] = val
+    total += val
+  }
+  return { map, total }
+}
+
 export function isTimeGoalChallenge(challengeOrData) {
   if (!challengeOrData) return false
   const mode = challengeOrData.goalMode || challengeOrData.goal_mode
@@ -85,6 +121,7 @@ export function buildChallengeSharePayload(challenge, opts = {}) {
     challengeGoal: challenge.goal ?? challenge.challengeGoal,
     challengeUnit: challenge.unit || challenge.challengeUnit || null,
     goalMode,
+    exercises: normalizeChallengeExercises(challenge.exercises || challenge.reward?.exercises),
     rewardXp: challenge.reward?.xp || xpAwarded || 100,
     participantsCount: challenge.participants?.length || challenge.participantsCount || 0,
     endDate,

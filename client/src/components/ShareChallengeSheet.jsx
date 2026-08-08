@@ -14,6 +14,7 @@ import {
 } from '../utils/appLinks'
 import { useAuthStore } from '../store/authStore'
 import api from '../utils/api'
+import FormattedText from './FormattedText'
 
 /**
  * Build a synthetic community-post shape so the native share canvas
@@ -270,9 +271,11 @@ export default function ShareChallengeSheet({ open, challenge, onClose }) {
                   <p className="truncate font-semibold text-[color:var(--text-primary)]">
                     {challenge.title}
                   </p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
-                    {challenge.description || 'Invita a la comunidad a unirse a este reto'}
-                  </p>
+                  <div className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
+                    <FormattedText
+                      text={challenge.description || 'Invita a la comunidad a unirse a este reto'}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

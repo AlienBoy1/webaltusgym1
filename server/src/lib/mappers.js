@@ -149,6 +149,19 @@ export function mapChallenge(row, extras = {}) {
   if (!row) return null
   const reward = row.reward || {}
   const goalMode = row.goal_mode || reward.goalMode || 'quantity'
+  const rawExercises = Array.isArray(row.exercises)
+    ? row.exercises
+    : Array.isArray(reward.exercises)
+      ? reward.exercises
+      : []
+  const exercises = rawExercises
+    .map((ex, index) => {
+      const name = String(ex?.name || '').trim()
+      const targetReps = Number(ex?.targetReps ?? ex?.target_reps ?? ex?.reps)
+      if (!name || !Number.isFinite(targetReps) || targetReps <= 0) return null
+      return { id: String(ex?.id || `ex-${index + 1}`), name, targetReps }
+    })
+    .filter(Boolean)
   return {
     _id: row.id,
     id: row.id,
@@ -158,6 +171,7 @@ export function mapChallenge(row, extras = {}) {
     goal: row.goal,
     unit: row.unit,
     goalMode,
+    exercises,
     image: row.image,
     startDate: row.start_date,
     endDate: row.end_date,

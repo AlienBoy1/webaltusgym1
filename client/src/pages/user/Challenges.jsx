@@ -14,13 +14,17 @@ import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { useAppDialog } from '../../components/AppDialog'
 import ShareChallengeSheet from '../../components/ShareChallengeSheet'
+import FormattedText from '../../components/FormattedText'
 import {
   formatElapsed,
   formatChallengeGoal,
   getExerciseResultMeta,
   getTimeGoalMs,
   isTimeGoalChallenge,
-  buildChallengeSharePayload
+  buildChallengeSharePayload,
+  normalizeChallengeExercises,
+  sumExerciseTargets,
+  clampExerciseProgress
 } from '../../utils/challengeUtils'
 
 function ChallengeTimer({ participant, targetMs = 0, onTargetReached }) {
@@ -121,6 +125,8 @@ export default function Challenges() {
     type: 'workouts',
     goal: '',
     goalMode: 'quantity',
+    exercises: [],
+    resultTarget: '',
     startDate: '',
     endDate: '',
     reward: { xp: 0 },
@@ -133,6 +139,8 @@ export default function Challenges() {
   const [showResultModal, setShowResultModal] = useState(false)
   const [resultChallenge, setResultChallenge] = useState(null)
   const [resultInput, setResultInput] = useState('')
+  const [resultExerciseInputs, setResultExerciseInputs] = useState({})
+  const [exerciseInputs, setExerciseInputs] = useState({})
   const [submittingResult, setSubmittingResult] = useState(false)
   const [shareChallengeTarget, setShareChallengeTarget] = useState(null)
 
@@ -208,6 +216,15 @@ export default function Challenges() {
       const participant = data.participants?.find(p => p.user?._id === user?._id || p.user === user?._id)
       if (participant) {
         setProgressInput(participant.progress?.toString() || '0')
+        const exercises = normalizeChallengeExercises(data.exercises || data.reward?.exercises)
+        const nextInputs = {}
+        for (const ex of exercises) {
+          const done = participant.exerciseProgress?.[ex.id]
+          nextInputs[ex.id] = done != null ? String(done) : ''
+        }
+        setExerciseInputs(nextInputs)
+      } else {
+        setExerciseInputs({})
       }
     } catch (error) {
       console.error('Error fetching challenge details:', error)
@@ -304,41 +321,82 @@ export default function Challenges() {
       return
     }
 
-    const progress = parseFloat(progressInput)
-    if (isNaN(progress) || progress < 0) {
-      toast.error('Por favor ingresa un valor válido')
-      return
+    const exercises = normalizeChallengeExercises(
+      selectedChallenge.exercises || selectedChallenge.reward?.exercises
+    )
+    const goal = Number(selectedChallenge.goal) || 0
+
+    let payload = {}
+    if (exercises.length) {
+      const rawMap = {}
+      for (const ex of exercises) {
+        const v = parseFloat(exerciseInputs[ex.id])
+        if (exerciseInputs[ex.id] === '' || Number.isNaN(v) || v < 0) {
+          toast.error(`Ingresa un valor válido para ${ex.name}`)
+          return
+        }
+        if (v > ex.targetReps) {
+          toast.error(`${ex.name}: máximo ${ex.targetReps}`)
+          return
+        }
+        rawMap[ex.id] = v
+      }
+      const { map, total } = clampExerciseProgress(exercises, rawMap)
+      payload = { exerciseProgress: map, progress: Math.min(goal, total) }
+    } else {
+      const progress = parseFloat(progressInput)
+      if (isNaN(progress) || progress < 0) {
+        toast.error('Por favor ingresa un valor válido')
+        return
+      }
+      if (progress > goal) {
+        toast.error(`No puedes registrar más de ${goal}`)
+        return
+      }
+      payload = { progress: Math.min(goal, progress) }
     }
 
     setUpdatingProgress(true)
     try {
-      const { data } = await api.put(`/challenges/${selectedChallenge._id}/progress`, { progress })
-      toast.success('Progreso actualizado')
+      const { data } = await api.put(`/challenges/${selectedChallenge._id}/progress`, payload)
+      toast.success(data.message || 'Progreso actualizado')
+
+      if (data.autoPaused || data.canComplete) {
+        setChallengeTimerActive(false)
+      }
 
       if (data.challenge && data.challenge.participants) {
-        setSelectedChallenge(prev => ({
+        setSelectedChallenge((prev) => ({
           ...prev,
           participants: data.challenge.participants,
           goal: data.challenge.goal
         }))
       } else if (data.participant) {
-        setSelectedChallenge(prev => ({
+        setSelectedChallenge((prev) => ({
           ...prev,
-          participants: prev.participants?.map(p =>
-            (p.user?._id || p.user) === user?._id
-              ? { ...p, ...data.participant }
-              : p
-          ) || [data.participant]
+          participants:
+            prev.participants?.map((p) =>
+              (p.user?._id || p.user) === user?._id ? { ...p, ...data.participant } : p
+            ) || [data.participant]
         }))
       }
 
-      setProgressInput(progress.toString())
+      if (exercises.length && data.participant?.exerciseProgress) {
+        const next = {}
+        for (const ex of exercises) {
+          next[ex.id] = String(data.participant.exerciseProgress[ex.id] ?? 0)
+        }
+        setExerciseInputs(next)
+      } else if (payload.progress != null) {
+        setProgressInput(String(payload.progress))
+      }
+
       fetchChallengeDetails(selectedChallenge._id)
       fetchMyChallenges()
       await refreshUser()
 
       if (data.canComplete) {
-        toast.success('¡Has alcanzado el objetivo! Puedes completar el reto para obtener XP', { duration: 4000 })
+        toast.success('Objetivo alcanzado. Completa el reto para obtener XP', { duration: 4000 })
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al actualizar progreso')
@@ -351,6 +409,10 @@ export default function Challenges() {
     if (!challenge) return
     setResultChallenge(challenge)
     setResultInput('')
+    const exercises = normalizeChallengeExercises(challenge.exercises || challenge.reward?.exercises)
+    const init = {}
+    for (const ex of exercises) init[ex.id] = ''
+    setResultExerciseInputs(init)
     setShowResultModal(true)
   }, [])
 
@@ -418,20 +480,47 @@ export default function Challenges() {
   const handleSubmitTimeResult = async () => {
     const challenge = resultChallenge || selectedChallenge
     if (!challenge) return
+    const exercises = normalizeChallengeExercises(challenge.exercises || challenge.reward?.exercises)
     const meta = getExerciseResultMeta(challenge.type, challenge.description)
-    const value = parseFloat(resultInput)
-    if (Number.isNaN(value) || value < 0) {
-      toast.error('Ingresa un resultado válido')
-      return
+
+    let body = { timeReached: true }
+
+    if (exercises.length) {
+      const rawMap = {}
+      for (const ex of exercises) {
+        const v = parseFloat(resultExerciseInputs[ex.id])
+        if (resultExerciseInputs[ex.id] === '' || Number.isNaN(v) || v < 0) {
+          toast.error(`Ingresa un valor para ${ex.name}`)
+          return
+        }
+        if (v > ex.targetReps) {
+          toast.error(`${ex.name}: máximo ${ex.targetReps}`)
+          return
+        }
+        rawMap[ex.id] = v
+      }
+      const { map, total } = clampExerciseProgress(exercises, rawMap)
+      body.exerciseProgress = map
+      body.exerciseResult = total
+      body.resultUnit = 'reps'
+    } else {
+      const value = parseFloat(resultInput)
+      if (Number.isNaN(value) || value < 0) {
+        toast.error('Ingresa un resultado válido')
+        return
+      }
+      const maxResult = Number(challenge.reward?.resultTarget)
+      if (Number.isFinite(maxResult) && maxResult > 0 && value > maxResult) {
+        toast.error(`No puedes registrar más de ${maxResult}`)
+        return
+      }
+      body.exerciseResult = value
+      body.resultUnit = meta.unit
     }
 
     setSubmittingResult(true)
     try {
-      const { data } = await api.post(`/challenges/${challenge._id}/complete`, {
-        timeReached: true,
-        exerciseResult: value,
-        resultUnit: meta.unit
-      })
+      const { data } = await api.post(`/challenges/${challenge._id}/complete`, body)
       await applyCompletionSuccess(challenge, data)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al completar reto')
@@ -526,23 +615,58 @@ export default function Challenges() {
   }
 
   const handleCreateChallenge = async () => {
-    if (!createForm.title || !createForm.type || !createForm.goal || !createForm.startDate || !createForm.endDate) {
+    const exercises = normalizeChallengeExercises(createForm.exercises)
+    const isTime = createForm.goalMode === 'time'
+    const quantityFromExercises = !isTime && exercises.length ? sumExerciseTargets(exercises) : 0
+    const goalValue = isTime
+      ? parseFloat(createForm.goal)
+      : exercises.length
+        ? quantityFromExercises
+        : parseFloat(createForm.goal)
+
+    if (!createForm.title || !createForm.type || !createForm.startDate || !createForm.endDate) {
       toast.error('Por favor completa todos los campos requeridos')
       return
+    }
+    if (!Number.isFinite(goalValue) || goalValue <= 0) {
+      toast.error(
+        exercises.length && !isTime
+          ? 'Agrega ejercicios con repeticiones válidas'
+          : 'Indica un objetivo válido'
+      )
+      return
+    }
+    if (isTime && !exercises.length) {
+      const rt = parseFloat(createForm.resultTarget)
+      if (!Number.isFinite(rt) || rt <= 0) {
+        toast.error('Indica el objetivo a registrar al terminar el tiempo, o agrega ejercicios')
+        return
+      }
     }
 
     try {
       const xp = createForm.reward.xp || getDefaultXp(createForm.type)
       const typeInfo = getTypeInfo(createForm.type)
-      const isTime = createForm.goalMode === 'time'
-      const challengeData = {
-        ...createForm,
-        goal: parseFloat(createForm.goal),
+      const reward = {
+        xp,
         goalMode: isTime ? 'time' : 'quantity',
+        exercises
+      }
+      if (isTime && !exercises.length) {
+        reward.resultTarget = parseFloat(createForm.resultTarget)
+      }
+
+      const challengeData = {
+        title: createForm.title,
+        description: createForm.description,
+        type: createForm.type,
+        goal: goalValue,
+        goalMode: isTime ? 'time' : 'quantity',
+        exercises,
         unit: isTime ? 'min' : typeInfo?.unit || undefined,
         startDate: new Date(createForm.startDate),
         endDate: new Date(createForm.endDate),
-        reward: { xp, goalMode: isTime ? 'time' : 'quantity' },
+        reward,
         targetUsers: createForm.targetUsers.length > 0 ? createForm.targetUsers : undefined
       }
 
@@ -555,6 +679,8 @@ export default function Challenges() {
         type: 'workouts',
         goal: '',
         goalMode: 'quantity',
+        exercises: [],
+        resultTarget: '',
         startDate: '',
         endDate: '',
         reward: { xp: getDefaultXp('workouts') },
@@ -704,7 +830,7 @@ export default function Challenges() {
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-400 text-sm">{challenge.description}</p>
+                      <FormattedText text={challenge.description} className="text-gray-400 text-sm" />
                     </div>
                     <div className="text-right ml-4 shrink-0">
                       <div className="text-accent-yellow font-semibold">
@@ -825,7 +951,7 @@ export default function Challenges() {
                   </div>
 
                   <h3 className="font-display text-lg mb-2">{challenge.title}</h3>
-                  <p className="text-gray-400 text-sm mb-2">{challenge.description}</p>
+                  <FormattedText text={challenge.description} className="text-gray-400 text-sm mb-2" />
                   <div className="mb-4 flex flex-wrap gap-2 text-xs">
                     <span className="rounded-full bg-dark-200 px-2.5 py-1 text-gray-300">
                       {isTimeGoalChallenge(challenge) ? '⏱ ' : '🎯 '}
@@ -908,13 +1034,38 @@ export default function Challenges() {
                 </button>
               </div>
 
-              <p className="text-gray-400 mb-6">{selectedChallenge.description}</p>
+              <FormattedText text={selectedChallenge.description} className="text-gray-400 mb-4" />
+
+              {normalizeChallengeExercises(
+                selectedChallenge.exercises || selectedChallenge.reward?.exercises
+              ).length > 0 && (
+                <div className="mb-6 rounded-xl border border-app bg-elevated p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    Ejercicios del reto
+                  </p>
+                  <ul className="space-y-1.5">
+                    {normalizeChallengeExercises(
+                      selectedChallenge.exercises || selectedChallenge.reward?.exercises
+                    ).map((ex) => (
+                      <li key={ex.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate text-app">{ex.name}</span>
+                        <span className="shrink-0 text-primary-500 font-semibold">
+                          {ex.targetReps} reps
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {(() => {
                 const participant = getParticipant(selectedChallenge)
                 const progress = participant?.progress || 0
                 const completed = participant?.completed || false
                 const isTime = isTimeGoalChallenge(selectedChallenge)
+                const challengeExercises = normalizeChallengeExercises(
+                  selectedChallenge.exercises || selectedChallenge.reward?.exercises
+                )
                 const timeTarget = isTime ? getTimeGoalMs(selectedChallenge) : 0
                 const progressPercent = isTime
                   ? Math.min(
@@ -933,7 +1084,13 @@ export default function Challenges() {
                 const isActive = participantStatus === 'active'
                 const isPaused = participantStatus === 'paused'
                 const isJoined = participantStatus === 'joined'
-                const progressChanged = progressInput !== (participant?.progress?.toString() || '0')
+                const progressChanged = challengeExercises.length
+                  ? challengeExercises.some((ex) => {
+                      const prev = String(participant?.exerciseProgress?.[ex.id] ?? 0)
+                      const cur = exerciseInputs[ex.id] === '' ? '' : String(exerciseInputs[ex.id] ?? '')
+                      return cur !== '' && cur !== prev
+                    })
+                  : progressInput !== (participant?.progress?.toString() || '0')
                 const timeReached =
                   isTime &&
                   participant &&
@@ -942,6 +1099,8 @@ export default function Challenges() {
                       ? Date.now() - new Date(participant.startedAt).getTime()
                       : 0)) >=
                     timeTarget * 0.98
+                const canFinishQuantity =
+                  !isTime && progress >= selectedChallenge.goal && !completed
 
                 return (
                   <>
@@ -1018,7 +1177,7 @@ export default function Challenges() {
                         </div>
                         {isTime && (
                           <p className="mt-3 text-xs text-gray-400">
-                            El cronómetro cuenta de 0 hasta el tiempo objetivo. Al llegar se pausará y podrás registrar repeticiones o km.
+                            El cronómetro cuenta hasta el tiempo objetivo. Al llegar se pausa y registrarás cada ejercicio (sin superar su objetivo).
                           </p>
                         )}
                       </div>
@@ -1045,39 +1204,79 @@ export default function Challenges() {
                         </div>
 
                         {!completed && !isTime && (
-                          <div data-tour="tour-challenge-progress" className="space-y-2">
+                          <div data-tour="tour-challenge-progress" className="space-y-3">
                             <label className="block text-sm font-medium text-gray-400">
                               Actualizar Progreso
                             </label>
-                            <div className="flex gap-2">
-                              <input
-                                type="number"
-                                value={progressInput}
-                                onChange={(e) => {
-                                  const val = e.target.value
-                                  if (val === '' || (parseFloat(val) >= 0 && parseFloat(val) <= selectedChallenge.goal)) {
-                                    setProgressInput(val)
-                                  }
-                                }}
-                                placeholder="0"
-                                className="input-field flex-1 text-center font-semibold"
-                                min="0"
-                                max={selectedChallenge.goal}
-                                disabled={!isActive}
-                              />
-                              <button
-                                onClick={handleUpdateProgress}
-                                disabled={updatingProgress || !isActive || !progressChanged}
-                                className="btn-primary flex items-center gap-2 px-4 disabled:opacity-40"
-                              >
-                                <FiEdit2 size={18} />
-                                {updatingProgress ? 'Actualizando...' : 'Actualizar'}
-                              </button>
-                            </div>
+                            {challengeExercises.length > 0 ? (
+                              <div className="space-y-2">
+                                {challengeExercises.map((ex) => (
+                                  <div
+                                    key={ex.id}
+                                    className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3"
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-app truncate">{ex.name}</p>
+                                      <p className="text-[11px] text-gray-500">Máx. {ex.targetReps} reps</p>
+                                    </div>
+                                    <input
+                                      type="number"
+                                      value={exerciseInputs[ex.id] ?? ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value
+                                        if (
+                                          val === '' ||
+                                          (parseFloat(val) >= 0 && parseFloat(val) <= ex.targetReps)
+                                        ) {
+                                          setExerciseInputs((prev) => ({ ...prev, [ex.id]: val }))
+                                        }
+                                      }}
+                                      placeholder="0"
+                                      className="input-field w-full sm:w-28 text-center font-semibold"
+                                      min="0"
+                                      max={ex.targetReps}
+                                      disabled={!isActive}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <input
+                                  type="number"
+                                  value={progressInput}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    if (
+                                      val === '' ||
+                                      (parseFloat(val) >= 0 &&
+                                        parseFloat(val) <= selectedChallenge.goal)
+                                    ) {
+                                      setProgressInput(val)
+                                    }
+                                  }}
+                                  placeholder="0"
+                                  className="input-field flex-1 text-center font-semibold"
+                                  min="0"
+                                  max={selectedChallenge.goal}
+                                  disabled={!isActive}
+                                />
+                              </div>
+                            )}
+                            <button
+                              onClick={handleUpdateProgress}
+                              disabled={updatingProgress || !isActive || !progressChanged}
+                              className="btn-primary w-full flex items-center justify-center gap-2 px-4 disabled:opacity-40"
+                            >
+                              <FiEdit2 size={18} />
+                              {updatingProgress ? 'Actualizando...' : 'Actualizar'}
+                            </button>
                             {!isActive && !completed && (
                               <p className="text-xs text-yellow-400 flex items-center gap-1">
                                 <FiPlay size={12} />
-                                Inicia el reto para actualizar progreso
+                                {canFinishQuantity
+                                  ? 'Objetivo alcanzado. Completa el reto para obtener XP'
+                                  : 'Inicia el reto para actualizar progreso'}
                               </p>
                             )}
                           </div>
@@ -1120,7 +1319,7 @@ export default function Challenges() {
                               Invitar
                             </button>
                           )}
-                          {!isTime && progress >= selectedChallenge.goal && !completed && (
+                          {!isTime && canFinishQuantity && (
                             <button
                               data-tour="tour-challenge-complete"
                               onClick={handleComplete}
@@ -1385,22 +1584,124 @@ export default function Challenges() {
                       Tiempo (cronómetro)
                     </button>
                   </div>
-                  <label className="block text-sm font-medium mb-2">
-                    {createForm.goalMode === 'time' ? 'Tiempo objetivo (minutos) *' : 'Objetivo *'}
-                  </label>
-                  <input
-                    type="number"
-                    value={createForm.goal}
-                    onChange={(e) => setCreateForm({ ...createForm, goal: e.target.value })}
-                    className="input-field w-full"
-                    placeholder={createForm.goalMode === 'time' ? 'Ej: 20' : 'Ej: 30'}
-                    min="1"
-                    step={createForm.goalMode === 'time' ? '1' : 'any'}
-                  />
                   {createForm.goalMode === 'time' && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      Al iniciar, el cronómetro contará de 0 hasta este tiempo. Al completarlo se pedirá registrar repeticiones o km según el tipo/descripción.
+                    <>
+                      <label className="block text-sm font-medium mb-2">Tiempo objetivo (minutos) *</label>
+                      <input
+                        type="number"
+                        value={createForm.goal}
+                        onChange={(e) => setCreateForm({ ...createForm, goal: e.target.value })}
+                        className="input-field w-full"
+                        placeholder="Ej: 20"
+                        min="1"
+                        step="1"
+                      />
+                    </>
+                  )}
+                  {createForm.goalMode === 'quantity' && createForm.exercises.length === 0 && (
+                    <>
+                      <label className="block text-sm font-medium mb-2">Objetivo *</label>
+                      <input
+                        type="number"
+                        value={createForm.goal}
+                        onChange={(e) => setCreateForm({ ...createForm, goal: e.target.value })}
+                        className="input-field w-full"
+                        placeholder="Ej: 30"
+                        min="1"
+                        step="any"
+                      />
+                    </>
+                  )}
+                  {createForm.goalMode === 'quantity' && createForm.exercises.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Objetivo total: {sumExerciseTargets(createForm.exercises)} reps (suma de ejercicios)
                     </p>
+                  )}
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <label className="block text-sm font-medium">Ejercicios</label>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-primary-500"
+                      onClick={() =>
+                        setCreateForm({
+                          ...createForm,
+                          exercises: [
+                            ...createForm.exercises,
+                            { id: `ex-${Date.now()}`, name: '', targetReps: '' }
+                          ]
+                        })
+                      }
+                    >
+                      + Agregar
+                    </button>
+                  </div>
+                  {createForm.exercises.length === 0 ? (
+                    <p className="text-xs text-gray-500">
+                      Opcional. Si agregas ejercicios, el avance pedirá un valor por cada uno.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {createForm.exercises.map((ex, idx) => (
+                        <div key={ex.id || idx} className="flex gap-2 items-start">
+                          <input
+                            type="text"
+                            value={ex.name}
+                            onChange={(e) => {
+                              const next = [...createForm.exercises]
+                              next[idx] = { ...next[idx], name: e.target.value }
+                              setCreateForm({ ...createForm, exercises: next })
+                            }}
+                            className="input-field flex-1"
+                            placeholder="Ejercicio"
+                          />
+                          <input
+                            type="number"
+                            value={ex.targetReps}
+                            onChange={(e) => {
+                              const next = [...createForm.exercises]
+                              next[idx] = { ...next[idx], targetReps: e.target.value }
+                              setCreateForm({ ...createForm, exercises: next })
+                            }}
+                            className="input-field w-24 text-center"
+                            placeholder="Reps"
+                            min="1"
+                          />
+                          <button
+                            type="button"
+                            className="p-2 rounded-lg hover:bg-dark-200 text-gray-400"
+                            onClick={() =>
+                              setCreateForm({
+                                ...createForm,
+                                exercises: createForm.exercises.filter((_, i) => i !== idx)
+                              })
+                            }
+                            aria-label="Quitar ejercicio"
+                          >
+                            <FiX size={18} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {createForm.goalMode === 'time' && createForm.exercises.length === 0 && (
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium mb-2">
+                        Objetivo a registrar al terminar *
+                      </label>
+                      <input
+                        type="number"
+                        value={createForm.resultTarget}
+                        onChange={(e) =>
+                          setCreateForm({ ...createForm, resultTarget: e.target.value })
+                        }
+                        className="input-field w-full"
+                        placeholder="Ej: 50"
+                        min="1"
+                      />
+                    </div>
                   )}
                 </div>
 
@@ -1568,6 +1869,10 @@ export default function Challenges() {
             >
               {(() => {
                 const meta = getExerciseResultMeta(resultChallenge.type, resultChallenge.description)
+                const exercises = normalizeChallengeExercises(
+                  resultChallenge.exercises || resultChallenge.reward?.exercises
+                )
+                const maxSingle = Number(resultChallenge.reward?.resultTarget)
                 return (
                   <>
                     <div className="mb-5 text-center">
@@ -1580,22 +1885,73 @@ export default function Challenges() {
                         <span className="text-primary-500 font-semibold">
                           {formatChallengeGoal(resultChallenge)}
                         </span>
-                        . Indica tu resultado de ejercicio.
+                        . Puedes registrar menos del objetivo, nunca más.
                       </p>
                     </div>
-                    <label className="block text-sm font-medium mb-2">{meta.label}</label>
-                    <input
-                      type="number"
-                      inputMode={meta.inputMode}
-                      step={meta.step}
-                      min="0"
-                      value={resultInput}
-                      onChange={(e) => setResultInput(e.target.value)}
-                      placeholder={meta.placeholder}
-                      className="input-field w-full text-center text-lg font-semibold mb-2"
-                      autoFocus
-                    />
-                    <p className="text-xs text-gray-500 mb-5">Unidad: {meta.unit}</p>
+
+                    {exercises.length > 0 ? (
+                      <div className="space-y-3 mb-5">
+                        {exercises.map((ex) => (
+                          <div key={ex.id}>
+                            <label className="block text-sm font-medium mb-1">
+                              {ex.name}{' '}
+                              <span className="text-gray-500 font-normal">(máx. {ex.targetReps})</span>
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={ex.targetReps}
+                              value={resultExerciseInputs[ex.id] ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                if (
+                                  val === '' ||
+                                  (parseFloat(val) >= 0 && parseFloat(val) <= ex.targetReps)
+                                ) {
+                                  setResultExerciseInputs((prev) => ({ ...prev, [ex.id]: val }))
+                                }
+                              }}
+                              className="input-field w-full text-center text-lg font-semibold"
+                              placeholder="0"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <label className="block text-sm font-medium mb-2">{meta.label}</label>
+                        <input
+                          type="number"
+                          inputMode={meta.inputMode}
+                          step={meta.step}
+                          min="0"
+                          max={Number.isFinite(maxSingle) && maxSingle > 0 ? maxSingle : undefined}
+                          value={resultInput}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (
+                              val === '' ||
+                              (parseFloat(val) >= 0 &&
+                                (!Number.isFinite(maxSingle) ||
+                                  maxSingle <= 0 ||
+                                  parseFloat(val) <= maxSingle))
+                            ) {
+                              setResultInput(val)
+                            }
+                          }}
+                          placeholder={meta.placeholder}
+                          className="input-field w-full text-center text-lg font-semibold mb-2"
+                          autoFocus
+                        />
+                        <p className="text-xs text-gray-500 mb-5">
+                          Unidad: {meta.unit}
+                          {Number.isFinite(maxSingle) && maxSingle > 0
+                            ? ` · Máximo ${maxSingle}`
+                            : ''}
+                        </p>
+                      </>
+                    )}
+
                     <div className="flex flex-col-reverse sm:flex-row gap-2">
                       <button
                         type="button"

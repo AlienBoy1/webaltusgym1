@@ -8,6 +8,7 @@ import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useAuthStore } from '../../store/authStore'
 import { buildChallengeSharePayload } from '../../utils/challengeUtils'
+import FormattedText from '../../components/FormattedText'
 
 function formatElapsed(ms) {
   const total = Math.max(0, Math.floor((ms || 0) / 1000))
@@ -154,9 +155,10 @@ export default function MyChallenges() {
                     {selected.title}
                   </h2>
                   {selected.description && (
-                    <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                      {selected.description}
-                    </p>
+                    <FormattedText
+                      text={selected.description}
+                      className="mt-1 text-sm text-[color:var(--text-secondary)]"
+                    />
                   )}
                 </div>
                 <button
