@@ -1163,7 +1163,7 @@ export default function Chat() {
       toast.error('Espera a que se envíe el mensaje para responder')
       return
     }
-    setMsgAction(null)
+    requestCloseMsgAction()
     setReplyTo(payload)
     replyToRef.current = payload
     window.setTimeout(() => inputRef.current?.focus(), 50)
@@ -1212,12 +1212,23 @@ export default function Chat() {
         }
       })
     )
-    setMsgAction(null)
+    requestCloseMsgAction()
 
     try {
       const { data } = await api.post(`/chat/react/${msg.id}`, { emoji: emoji || null })
       if (data?.id) {
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...data } : m)))
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== msg.id) return m
+            const next = { ...m, ...data }
+            if (data.reactions !== undefined) {
+              const summarized = summarizeMessageReactions(data.reactions, myId)
+              next.myReaction = summarized.myReaction
+              next.reactionSummary = summarized.reactionSummary
+            }
+            return next
+          })
+        )
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo reaccionar')
@@ -1230,7 +1241,7 @@ export default function Chat() {
     try {
       await api.post(`/chat/delete-for-me/${msg.id}`)
       setMessages((prev) => prev.filter((m) => String(m.id) !== String(msg.id)))
-      setMsgAction(null)
+      requestCloseMsgAction()
       toast.success('Mensaje eliminado para ti')
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo eliminar')
@@ -1261,7 +1272,7 @@ export default function Chat() {
             : m
         )
       )
-      setMsgAction(null)
+      requestCloseMsgAction()
       toast.success('Mensaje eliminado para todos')
     } catch (error) {
       toast.error(error.response?.data?.message || 'No se pudo eliminar para todos')

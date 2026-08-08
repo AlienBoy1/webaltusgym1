@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { FiTrendingUp, FiCalendar, FiAward, FiZap, FiChevronRight, FiActivity, FiUsers, FiTarget, FiClock } from 'react-icons/fi'
+import { FiTrendingUp, FiCalendar, FiAward, FiZap, FiChevronRight, FiActivity, FiUsers, FiTarget, FiClock, FiShare2 } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import api from '../../utils/api'
@@ -14,6 +14,7 @@ import {
 } from '../../utils/membershipLifecycle'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import ChatShortcutsRail from '../../components/ChatShortcutsRail'
+import ShareWelcomeSheet from '../../components/ShareWelcomeSheet'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 const MOTIVATIONAL_MESSAGES = [
@@ -74,16 +75,57 @@ function pickMessage(seedKey) {
   return MOTIVATIONAL_MESSAGES[hash % MOTIVATIONAL_MESSAGES.length]
 }
 
+function formatCount(n) {
+  const v = Number(n) || 0
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (v >= 10_000) return `${Math.round(v / 1000)}k`
+  if (v >= 1000) return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(v)
+}
+
 export default function Dashboard() {
   const { user } = useAuthStore()
   const { unreadCount } = useNotificationStore()
   const [stats, setStats] = useState(null)
   const [visitTick, setVisitTick] = useState(0)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [socialCounts, setSocialCounts] = useState({
+    followers: user?.social?.followers?.length || 0,
+    following: user?.social?.following?.length || 0
+  })
+
+  const username = String(user?.username || '').replace(/^@+/, '')
 
   useEffect(() => {
     loadData()
     setVisitTick((n) => n + 1)
   }, [])
+
+  useEffect(() => {
+    const uid = user?._id || user?.id
+    if (!uid) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get(`/social/${uid}/follow-status`)
+        if (cancelled) return
+        setSocialCounts({
+          followers: data?.followersCount ?? user?.social?.followers?.length ?? 0,
+          following: data?.followingCount ?? user?.social?.following?.length ?? 0
+        })
+      } catch {
+        if (!cancelled) {
+          setSocialCounts({
+            followers: user?.social?.followers?.length || 0,
+            following: user?.social?.following?.length || 0
+          })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?._id, user?.id, user?.social?.followers?.length, user?.social?.following?.length])
 
   const loadData = async () => {
     try {
@@ -154,28 +196,53 @@ export default function Dashboard() {
         <div className="pointer-events-none absolute bottom-4 right-8 h-24 w-24 rounded-full border border-white/[0.08]" />
 
         <div className="relative z-10 text-white">
-          <motion.p
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.15 }}
-            className="text-sm font-medium tracking-wide text-white/80"
-          >
-            {greeting}
-          </motion.p>
+          <div className="mb-1 flex items-start justify-between gap-3">
+            <motion.p
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 }}
+              className="min-w-0 text-sm font-medium tracking-wide text-white/80"
+            >
+              {greeting}
+            </motion.p>
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              aria-label="Compartir bienvenida"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white backdrop-blur-sm transition hover:border-white/40 hover:bg-white/25 active:scale-95"
+            >
+              <FiShare2 size={16} />
+            </button>
+          </div>
           <motion.h1
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.25 }}
-            className="mb-4 flex items-center gap-2.5 font-display text-3xl tracking-wide md:text-4xl"
+            className="flex items-center gap-2 font-display text-[clamp(1.55rem,6.2vw,2.35rem)] tracking-wide"
           >
-            <span>{user?.name || 'Atleta'}</span>
+            <span className="min-w-0 break-words leading-tight">{user?.name || 'Atleta'}</span>
             <TutorialHelpButton
               tutorialId={TUTORIAL_IDS.QUICK_START}
               size="sm"
-              className="border-white/25 bg-white/15 text-white hover:border-white/40 hover:bg-white/25 hover:text-white"
+              className="shrink-0 border-white/25 bg-white/15 text-white hover:border-white/40 hover:bg-white/25 hover:text-white"
               message="El inicio tiene un tutorial rápido para conocer el menú, comunidad, entrenos y accesos."
             />
           </motion.h1>
+          {username ? (
+            <p className="mt-1 truncate text-[clamp(0.72rem,2.8vw,0.9rem)] font-semibold tracking-wide text-white/85">
+              @{username}
+            </p>
+          ) : null}
+          <div className="mt-3 mb-4 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white/95 sm:text-xs">
+              <span className="tabular-nums">{formatCount(socialCounts.followers)}</span>
+              <span className="font-medium text-white/70">Seguidores</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white/95 sm:text-xs">
+              <span className="tabular-nums">{formatCount(socialCounts.following)}</span>
+              <span className="font-medium text-white/70">Seguidos</span>
+            </span>
+          </div>
           <div className="space-y-2">
             <div className="rounded-2xl border border-white/20 bg-black/25 px-4 py-3 backdrop-blur-md">
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/60">
@@ -203,6 +270,16 @@ export default function Dashboard() {
           )}
         </div>
       </motion.div>
+
+      <ShareWelcomeSheet
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        greeting={greeting}
+        motivation={motivation}
+        motivation2={motivation2}
+        followers={socialCounts.followers}
+        following={socialCounts.following}
+      />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {quickStats.map((stat, i) => (

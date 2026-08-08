@@ -4,8 +4,12 @@ import { useEffect, useRef } from 'react'
  * Push a history entry while `active` is true so Android/browser back
  * calls `onBack` instead of leaving the current route.
  *
+ * Nested layers (e.g. chat thread + message actions) are supported:
+ * popping back *onto* this layer must not close it — only leaving this
+ * layer's history entry should call `onBack`.
+ *
  * Pattern:
- * - hardware/browser back → popstate → onBack()
+ * - hardware/browser back → popstate → onBack() when this entry is left
  * - UI close → call the returned `requestClose()` (history.back → onBack)
  * - unmount / active→false without pop → silently discard owned entry
  */
@@ -24,6 +28,9 @@ export function useHistoryBackLayer(active, onBack, layerId = 'layer') {
 
     const onPop = () => {
       if (ownedIdRef.current !== id) return
+      // Navigated back onto this layer (child overlay closed) — keep open
+      if (window.history.state?.qyntraBack === id) return
+      // This layer's entry was left — close
       ownedIdRef.current = null
       onBackRef.current?.()
     }

@@ -204,7 +204,9 @@ export default function StoriesRail({
         setMediaPreview(draft.mediaUrl)
         setMediaType(draft.mediaType || 'image')
         setCaption(draft.caption || '')
-        setComposeContain(Boolean(draft.fromPostId))
+        setComposeContain(
+          Boolean(draft.fromPostId || draft.fromWelcome || draft.fromChallengeId)
+        )
         setComposeOpen(true)
       } catch {
         /* ignore */
