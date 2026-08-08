@@ -1860,7 +1860,7 @@ router.get('/following', authenticate, async (req, res) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, avatar, username, email, stats')
+      .select('id, name, avatar, username, email, stats, last_seen_at')
       .in('id', ids)
 
     res.json(
@@ -1870,7 +1870,8 @@ router.get('/following', authenticate, async (req, res) => {
         name: p.name,
         username: p.username || null,
         avatar: p.avatar,
-        stats: p.stats
+        stats: p.stats,
+        lastSeenAt: p.last_seen_at || null
       }))
     )
   } catch (error) {
@@ -1893,7 +1894,7 @@ router.get('/followers', authenticate, async (req, res) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, avatar, username, email, stats')
+      .select('id, name, avatar, username, email, stats, last_seen_at')
       .in('id', ids)
 
     res.json(
@@ -1903,7 +1904,8 @@ router.get('/followers', authenticate, async (req, res) => {
         name: p.name,
         username: p.username || null,
         avatar: p.avatar,
-        stats: p.stats
+        stats: p.stats,
+        lastSeenAt: p.last_seen_at || null
       }))
     )
   } catch (error) {

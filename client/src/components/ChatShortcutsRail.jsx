@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiMessageCircle, FiX } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
-import { Avatar } from '../utils/avatarUtils'
+import { Avatar, isRenderableAvatar } from '../utils/avatarUtils'
 import UserNoteBadge from './UserNoteBadge'
-import { loadChatShortcuts, removeChatShortcut } from '../utils/chatShortcuts'
+import { loadChatShortcuts, removeChatShortcut, saveChatShortcuts } from '../utils/chatShortcuts'
+import api from '../utils/api'
 
 /**
  * Chat shortcuts pinned on the dashboard (below weekly activity).
- * Same card language as "Personas que quizá conozcas".
+ * Hydrates missing profile photos from the API so cards stay up to date.
  */
 export default function ChatShortcutsRail() {
   const navigate = useNavigate()
@@ -27,6 +28,45 @@ export default function ChatShortcutsRail() {
       window.removeEventListener('qyntra:chat-shortcuts', onFocus)
     }
   }, [uid])
+
+  // Refresh avatars / names for pinned shortcuts that lack a real photo
+  useEffect(() => {
+    if (!uid || !items.length) return undefined
+    let cancelled = false
+    const needRefresh = items.filter((p) => p?.id && !isRenderableAvatar(p.avatar))
+    if (!needRefresh.length) return undefined
+
+    ;(async () => {
+      const updates = {}
+      await Promise.all(
+        needRefresh.map(async (person) => {
+          try {
+            const { data } = await api.get(`/users/${person.id}`)
+            const avatar = data?.avatar || data?.user?.avatar || null
+            if (!isRenderableAvatar(avatar) && !data?.name && !data?.username) return
+            updates[person.id] = {
+              avatar: isRenderableAvatar(avatar) ? avatar : person.avatar,
+              name: data?.name || person.name,
+              username: data?.username || person.username || null
+            }
+          } catch {
+            /* ignore */
+          }
+        })
+      )
+      if (cancelled || !Object.keys(updates).length) return
+
+      setItems((prev) => {
+        const next = prev.map((p) => (updates[p.id] ? { ...p, ...updates[p.id] } : p))
+        saveChatShortcuts(uid, next)
+        return next
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [uid, items.map((p) => `${p.id}:${isRenderableAvatar(p.avatar) ? '1' : '0'}`).join('|')])
 
   if (!items.length) return null
 

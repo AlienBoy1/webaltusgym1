@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { getWorkoutSession, subscribeWorkoutSession } from '../utils/workoutSession'
 import { trackPresence, onChatEvent, getPresenceSnapshot } from '../utils/socket'
+import api from '../utils/api'
 import {
   AWAY_MS,
   CHALLENGE_TIMER_EVENT,
@@ -12,11 +13,25 @@ import {
   STORY_OPEN_EVENT,
   getUserStatus,
   isChallengeTimerActive,
+  isPresenceOnline,
   patchUserPresence,
   resolveLocalStatus,
   setPresenceMap,
   startActivityListeners
 } from '../utils/presence'
+
+let lastSeenPersistAt = 0
+
+async function persistLastSeen() {
+  const now = Date.now()
+  if (now - lastSeenPersistAt < 8_000) return
+  lastSeenPersistAt = now
+  try {
+    await api.post('/users/me/last-seen')
+  } catch {
+    /* best-effort */
+  }
+}
 
 /**
  * Tracks the current user's rich presence and keeps a global presence map in sync.
@@ -111,7 +126,6 @@ export default function PresenceManager() {
     }, 15_000)
 
     const pollChallenge = async () => {
-      // Prefer local timer flag — avoid heavy /challenges/my on every minute
       try {
         const active = isChallengeTimerActive()
         if (active !== challengeRef.current) {
@@ -134,20 +148,36 @@ export default function PresenceManager() {
     })
     const unsubOnline = onChatEvent('userOnline', (id) => {
       if (!id) return
-      if (getUserStatus(id) === PRESENCE_STATUS.OFFLINE) {
+      if (!isPresenceOnline(getUserStatus(id))) {
         patchUserPresence(id, PRESENCE_STATUS.ONLINE)
       }
     })
     const unsubOffline = onChatEvent('userOffline', (id) => {
-      if (id) patchUserPresence(id, PRESENCE_STATUS.OFFLINE)
+      if (id) patchUserPresence(id, PRESENCE_STATUS.OFFLINE, Date.now())
     })
 
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        persistLastSeen()
+      } else {
+        recompute(true)
+      }
+    }
+    const onPageHide = () => {
+      persistLastSeen()
+    }
+    document.addEventListener('visibilitychange', onHidden)
+    window.addEventListener('pagehide', onPageHide)
+
     return () => {
+      persistLastSeen()
       unsubWorkout()
       document.removeEventListener(STORY_OPEN_EVENT, onStoryOpen)
       document.removeEventListener(STORY_CLOSE_EVENT, onStoryClose)
       window.removeEventListener(CHALLENGE_TIMER_EVENT, onChallengeFlag)
       window.removeEventListener('storage', onChallengeFlag)
+      document.removeEventListener('visibilitychange', onHidden)
+      window.removeEventListener('pagehide', onPageHide)
       stopActivity()
       window.clearInterval(awayTimer)
       window.clearInterval(challengePoll)

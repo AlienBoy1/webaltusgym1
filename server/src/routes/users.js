@@ -53,6 +53,98 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 })
 
+/** Persist last disconnection (Messenger-style last seen). */
+router.post('/me/last-seen', authenticate, async (req, res) => {
+  try {
+    const iso = new Date().toISOString()
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ last_seen_at: iso, updated_at: iso })
+      .eq('id', req.user.id)
+    if (error) throw error
+    res.json({ ok: true, lastSeenAt: iso })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al guardar última conexión', error: error.message })
+  }
+})
+
+/**
+ * Dashboard presence rail: people I follow first, then suggestions.
+ * Includes lastSeenAt for offline labels.
+ */
+router.get('/presence-rail', authenticate, async (req, res) => {
+  try {
+    const me = req.user.id
+    const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 40)
+
+    const { data: followingRows } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', me)
+
+    const followingIds = (followingRows || []).map((r) => r.following_id).filter(Boolean)
+    const followingSet = new Set(followingIds)
+
+    let following = []
+    if (followingIds.length) {
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, username, avatar, last_seen_at, last_login')
+        .in('id', followingIds)
+      following = (profiles || []).map((p) => ({
+        _id: p.id,
+        id: p.id,
+        name: p.name,
+        username: p.username || null,
+        avatar: p.avatar,
+        lastSeenAt: p.last_seen_at || p.last_login || null,
+        source: 'following'
+      }))
+      following.sort((a, b) => {
+        const at = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0
+        const bt = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0
+        return bt - at
+      })
+    }
+
+    // Suggestions: active members not yet followed (and not self)
+    let suggestions = []
+    const { data: pool } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, username, avatar, last_seen_at, last_login, membership')
+      .neq('id', me)
+      .limit(80)
+
+    suggestions = (pool || [])
+      .filter((p) => !followingSet.has(p.id))
+      .filter((p) => {
+        const status = p.membership?.status
+        return !status || status === 'active' || status === 'expiring'
+      })
+      .map((p) => ({
+        _id: p.id,
+        id: p.id,
+        name: p.name,
+        username: p.username || null,
+        avatar: p.avatar,
+        lastSeenAt: p.last_seen_at || p.last_login || null,
+        source: 'suggestion'
+      }))
+      .sort((a, b) => {
+        const at = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0
+        const bt = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0
+        return bt - at
+      })
+      .slice(0, 20)
+
+    const people = [...following, ...suggestions].slice(0, limit)
+    res.json({ people })
+  } catch (error) {
+    console.error('presence-rail error:', error)
+    res.status(500).json({ message: 'Error al cargar personas', error: error.message })
+  }
+})
+
 router.get('/profile', authenticate, async (req, res) => {
   try {
     const { data: profile } = await supabaseAdmin

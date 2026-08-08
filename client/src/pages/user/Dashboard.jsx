@@ -15,6 +15,7 @@ import {
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import ChatShortcutsRail from '../../components/ChatShortcutsRail'
 import ShareWelcomeSheet from '../../components/ShareWelcomeSheet'
+import PresenceBubblesRail from '../../components/PresenceBubblesRail'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 
 const MOTIVATIONAL_MESSAGES = [
@@ -280,6 +281,8 @@ export default function Dashboard() {
         followers={socialCounts.followers}
         following={socialCounts.following}
       />
+
+      <PresenceBubblesRail />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {quickStats.map((stat, i) => (

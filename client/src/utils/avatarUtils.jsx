@@ -20,6 +20,19 @@ const exerciseAvatars = {
   activity2: { Icon: FiActivity, gradient: 'from-gray-600 to-gray-800' }
 }
 
+/** True when avatar can be rendered as photo / icon (not a blank placeholder). */
+export function isRenderableAvatar(avatar) {
+  if (!avatar || typeof avatar !== 'string') return false
+  const v = avatar.trim()
+  if (!v) return false
+  if (v.startsWith('data:') || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('blob:')) {
+    return true
+  }
+  if (v.startsWith('icon:')) return true
+  if (v.startsWith('/') || v.startsWith('//')) return true
+  return false
+}
+
 export const getAvatarDisplay = (avatar, name, size = 'md') => {
   const sizes = {
     sm: { container: 'w-8 h-8', icon: 16, text: 'text-sm' },
@@ -39,10 +52,18 @@ export const getAvatarDisplay = (avatar, name, size = 'md') => {
     }
   }
   
-  if (avatar.startsWith('data:') || avatar.startsWith('http')) {
+  if (
+    avatar.startsWith('data:') ||
+    avatar.startsWith('http://') ||
+    avatar.startsWith('https://') ||
+    avatar.startsWith('blob:') ||
+    avatar.startsWith('//') ||
+    avatar.startsWith('/')
+  ) {
+    const src = avatar.startsWith('//') ? `https:${avatar}` : avatar
     return {
       type: 'image',
-      content: avatar,
+      content: src,
       className: `rounded-full overflow-hidden ${sizeConfig.container}`
     }
   }
@@ -59,7 +80,6 @@ export const getAvatarDisplay = (avatar, name, size = 'md') => {
     }
   }
   
-  // Fallback to initial
   return {
     type: 'initial',
     content: name?.charAt(0) || 'U',
@@ -67,13 +87,23 @@ export const getAvatarDisplay = (avatar, name, size = 'md') => {
   }
 }
 
-export const Avatar = ({ avatar, name, size = 'md', className = '' }) => {
-  const display = getAvatarDisplay(avatar, name, size)
+/**
+ * Props: avatar + name, or pass `user` / `person` object with those fields.
+ */
+export const Avatar = ({ avatar, name, user, person, size = 'md', className = '' }) => {
+  const source = user || person || null
+  const resolvedAvatar = avatar ?? source?.avatar ?? null
+  const resolvedName = name ?? source?.name ?? ''
+  const display = getAvatarDisplay(resolvedAvatar, resolvedName, size)
   
   if (display.type === 'image') {
     return (
       <div data-protected-media="1" className={`${display.className} ${className}`}>
-        <ProtectedMedia src={display.content} alt={name || ''} className="w-full h-full object-cover rounded-full" />
+        <ProtectedMedia
+          src={display.content}
+          alt={resolvedName || ''}
+          className="w-full h-full object-cover rounded-full"
+        />
       </div>
     )
   }
@@ -92,4 +122,3 @@ export const Avatar = ({ avatar, name, size = 'md', className = '' }) => {
     </div>
   )
 }
-

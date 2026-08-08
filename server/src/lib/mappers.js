@@ -21,6 +21,7 @@ export function mapProfile(row) {
     onboardingCompleted: row.onboarding_completed,
     mustResetPassword: row.must_reset_password,
     lastLogin: row.last_login,
+    lastSeenAt: row.last_seen_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     social: row.social || { followers: [], following: [], followRequests: [], pendingRequests: [] }

@@ -30,7 +30,7 @@ import toast from 'react-hot-toast'
 import { mergeReceipt } from '../../utils/chatReceipts'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import PresenceDot from '../../components/PresenceDot'
-import { getPresenceMeta, PRESENCE_STATUS, usePresenceStatus } from '../../utils/presence'
+import { formatActivePresenceLabel, getPresenceMeta, getUserLastSeen, PRESENCE_STATUS, usePresenceStatus } from '../../utils/presence'
 import { useAppDialog } from '../../components/AppDialog'
 import ChatEmojiPicker from '../../components/ChatEmojiPicker'
 import ProtectedMedia from '../../components/ProtectedMedia'
@@ -1905,6 +1905,10 @@ export default function Chat() {
   })
 
   const selectedPresenceMeta = getPresenceMeta(selectedPresence || PRESENCE_STATUS.OFFLINE)
+  const selectedPresenceLabel = formatActivePresenceLabel(
+    selectedPresence || PRESENCE_STATUS.OFFLINE,
+    getUserLastSeen(selectedChat?.otherId)
+  )
   const hasStyledWall = isStyledWallpaper(wallpaperId)
   const presenceStatusClass = peerTyping
     ? hasStyledWall
@@ -2204,7 +2208,7 @@ export default function Chat() {
                     {selectedChat.name}
                   </div>
                   <div className={`truncate text-xs ${presenceStatusClass}`}>
-                    {peerTyping ? 'escribiendo…' : selectedPresenceMeta.label}
+                    {peerTyping ? 'escribiendo…' : selectedPresenceLabel}
                   </div>
                 </span>
               </Link>

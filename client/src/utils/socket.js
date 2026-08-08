@@ -22,7 +22,13 @@ function buildPresenceMap(state) {
   Object.entries(state || {}).forEach(([id, metas]) => {
     const list = Array.isArray(metas) ? metas : []
     const latest = list[list.length - 1] || {}
-    map.set(String(id), latest.status || 'online')
+    const updatedAt = latest.updated_at
+      ? new Date(latest.updated_at).getTime()
+      : Date.now()
+    map.set(String(id), {
+      status: latest.status || 'online',
+      updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now()
+    })
   })
   return map
 }
