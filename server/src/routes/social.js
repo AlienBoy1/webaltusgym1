@@ -58,9 +58,20 @@ export async function cleanupExpiredChallengePosts() {
 }
 
 function isMissingEmojiColumn(error) {
-  const msg = String(error?.message || error?.details || '')
+  const msg = String(error?.message || error?.details || error?.hint || '').toLowerCase()
   const code = String(error?.code || '')
-  return code === '42703' || (msg.includes('emoji') && msg.includes('does not exist'))
+  return (
+    code === '42703' ||
+    (msg.includes('emoji') &&
+      (msg.includes('does not exist') ||
+        msg.includes('could not find') ||
+        msg.includes('schema cache') ||
+        msg.includes('column')))
+  )
+}
+
+function isUniqueViolation(error) {
+  return String(error?.code || '') === '23505' || /duplicate key|unique constraint/i.test(String(error?.message || ''))
 }
 
 function normalizeReactionEmoji(raw) {
@@ -1142,68 +1153,104 @@ router.post('/:id/like', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Publicación no encontrada' })
     }
 
-    const { data: existing, error: existingErr } = await supabaseAdmin
+    // Prefer limit(1) over maybeSingle to avoid multi-row 406/PGRST116 hard failures
+    const { data: existingRows, error: existingErr } = await supabaseAdmin
       .from('post_likes')
       .select('*')
       .eq('post_id', post.id)
       .eq('user_id', req.user.id)
-      .maybeSingle()
+      .limit(1)
 
-    if (existingErr && isMissingEmojiColumn(existingErr)) {
-      // select * still works without column; ignore
-    } else if (existingErr) {
+    if (existingErr && !isMissingEmojiColumn(existingErr)) {
       throw existingErr
     }
+    const existing = Array.isArray(existingRows) ? existingRows[0] : null
 
     let liked = false
     let myReaction = null
 
-    if (emoji === null) {
-      if (existing) {
-        await supabaseAdmin
-          .from('post_likes')
-          .delete()
-          .eq('post_id', post.id)
-          .eq('user_id', req.user.id)
-      }
-      liked = false
-      myReaction = null
-    } else if (existing && normalizeReactionEmoji(existing.emoji || '❤️') === emoji) {
-      await supabaseAdmin
+    const deleteMine = async () => {
+      const { error } = await supabaseAdmin
         .from('post_likes')
         .delete()
         .eq('post_id', post.id)
         .eq('user_id', req.user.id)
+      if (error) throw error
+    }
+
+    const upsertReaction = async (nextEmoji) => {
+      if (existing) {
+        const { error } = await supabaseAdmin
+          .from('post_likes')
+          .update({ emoji: nextEmoji })
+          .eq('post_id', post.id)
+          .eq('user_id', req.user.id)
+        if (isMissingEmojiColumn(error)) {
+          // Column missing: heart-only mode — row already exists, treat as liked
+          if (nextEmoji === '❤️') return
+          const err = new Error(
+            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.'
+          )
+          err.code = 'MISSING_EMOJI_COLUMN'
+          throw err
+        }
+        if (error) throw error
+        return
+      }
+
+      const { error } = await supabaseAdmin
+        .from('post_likes')
+        .insert({ post_id: post.id, user_id: req.user.id, emoji: nextEmoji })
+
+      if (isMissingEmojiColumn(error)) {
+        const retry = await supabaseAdmin
+          .from('post_likes')
+          .insert({ post_id: post.id, user_id: req.user.id })
+        if (isUniqueViolation(retry.error)) return
+        if (retry.error) {
+          const err = new Error(
+            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.'
+          )
+          err.code = 'MISSING_EMOJI_COLUMN'
+          throw err
+        }
+        return
+      }
+
+      if (isUniqueViolation(error)) {
+        // Concurrent double-tap: row appeared between select and insert — update instead
+        const { error: upErr } = await supabaseAdmin
+          .from('post_likes')
+          .update({ emoji: nextEmoji })
+          .eq('post_id', post.id)
+          .eq('user_id', req.user.id)
+        if (upErr && !isMissingEmojiColumn(upErr)) throw upErr
+        return
+      }
+
+      if (error) throw error
+    }
+
+    if (emoji === null) {
+      if (existing) await deleteMine()
       liked = false
       myReaction = null
-    } else if (existing) {
-      const { error } = await supabaseAdmin
-        .from('post_likes')
-        .update({ emoji })
-        .eq('post_id', post.id)
-        .eq('user_id', req.user.id)
-      if (isMissingEmojiColumn(error)) {
-        return res.status(503).json({
-          message:
-            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
-          code: 'MISSING_EMOJI_COLUMN'
-        })
-      }
-      if (error) throw error
-      liked = true
-      myReaction = emoji
+    } else if (existing && normalizeReactionEmoji(existing.emoji || '❤️') === emoji) {
+      await deleteMine()
+      liked = false
+      myReaction = null
     } else {
-      const { error } = await supabaseAdmin
-        .from('post_likes')
-        .insert({ post_id: post.id, user_id: req.user.id, emoji })
-      if (isMissingEmojiColumn(error)) {
-        return res.status(503).json({
-          message:
-            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
-          code: 'MISSING_EMOJI_COLUMN'
-        })
+      try {
+        await upsertReaction(emoji)
+      } catch (err) {
+        if (err?.code === 'MISSING_EMOJI_COLUMN') {
+          return res.status(503).json({
+            message: err.message,
+            code: 'MISSING_EMOJI_COLUMN'
+          })
+        }
+        throw err
       }
-      if (error) throw error
       liked = true
       myReaction = emoji
     }
@@ -1214,20 +1261,20 @@ router.post('/:id/like', authenticate, async (req, res) => {
       .eq('post_id', post.id)
 
     if (liked) {
-      const { data: stored, error: storedErr } = await supabaseAdmin
+      const { data: storedRows, error: storedErr } = await supabaseAdmin
         .from('post_likes')
         .select('emoji')
         .eq('post_id', post.id)
         .eq('user_id', req.user.id)
-        .maybeSingle()
+        .limit(1)
+
       if (isMissingEmojiColumn(storedErr)) {
-        return res.status(503).json({
-          message:
-            'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
-          code: 'MISSING_EMOJI_COLUMN'
-        })
+        myReaction = '❤️'
+      } else if (storedErr) {
+        throw storedErr
+      } else if (storedRows?.[0]?.emoji) {
+        myReaction = normalizeReactionEmoji(storedRows[0].emoji) || storedRows[0].emoji
       }
-      if (stored?.emoji) myReaction = normalizeReactionEmoji(stored.emoji) || stored.emoji
     }
 
     const { data: likeRows, error: summaryErr } = await supabaseAdmin
@@ -1235,25 +1282,33 @@ router.post('/:id/like', authenticate, async (req, res) => {
       .select('emoji')
       .eq('post_id', post.id)
 
+    let reactionSummary = []
     if (isMissingEmojiColumn(summaryErr)) {
-      return res.status(503).json({
-        message:
-          'Falta la columna emoji en post_likes. Ejecuta supabase/migrations/20260806_post_likes_emoji_fix.sql en el SQL Editor.',
-        code: 'MISSING_EMOJI_COLUMN'
-      })
+      reactionSummary =
+        Number(count) > 0 ? [{ emoji: '❤️', count: Number(count) || 0 }] : []
+      if (liked && !myReaction) myReaction = '❤️'
+    } else if (summaryErr) {
+      throw summaryErr
+    } else {
+      const summaryMap = {}
+      for (const row of likeRows || []) {
+        const e = normalizeReactionEmoji(row.emoji) || row.emoji || '❤️'
+        summaryMap[e] = (summaryMap[e] || 0) + 1
+      }
+      reactionSummary = Object.entries(summaryMap)
+        .map(([emojiKey, c]) => ({ emoji: emojiKey, count: c }))
+        .sort((a, b) => b.count - a.count)
     }
-
-    const summaryMap = {}
-    for (const row of likeRows || []) {
-      const e = normalizeReactionEmoji(row.emoji) || row.emoji || '❤️'
-      summaryMap[e] = (summaryMap[e] || 0) + 1
-    }
-    const reactionSummary = Object.entries(summaryMap)
-      .map(([emojiKey, c]) => ({ emoji: emojiKey, count: c }))
-      .sort((a, b) => b.count - a.count)
 
     res.json({ liked, likesCount: count || 0, myReaction, reactionSummary })
   } catch (error) {
+    console.error('[social/like]', error?.code || '', error?.message || error)
+    if (error?.code === 'MISSING_EMOJI_COLUMN') {
+      return res.status(503).json({
+        message: error.message,
+        code: 'MISSING_EMOJI_COLUMN'
+      })
+    }
     res.status(500).json({ message: 'Error al dar like', error: error.message })
   }
 })

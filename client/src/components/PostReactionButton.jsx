@@ -26,12 +26,23 @@ export default function PostReactionButton({
   const longPressTimer = useRef(null)
   const longPressed = useRef(false)
   const btnRef = useRef(null)
+  const reactingRef = useRef(false)
 
   const clearTimer = () => {
     if (longPressTimer.current) {
       window.clearTimeout(longPressTimer.current)
       longPressTimer.current = null
     }
+  }
+
+  const fireReact = (emoji) => {
+    if (disabled || reactingRef.current) return
+    reactingRef.current = true
+    Promise.resolve(onReact?.(emoji)).finally(() => {
+      window.setTimeout(() => {
+        reactingRef.current = false
+      }, 450)
+    })
   }
 
   const startPress = () => {
@@ -48,13 +59,13 @@ export default function PostReactionButton({
   const endPress = () => {
     clearTimer()
     if (!longPressed.current && !pickerOpen) {
-      onReact?.(myReaction ? null : '❤️')
+      fireReact(myReaction ? null : '❤️')
     }
   }
 
   const pick = (emoji) => {
     setPickerOpen(false)
-    onReact?.(emoji)
+    fireReact(emoji)
   }
 
   const display = myReaction || null

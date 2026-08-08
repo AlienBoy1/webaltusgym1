@@ -172,10 +172,17 @@ function estimateBlockHeight(kind, data) {
     if (n === 2) return 280
     return 520
   }
-  if (kind === 'workout' || kind === 'routine' || kind === 'challenge') {
+  if (kind === 'workout' || kind === 'routine') {
     const ex = Math.min(5, data?.exercises?.length || 0)
     const stats = kind === 'workout' ? 130 : 60
     return 56 + 90 + stats + (ex ? ex * 42 + 40 : 12) + 56
+  }
+  if (kind === 'challenge') {
+    // Height kept in sync with drawFeatureCard challenge layout
+    const desc = String(data?.challengeDescription || '').trim()
+    const descH = desc ? Math.min(120, Math.max(40, Math.ceil(desc.length / 42) * 34)) : 0
+    const chips = data?.shareMode !== 'completed' ? 0 : 78
+    return 70 + 90 + descH + 150 + chips + 72
   }
   if (kind === 'embed') return 80 + estimatePayloadHeight(data)
   return 40
@@ -202,15 +209,43 @@ function featureAccent(kind) {
   return P.primary
 }
 
+function challengeGoalLabel(wd) {
+  const goal = wd?.challengeGoal
+  const unit = String(wd?.challengeUnit || '').trim()
+  const mode = wd?.goalMode
+  const u = unit.toLowerCase()
+  const isTime =
+    mode === 'time' || ['min', 'mins', 'minuto', 'minutos', 'seg', 'segundos'].includes(u)
+  if (goal == null || goal === '') return '—'
+  if (isTime) return `${goal} ${unit || 'min'}`
+  return unit ? `${goal} ${unit}` : String(goal)
+}
+
+function formatShareElapsed(ms) {
+  const total = Math.max(0, Math.floor(Number(ms || 0) / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const sSec = total % 60
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`
+  return `${m}:${String(sSec).padStart(2, '0')}`
+}
+
+function estimateChallengeCardHeight(wd) {
+  const desc = String(wd?.challengeDescription || '').trim()
+  const descH = desc ? Math.min(120, Math.max(40, Math.ceil(desc.length / 42) * 34)) : 0
+  const isInvite = wd?.shareMode !== 'completed'
+  const chips = !isInvite ? 78 : 0
+  return 70 + 90 + descH + 150 + chips + 72
+}
+
 async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
   const exercises = (wd.exercises || []).slice(0, 5)
   const statsRow = kind === 'workout'
-  const innerH =
-    70 +
-    70 +
-    (statsRow ? 120 : 50) +
-    (exercises.length ? exercises.length * 42 + 36 : 0) +
-    50
+  const isChallenge = kind === 'challenge'
+  const isInviteChallenge = isChallenge && wd.shareMode !== 'completed'
+  const innerH = isChallenge
+    ? estimateChallengeCardHeight(wd)
+    : 70 + 70 + (statsRow ? 120 : 50) + (exercises.length ? exercises.length * 42 + 36 : 0) + 50
 
   const light = P.mode === 'light'
   const ig = ctx.createLinearGradient(x, y, x + w, y + innerH)
@@ -246,11 +281,25 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     kind === 'routine'
       ? 'RUTINA · COMUNIDAD'
       : kind === 'challenge'
-        ? wd.shareMode === 'invite'
+        ? isInviteChallenge
           ? 'RETO · COMUNIDAD'
           : 'RETO COMPLETADO'
         : 'ENTRENAMIENTO REALIZADO'
   ctx.fillText(eyebrow, x + 28, y + 42)
+
+  if (isChallenge) {
+    const xp = wd.rewardXp ?? wd.xpAwarded ?? 100
+    const badge = `+${xp} XP`
+    ctx.font = '700 18px Outfit, system-ui, sans-serif'
+    const tw = ctx.measureText(badge).width
+    const bx = x + w - 30 - tw - 28
+    const by = y + 22
+    ctx.fillStyle = light ? 'rgba(250,204,21,0.22)' : 'rgba(250,204,21,0.18)'
+    roundRect(ctx, bx, by, tw + 28, 36, 18)
+    ctx.fill()
+    ctx.fillStyle = '#FACC15'
+    ctx.fillText(badge, bx + 14, by + 24)
+  }
 
   const title = String(wd.name || wd.challengeTitle || 'Entrenamiento').toUpperCase()
   ctx.fillStyle = P.featureTitle
@@ -287,23 +336,72 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     })
     iy += boxH + 28
   } else if (kind === 'challenge') {
-    ctx.fillStyle = P.featureMeta
-    ctx.font = '24px Outfit, system-ui, sans-serif'
-    ;[
-      wd.challengeGoal != null
-        ? `Meta: ${wd.challengeGoal}${wd.challengeUnit ? ` ${wd.challengeUnit}` : ''}`
-        : null,
-      wd.xpAwarded != null ? `+${wd.xpAwarded} XP` : null,
-      wd.accumulatedMs != null
-        ? `Tiempo: ${Math.floor((wd.accumulatedMs || 0) / 60000)} min`
-        : null,
-      wd.creatorName ? `Creador: ${wd.creatorName}` : null
+    const desc = String(wd.challengeDescription || '').trim()
+    if (desc) {
+      ctx.fillStyle = P.featureMeta
+      ctx.font = '22px Outfit, system-ui, sans-serif'
+      iy = wrapText(ctx, desc, x + 28, iy, w - 56, 32, 3) + 18
+    }
+
+    const isTime =
+      wd.goalMode === 'time' ||
+      ['min', 'mins', 'minuto', 'minutos', 'seg', 'segundos'].includes(
+        String(wd.challengeUnit || '').toLowerCase()
+      )
+    const boxW = (w - 56 - 24) / 3
+    const boxH = 96
+    const boxes = [
+      { value: challengeGoalLabel(wd), label: isTime ? 'Tiempo objetivo' : 'Objetivo' },
+      { value: String(wd.participantsCount ?? '—'), label: 'Participantes' },
+      {
+        value:
+          wd.endDate || wd.challengeEndDate
+            ? new Date(wd.endDate || wd.challengeEndDate).toLocaleDateString('es-MX', {
+                day: 'numeric',
+                month: 'short'
+              })
+            : '—',
+        label: 'Vence'
+      }
     ]
-      .filter(Boolean)
-      .forEach((line, idx) => {
-        ctx.fillText(line, x + 28, iy + idx * 36)
-      })
-    iy += 100
+    boxes.forEach((m, i) => {
+      const bx = x + 28 + i * (boxW + 12)
+      ctx.fillStyle = P.featureInset
+      roundRect(ctx, bx, iy, boxW, boxH, 18)
+      ctx.fill()
+      ctx.fillStyle = P.featureInsetText
+      ctx.font = 'bold 26px Outfit, system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(String(m.value).slice(0, 14), bx + boxW / 2, iy + 42)
+      ctx.fillStyle = P.featureInsetMuted
+      ctx.font = '15px Outfit, system-ui, sans-serif'
+      ctx.fillText(m.label, bx + boxW / 2, iy + 72)
+      ctx.textAlign = 'left'
+    })
+    iy += boxH + 20
+
+    if (!isInviteChallenge) {
+      const chips = []
+      if (wd.accumulatedMs > 0) chips.push(`⏱ ${formatShareElapsed(wd.accumulatedMs)}`)
+      if (wd.resultValue != null) {
+        chips.push(`✓ ${wd.resultValue}${wd.resultUnit ? ` ${wd.resultUnit}` : ''}`)
+      }
+      if (wd.xpAwarded != null) chips.push(`🏆 +${wd.xpAwarded} XP`)
+      if (chips.length) {
+        let cx = x + 28
+        ctx.font = '600 18px Outfit, system-ui, sans-serif'
+        chips.forEach((chip) => {
+          const tw = ctx.measureText(chip).width
+          ctx.fillStyle = P.featureInset
+          roundRect(ctx, cx, iy, tw + 24, 40, 14)
+          ctx.fill()
+          ctx.fillStyle = P.featureInsetText
+          ctx.fillText(chip, cx + 12, iy + 26)
+          cx += tw + 36
+        })
+        iy += 56
+      }
+    }
   } else {
     ctx.fillStyle = P.featureMeta
     ctx.font = '24px Outfit, system-ui, sans-serif'
@@ -317,11 +415,11 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     iy += 40
   }
 
-  if (exercises.length) {
+  if (exercises.length && kind !== 'challenge') {
     ctx.strokeStyle = P.featureRule
     ctx.beginPath()
     ctx.moveTo(x + 28, iy)
-    ctx.lineTo(x + w - 28, iy)
+    ctx.lineTo(x + w - 30, iy)
     ctx.stroke()
     iy += 28
     exercises.forEach((ex) => {
@@ -343,8 +441,8 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     kind === 'routine'
       ? 'Tocar para ver e iniciar esta rutina'
       : kind === 'challenge'
-        ? wd.shareMode === 'invite'
-          ? 'Únete al reto en Qyntra Gym'
+        ? isInviteChallenge
+          ? 'Únete al reto · Ver participantes en Qyntra'
           : 'Reto completado en Qyntra Gym'
         : 'Tocar para ver detalle'
   ctx.fillText(footer, x + 28, y + innerH - 28)
