@@ -4,3 +4,4 @@ ALTER TABLE public.challenges
 
 ALTER TABLE public.challenge_participants
   ADD COLUMN IF NOT EXISTS exercise_progress jsonb NOT NULL DEFAULT '{}'::jsonb;
+  
