@@ -229,8 +229,15 @@ router.patch('/favorites/albums/:albumId', authenticate, async (req, res) => {
     if (albumErr) throw albumErr
     if (!album) return res.status(404).json({ message: 'Álbum no encontrado' })
 
-    let coverUrl = null
+    const updates = {}
+    if (typeof req.body?.name === 'string') {
+      const name = req.body.name.trim().slice(0, 40)
+      if (!name) return res.status(400).json({ message: 'Nombre requerido' })
+      updates.name = name
+    }
+
     const favoriteId = req.body?.favoriteId || req.body?.coverFavoriteId
+    let coverUrl = album.cover_url || null
     if (favoriteId) {
       const { data: fav } = await supabaseAdmin
         .from('story_favorites')
@@ -242,27 +249,37 @@ router.patch('/favorites/albums/:albumId', authenticate, async (req, res) => {
         return res.status(400).json({ message: 'Historia del álbum no válida' })
       }
       coverUrl = fav.media_url
+      updates.cover_url = coverUrl
     } else if (typeof req.body?.coverUrl === 'string' && req.body.coverUrl.trim()) {
       coverUrl = req.body.coverUrl.trim()
       if (coverUrl.length > 3_500_000) {
         return res.status(400).json({ message: 'Imagen demasiado grande' })
       }
-    } else {
-      return res.status(400).json({ message: 'coverUrl o favoriteId requerido' })
+      updates.cover_url = coverUrl
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ message: 'Nada que actualizar' })
     }
 
     const { data: updated, error } = await supabaseAdmin
       .from('story_favorite_albums')
-      .update({ cover_url: coverUrl })
+      .update(updates)
       .eq('id', album.id)
       .eq('user_id', req.user.id)
       .select('*')
       .single()
 
     if (error) throw error
-    res.json(mapAlbum(updated, { coverUrl, coverType: 'image', count: 0 }))
+    res.json(
+      mapAlbum(updated, {
+        coverUrl: updated.cover_url || coverUrl,
+        coverType: updated.cover_url ? 'image' : null,
+        count: 0
+      })
+    )
   } catch (error) {
-    res.status(500).json({ message: 'Error al actualizar portada', error: error.message })
+    res.status(500).json({ message: 'Error al actualizar álbum', error: error.message })
   }
 })
 
@@ -361,14 +378,40 @@ router.get('/reactions', authenticate, (_req, res) => {
 router.get('/feed', authenticate, async (req, res) => {
   try {
     // Do not purge on read path — deletes slow the comunidad mount.
+    const communityScope = String(req.query.scope || '') === 'community'
     const { data: following } = await supabaseAdmin
       .from('follows')
       .select('following_id')
       .eq('follower_id', req.user.id)
       .limit(80)
 
-    const userIds = [...new Set([req.user.id, ...((following || []).map((f) => f.following_id))])]
+    const followingIds = (following || []).map((f) => f.following_id).filter(Boolean)
+    const followingSet = new Set(followingIds)
+    let userIds = [...new Set([req.user.id, ...followingIds])]
     const now = new Date().toISOString()
+
+    // Community page: also include active stories from public profiles (and followed privates).
+    if (communityScope) {
+      const { data: activeAuthors } = await supabaseAdmin
+        .from('stories')
+        .select('user_id')
+        .gt('expires_at', now)
+        .limit(200)
+      const authorIds = [
+        ...new Set((activeAuthors || []).map((r) => r.user_id).filter(Boolean))
+      ].filter((id) => id !== req.user.id && !followingSet.has(id))
+
+      if (authorIds.length) {
+        const { data: authors } = await supabaseAdmin
+          .from('profiles')
+          .select('id, settings')
+          .in('id', authorIds)
+        const allowed = (authors || [])
+          .filter((p) => p.settings?.privacy?.profilePublic !== false)
+          .map((p) => p.id)
+        userIds = [...new Set([...userIds, ...allowed])]
+      }
+    }
 
     // Lite feed: never pull media_url blobs here — hydrate on open via GET /stories/:id
     const { data, error } = await supabaseAdmin
@@ -377,7 +420,7 @@ router.get('/feed', authenticate, async (req, res) => {
       .in('user_id', userIds)
       .gt('expires_at', now)
       .order('created_at', { ascending: false })
-      .limit(60)
+      .limit(communityScope ? 120 : 60)
 
     if (error) throw error
 

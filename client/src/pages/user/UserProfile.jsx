@@ -21,7 +21,7 @@ import BadgesModal from '../../components/BadgesModal'
 import ProfileFeed from '../../components/ProfileFeed'
 import ProfileAvatar from '../../components/ProfileAvatar'
 import ProfileNotes from '../../components/ProfileNotes'
-import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
+import RoutineDetailModal from '../../components/RoutineDetailModal'
 import SharePostSheet from '../../components/SharePostSheet'
 import PostReactorsModal from '../../components/PostReactorsModal'
 import PostDetailSheet from '../../components/PostDetailSheet'
@@ -33,8 +33,7 @@ import ProtectedMedia from '../../components/ProtectedMedia'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
-
-const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
+import { adoptRoutineToWorkouts } from '../../utils/adoptRoutine'
 
 export default function UserProfile() {
   const { id } = useParams()
@@ -62,6 +61,7 @@ export default function UserProfile() {
   const [loadingRequests, setLoadingRequests] = useState(false)
   const [hasStories, setHasStories] = useState(false)
   const [selectedRoutine, setSelectedRoutine] = useState(null)
+  const [adoptingRoutine, setAdoptingRoutine] = useState(false)
   const [sharePostTarget, setSharePostTarget] = useState(null)
   const [sharingPost, setSharingPost] = useState(false)
   const [reactorsPost, setReactorsPost] = useState(null)
@@ -134,15 +134,37 @@ export default function UserProfile() {
     openUserStory(id)
   }
 
-  const adoptRoutineFromPost = (workout) => {
-    const local = toStartableTemplate(workout)
+  const adoptRoutineFromPost = async (workout) => {
+    if (!workout) return
+    setAdoptingRoutine(true)
     try {
-      const stored = JSON.parse(localStorage.getItem(WORKOUT_TEMPLATES_KEY) || '[]')
-      localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify([...stored, local]))
-      toast.success('Rutina adoptada')
-      setSelectedRoutine(null)
-    } catch {
-      toast.error('No se pudo guardar la rutina')
+      const result = await adoptRoutineToWorkouts(workout, {
+        author: selectedRoutine?.author || user
+      })
+      if (result.ok) {
+        toast.success(
+          result.offline
+            ? 'Rutina guardada localmente (sin conexión)'
+            : 'Rutina adoptada'
+        )
+        setSelectedRoutine(null)
+        return
+      }
+      if (result.already) {
+        await dialog.alert(
+          result.message ||
+            'Ya adoptaste esta rutina. Elimínala en Entrenos si quieres volver a adoptarla.',
+          {
+            title: 'Ya la adoptaste',
+            confirmLabel: 'Entendido',
+            tone: 'info'
+          }
+        )
+        return
+      }
+      toast.error(result.message || 'No se pudo guardar la rutina')
+    } finally {
+      setAdoptingRoutine(false)
     }
   }
 
@@ -862,6 +884,7 @@ export default function UserProfile() {
         routine={selectedRoutine?.workout}
         author={selectedRoutine?.author || user}
         onAdopt={() => adoptRoutineFromPost(selectedRoutine?.workout)}
+        adopting={adoptingRoutine}
       />
 
       <PostDetailSheet

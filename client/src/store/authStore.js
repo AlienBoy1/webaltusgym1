@@ -364,6 +364,11 @@ export const useAuthStore = create((set, get) => ({
     if (userData?.profile) {
       next.profile = { ...(prev.profile || {}), ...userData.profile }
     }
+    // Shallow-merge settings so partial/stale payloads cannot wipe flags
+    // (e.g. qyntraWelcomeSeen surviving badge sync).
+    if (userData?.settings && typeof userData.settings === 'object') {
+      next.settings = { ...(prev.settings || {}), ...userData.settings }
+    }
     // Don't let undefined/null slim echoes wipe a real photo
     if (userData.avatar === undefined || userData.avatar === null) {
       if (prev.avatar) next.avatar = prev.avatar

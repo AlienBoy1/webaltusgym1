@@ -145,6 +145,116 @@ router.get('/presence-rail', authenticate, async (req, res) => {
   }
 })
 
+/**
+ * Community rail: all public profiles + private ones the viewer follows.
+ * Includes lastSeenAt and active-story flags (for StoriesRail priority).
+ */
+router.get('/community-rail', authenticate, async (req, res) => {
+  try {
+    const me = req.user.id
+    const limit = Math.min(Math.max(Number(req.query.limit) || 48, 1), 80)
+
+    const { data: followingRows } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', me)
+
+    const followingIds = (followingRows || []).map((r) => r.following_id).filter(Boolean)
+    const followingSet = new Set(followingIds)
+
+    const now = new Date().toISOString()
+    const { data: activeStories } = await supabaseAdmin
+      .from('stories')
+      .select('id, user_id')
+      .gt('expires_at', now)
+      .neq('user_id', me)
+      .limit(200)
+
+    const storyIdsByUser = new Map()
+    for (const row of activeStories || []) {
+      if (!row?.user_id) continue
+      if (!storyIdsByUser.has(row.user_id)) storyIdsByUser.set(row.user_id, [])
+      storyIdsByUser.get(row.user_id).push(row.id)
+    }
+    const storyAuthorIds = [...storyIdsByUser.keys()]
+
+    const seedIds = [...new Set([...followingIds, ...storyAuthorIds])]
+
+    let { data: pool } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, username, avatar, last_seen_at, last_login, membership, settings')
+      .neq('id', me)
+      .order('last_seen_at', { ascending: false })
+      .limit(120)
+
+    if (seedIds.length) {
+      const missing = seedIds.filter((id) => !(pool || []).some((p) => p.id === id))
+      if (missing.length) {
+        const { data: extras } = await supabaseAdmin
+          .from('profiles')
+          .select('id, name, username, avatar, last_seen_at, last_login, membership, settings')
+          .in('id', missing)
+        pool = [...(pool || []), ...(extras || [])]
+      }
+    }
+
+    // Unseen = any active story of theirs without a view from me
+    const allStoryIds = (activeStories || []).map((s) => s.id)
+    const viewedSet = new Set()
+    if (allStoryIds.length) {
+      const { data: views } = await supabaseAdmin
+        .from('story_views')
+        .select('story_id')
+        .eq('user_id', me)
+        .in('story_id', allStoryIds)
+      for (const v of views || []) viewedSet.add(v.story_id)
+    }
+
+    const isActiveMember = (membership) => {
+      const status = membership?.status
+      return !status || status === 'active' || status === 'expiring'
+    }
+
+    const isVisible = (profile) => {
+      if (followingSet.has(profile.id)) return true
+      return profile.settings?.privacy?.profilePublic !== false
+    }
+
+    const people = (pool || [])
+      .filter((p) => isActiveMember(p.membership) && isVisible(p))
+      .map((p) => {
+        const storyIds = storyIdsByUser.get(p.id) || []
+        const hasStory = storyIds.length > 0
+        const hasUnseen = hasStory && storyIds.some((id) => !viewedSet.has(id))
+        return {
+          _id: p.id,
+          id: p.id,
+          name: p.name,
+          username: p.username || null,
+          avatar: p.avatar,
+          lastSeenAt: p.last_seen_at || p.last_login || null,
+          hasStory,
+          hasUnseen,
+          source: followingSet.has(p.id) ? 'following' : 'community'
+        }
+      })
+      .sort((a, b) => {
+        if (a.hasStory !== b.hasStory) return a.hasStory ? -1 : 1
+        if (a.hasUnseen !== b.hasUnseen) return a.hasUnseen ? -1 : 1
+        const at = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0
+        const bt = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0
+        return bt - at
+      })
+      .slice(0, limit)
+
+    res.setHeader('Cache-Control', 'private, max-age=20')
+    res.json({ people })
+  } catch (error) {
+    console.error('community-rail error:', error)
+    res.status(500).json({ message: 'Error al cargar la comunidad', error: error.message })
+  }
+})
+
 router.get('/profile', authenticate, async (req, res) => {
   try {
     const { data: profile } = await supabaseAdmin

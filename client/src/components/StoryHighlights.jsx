@@ -23,6 +23,9 @@ export default function StoryHighlights({ userId, isOwner = false }) {
   const [progressPct, setProgressPct] = useState(0)
   const [menuAlbum, setMenuAlbum] = useState(null)
   const [coverEditor, setCoverEditor] = useState(null) // { albumId, items }
+  const [renameDraft, setRenameDraft] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [editingName, setEditingName] = useState(false)
 
   const timerRef = useRef(null)
   const startedAtRef = useRef(null)
@@ -32,11 +35,39 @@ export default function StoryHighlights({ userId, isOwner = false }) {
   const longPressRef = useRef(null)
   const longFiredRef = useRef(false)
   const pressMovedRef = useRef(false)
+  const closeHighlightRef = useRef(() => setActive(null))
+
+  const closeHighlight = useCallback(() => {
+    setActive(null)
+    setMediaReady(false)
+    setProgressPct(0)
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }, [])
+  closeHighlightRef.current = closeHighlight
 
   const requestCloseHighlight = useHistoryBackLayer(
     Boolean(active),
-    () => setActive(null),
+    () => closeHighlightRef.current(),
     'story-highlight'
+  )
+
+  const requestCloseAlbumMenu = useHistoryBackLayer(
+    Boolean(menuAlbum) && !coverEditor,
+    () => {
+      setMenuAlbum(null)
+      setEditingName(false)
+      setRenameDraft('')
+    },
+    'story-album-menu'
+  )
+
+  const requestCloseCoverEditor = useHistoryBackLayer(
+    Boolean(coverEditor),
+    () => setCoverEditor(null),
+    'story-album-cover'
   )
 
   const reloadAlbums = useCallback(async () => {
@@ -61,6 +92,13 @@ export default function StoryHighlights({ userId, isOwner = false }) {
     })()
   }, [userId, reloadAlbums])
 
+  useEffect(() => {
+    if (menuAlbum) {
+      setRenameDraft(menuAlbum.name || '')
+      setEditingName(false)
+    }
+  }, [menuAlbum])
+
   const openAlbum = async (album) => {
     try {
       const { data } = await api.get(`/stories/favorites/albums/${album._id || album.id}`)
@@ -80,14 +118,18 @@ export default function StoryHighlights({ userId, isOwner = false }) {
   const goNext = useCallback(() => {
     setActive((a) => {
       if (!a) return null
-      if (a.index >= a.album.items.length - 1) return null
+      if (a.index >= a.album.items.length - 1) {
+        // Defer so history layer can pop cleanly via requestClose
+        window.setTimeout(() => requestCloseHighlight(), 0)
+        return a
+      }
       setTransitioning(true)
       setMediaReady(false)
       setProgressPct(0)
       window.setTimeout(() => setTransitioning(false), 280)
       return { ...a, index: a.index + 1 }
     })
-  }, [])
+  }, [requestCloseHighlight])
 
   const goPrev = useCallback(() => {
     setActive((a) => {
@@ -214,16 +256,51 @@ export default function StoryHighlights({ userId, isOwner = false }) {
 
   const openCoverEditor = async () => {
     const album = menuAlbum
-    setMenuAlbum(null)
     if (!album) return
+    requestCloseAlbumMenu()
     try {
       const { data } = await api.get(`/stories/favorites/albums/${album._id || album.id}`)
-      setCoverEditor({
-        albumId: album._id || album.id,
-        items: data.items || []
-      })
+      window.setTimeout(() => {
+        setCoverEditor({
+          albumId: album._id || album.id,
+          items: data.items || []
+        })
+      }, 100)
     } catch {
       toast.error('No se pudo abrir el editor de portada')
+    }
+  }
+
+  const saveRename = async () => {
+    if (!menuAlbum || renaming) return
+    const name = renameDraft.trim().slice(0, 40)
+    if (!name) {
+      toast.error('Escribe un nombre para el álbum')
+      return
+    }
+    if (name === menuAlbum.name) {
+      setEditingName(false)
+      return
+    }
+    setRenaming(true)
+    try {
+      const { data } = await api.patch(`/stories/favorites/albums/${menuAlbum._id || menuAlbum.id}`, {
+        name
+      })
+      setAlbums((prev) =>
+        prev.map((a) =>
+          (a._id || a.id) === (menuAlbum._id || menuAlbum.id)
+            ? { ...a, name: data?.name || name }
+            : a
+        )
+      )
+      setMenuAlbum((m) => (m ? { ...m, name: data?.name || name } : m))
+      setEditingName(false)
+      toast.success('Nombre actualizado')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo renombrar')
+    } finally {
+      setRenaming(false)
     }
   }
 
@@ -248,6 +325,7 @@ export default function StoryHighlights({ userId, isOwner = false }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.18 }}
         className="card"
+        data-tour="tour-profile-favorites"
       >
         <div className="mb-4 flex items-center gap-2">
           <FiStar className="text-accent-yellow" />
@@ -262,7 +340,6 @@ export default function StoryHighlights({ userId, isOwner = false }) {
               onPointerMove={onBubblePointerMove}
               onPointerUp={() => onBubblePointerUp(album)}
               onClick={(e) => {
-                // Non-owner: open on click; owner uses pointerUp to avoid double-open after long-press
                 if (owner) {
                   e.preventDefault()
                   return
@@ -308,12 +385,12 @@ export default function StoryHighlights({ userId, isOwner = false }) {
 
       <AnimatePresence>
         {menuAlbum && (
-          <div className="fixed inset-0 z-[92] flex items-end justify-center bg-black/50 sm:items-center">
+          <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/50 sm:items-center">
             <button
               type="button"
               className="absolute inset-0"
               aria-label="Cerrar"
-              onClick={() => setMenuAlbum(null)}
+              onClick={requestCloseAlbumMenu}
             />
             <motion.div
               initial={{ y: 40, opacity: 0 }}
@@ -323,8 +400,53 @@ export default function StoryHighlights({ userId, isOwner = false }) {
               style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
             >
               <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
-                <p className="font-semibold text-[color:var(--text-primary)]">{menuAlbum.name}</p>
-                <p className="text-xs text-[color:var(--text-muted)]">Opciones del álbum</p>
+                {editingName ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value.slice(0, 40))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          saveRename()
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingName(false)
+                          setRenameDraft(menuAlbum.name || '')
+                        }
+                      }}
+                      maxLength={40}
+                      className="input-field min-w-0 flex-1 py-2 text-sm"
+                      placeholder="Nombre del álbum"
+                      aria-label="Nombre del álbum"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveRename}
+                      disabled={renaming}
+                      className="btn-primary shrink-0 rounded-xl px-3 py-2 text-xs disabled:opacity-60"
+                    >
+                      {renaming ? '…' : 'Guardar'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="min-w-0 flex-1 truncate font-semibold text-[color:var(--text-primary)]">
+                      {menuAlbum.name}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setEditingName(true)}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--bg-muted)] text-[color:var(--color-primary)]"
+                      aria-label="Renombrar álbum"
+                      title="Renombrar"
+                    >
+                      <FiEdit2 size={14} />
+                    </button>
+                  </div>
+                )}
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">Opciones del álbum</p>
               </div>
               <button
                 type="button"
@@ -336,7 +458,7 @@ export default function StoryHighlights({ userId, isOwner = false }) {
               </button>
               <button
                 type="button"
-                onClick={() => setMenuAlbum(null)}
+                onClick={requestCloseAlbumMenu}
                 className="w-full border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-center text-sm text-[color:var(--text-secondary)]"
               >
                 Cancelar
@@ -350,7 +472,7 @@ export default function StoryHighlights({ userId, isOwner = false }) {
         isOpen={Boolean(coverEditor)}
         albumId={coverEditor?.albumId}
         albumItems={coverEditor?.items || []}
-        onClose={() => setCoverEditor(null)}
+        onClose={requestCloseCoverEditor}
         onSaved={() => {
           reloadAlbums()
           setCoverEditor(null)
@@ -359,7 +481,7 @@ export default function StoryHighlights({ userId, isOwner = false }) {
 
       <AnimatePresence>
         {active && item && (
-          <div className="story-viewer force-dark fixed inset-0 z-[90] flex items-center justify-center bg-black">
+          <div className="story-viewer force-dark fixed inset-0 z-[200] flex items-center justify-center bg-black">
             <div className="relative flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 space-y-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 <div className="flex gap-1">

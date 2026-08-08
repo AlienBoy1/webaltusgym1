@@ -7,9 +7,9 @@ import { es } from 'date-fns/locale'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import { Avatar } from '../../utils/avatarUtils'
-import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
-
-const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
+import RoutineDetailModal from '../../components/RoutineDetailModal'
+import { useAppDialog } from '../../components/AppDialog'
+import { adoptRoutineToWorkouts } from '../../utils/adoptRoutine'
 
 function creatorDisplayName(user) {
   if (!user) return 'Usuario'
@@ -18,6 +18,7 @@ function creatorDisplayName(user) {
 }
 
 export default function ExploreRoutines() {
+  const dialog = useAppDialog()
   const [routines, setRoutines] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -45,38 +46,29 @@ export default function ExploreRoutines() {
     if (!selected) return
     setAdopting(true)
     try {
-      const { data } = await api.post(`/workouts/routines/${selected.id || selected._id}/adopt`)
-      const local = toStartableTemplate({
-        ...data,
-        exercises: data.exercises || selected.exercises
-      })
-      local.serverId = data.id || data._id
-      local.isPublic = false
-
-      try {
-        const stored = JSON.parse(localStorage.getItem(WORKOUT_TEMPLATES_KEY) || '[]')
-        localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify([...stored, local]))
-      } catch {
-        /* ignore */
+      const result = await adoptRoutineToWorkouts(selected, { author: selected.user })
+      if (result.ok) {
+        toast.success(
+          result.offline
+            ? 'Rutina guardada localmente (sin conexión)'
+            : 'Rutina adoptada en tus entrenamientos'
+        )
+        setSelected(null)
+        return
       }
-
-      toast.success('Rutina adoptada en tus entrenamientos')
-      setSelected(null)
-    } catch (error) {
-      // Offline / table missing fallback: save locally from payload
-      if (selected?.exercises?.length) {
-        const local = toStartableTemplate(selected)
-        try {
-          const stored = JSON.parse(localStorage.getItem(WORKOUT_TEMPLATES_KEY) || '[]')
-          localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify([...stored, local]))
-          toast.success('Rutina guardada localmente')
-          setSelected(null)
-          return
-        } catch {
-          /* ignore */
-        }
+      if (result.already) {
+        await dialog.alert(
+          result.message ||
+            'Ya adoptaste esta rutina. Elimínala en Entrenos si quieres volver a adoptarla.',
+          {
+            title: 'Ya la adoptaste',
+            confirmLabel: 'Entendido',
+            tone: 'info'
+          }
+        )
+        return
       }
-      toast.error(error.response?.data?.message || 'No se pudo adoptar la rutina')
+      toast.error(result.message || 'No se pudo adoptar la rutina')
     } finally {
       setAdopting(false)
     }
@@ -133,20 +125,29 @@ export default function ExploreRoutines() {
                 onClick={() => setSelected(routine)}
                 className="rounded-[1.5rem] border border-[color:var(--border-subtle)] bg-[color:var(--bg-card)] p-5 text-left transition hover:-translate-y-0.5 hover:border-[rgba(var(--color-primary-rgb),0.45)]"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <Avatar
-                    avatar={routine.user?.avatar}
-                    name={routine.user?.name || routine.user?.username}
-                    size="sm"
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{creatorDisplayName(routine.user)}</p>
-                    <p className="truncate text-[11px] text-[color:var(--text-muted)]">
-                      {routine.user?.username && routine.user?.name
-                        ? routine.user.name
-                        : 'GymRat'}
-                      {createdLabel ? ` · ${createdLabel}` : ''}
-                    </p>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar
+                      avatar={routine.user?.avatar}
+                      name={routine.user?.name || routine.user?.username}
+                      size="sm"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{creatorDisplayName(routine.user)}</p>
+                      <p className="truncate text-[11px] text-[color:var(--text-muted)]">
+                        {routine.user?.username && routine.user?.name
+                          ? routine.user.name
+                          : 'GymRat'}
+                        {createdLabel ? ` · ${createdLabel}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] px-2 py-1 text-[11px] font-semibold text-[color:var(--text-secondary)]"
+                    title="GymRats que adoptaron esta rutina"
+                  >
+                    <FiUsers size={12} className="text-[color:var(--color-primary)]" />
+                    <span>{Number(routine.adoptCount) || 0}</span>
                   </div>
                 </div>
                 <h2 className="font-display text-2xl tracking-wide">{routine.name}</h2>

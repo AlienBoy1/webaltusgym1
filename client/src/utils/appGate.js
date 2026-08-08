@@ -8,6 +8,7 @@
  * 4. tutorial      — AppTutorial spotlight OR NewTutorialPrompt
  * 5. membership    — MembershipExpiryNotice
  * 6. notifications — NotificationPrompt
+ * 7. install       — InstallAppPrompt
  */
 
 const listeners = new Set()
@@ -18,8 +19,13 @@ const PRIORITY = Object.freeze([
   'welcome',
   'tutorial',
   'membership',
-  'notifications'
+  'notifications',
+  'install'
 ])
+
+/** Brief pause after a prompt closes so the next one does not stack visually. */
+const LAYER_COOLDOWN_MS = 420
+let layerCooldownUntil = 0
 
 let updateBlocking = false
 let updateSettled = false
@@ -28,6 +34,7 @@ let welcomeBlocking = false
 let tutorialBlocking = false
 let membershipBlocking = false
 let notificationsBlocking = false
+let installBlocking = false
 
 function claimsOf(layer) {
   switch (layer) {
@@ -43,6 +50,8 @@ function claimsOf(layer) {
       return membershipBlocking
     case 'notifications':
       return notificationsBlocking
+    case 'install':
+      return installBlocking
     default:
       return false
   }
@@ -64,6 +73,32 @@ function emit() {
   }
 }
 
+function scheduleCooldownEmit() {
+  const wait = Math.max(0, layerCooldownUntil - Date.now())
+  if (wait <= 0) {
+    emit()
+    return
+  }
+  window.setTimeout(() => {
+    if (Date.now() >= layerCooldownUntil) emit()
+  }, wait + 16)
+}
+
+function setLayerFlag(current, nextValue, assign) {
+  const next = Boolean(nextValue)
+  if (current === next) return false
+  // When a prompt releases, cool down before the next layer may open
+  if (current && !next) {
+    layerCooldownUntil = Date.now() + LAYER_COOLDOWN_MS
+    assign(next)
+    scheduleCooldownEmit()
+    return true
+  }
+  assign(next)
+  emit()
+  return true
+}
+
 export function getGateSnapshot() {
   return {
     updateBlocking,
@@ -73,6 +108,8 @@ export function getGateSnapshot() {
     tutorialBlocking,
     membershipBlocking,
     notificationsBlocking,
+    installBlocking,
+    layerCooldownUntil,
     canStartTutorials: canShowPrompt('tutorial')
   }
 }
@@ -88,6 +125,7 @@ export function canShowPrompt(layer) {
   if (layer !== 'update') {
     if (!updateSettled) return false
     if (updateBlocking) return false
+    if (Date.now() < layerCooldownUntil) return false
   }
 
   for (let i = 0; i < idx; i += 1) {
@@ -97,10 +135,9 @@ export function canShowPrompt(layer) {
 }
 
 export function setUpdateBlocking(value) {
-  const next = Boolean(value)
-  if (updateBlocking === next) return
-  updateBlocking = next
-  emit()
+  setLayerFlag(updateBlocking, value, (v) => {
+    updateBlocking = v
+  })
 }
 
 /** Call when version check finished (update shown or confirmed up-to-date). */
@@ -112,38 +149,39 @@ export function setUpdateSettled(value) {
 }
 
 export function setUsernameBlocking(value) {
-  const next = Boolean(value)
-  if (usernameBlocking === next) return
-  usernameBlocking = next
-  emit()
+  setLayerFlag(usernameBlocking, value, (v) => {
+    usernameBlocking = v
+  })
 }
 
 export function setWelcomeBlocking(value) {
-  const next = Boolean(value)
-  if (welcomeBlocking === next) return
-  welcomeBlocking = next
-  emit()
+  setLayerFlag(welcomeBlocking, value, (v) => {
+    welcomeBlocking = v
+  })
 }
 
 export function setTutorialBlocking(value) {
-  const next = Boolean(value)
-  if (tutorialBlocking === next) return
-  tutorialBlocking = next
-  emit()
+  setLayerFlag(tutorialBlocking, value, (v) => {
+    tutorialBlocking = v
+  })
 }
 
 export function setMembershipBlocking(value) {
-  const next = Boolean(value)
-  if (membershipBlocking === next) return
-  membershipBlocking = next
-  emit()
+  setLayerFlag(membershipBlocking, value, (v) => {
+    membershipBlocking = v
+  })
 }
 
 export function setNotificationsBlocking(value) {
-  const next = Boolean(value)
-  if (notificationsBlocking === next) return
-  notificationsBlocking = next
-  emit()
+  setLayerFlag(notificationsBlocking, value, (v) => {
+    notificationsBlocking = v
+  })
+}
+
+export function setInstallBlocking(value) {
+  setLayerFlag(installBlocking, value, (v) => {
+    installBlocking = v
+  })
 }
 
 export function canStartTutorials() {

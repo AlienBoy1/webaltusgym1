@@ -13,7 +13,7 @@ import { es } from 'date-fns/locale'
 import { Avatar } from '../../utils/avatarUtils'
 import StoriesRail from '../../components/StoriesRail'
 import FeedPostImages from '../../components/FeedPostImages'
-import RoutineDetailModal, { toStartableTemplate } from '../../components/RoutineDetailModal'
+import RoutineDetailModal from '../../components/RoutineDetailModal'
 import PostReactionButton from '../../components/PostReactionButton'
 import SharedPostAttachment from '../../components/SharedPostAttachment'
 import { useAppDialog } from '../../components/AppDialog'
@@ -31,8 +31,7 @@ import ChallengePostCard from '../../components/ChallengePostCard'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { countComments } from '../../utils/commentTree'
 import { compressImageFile } from '../../utils/compressImage'
-
-const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
+import { adoptRoutineToWorkouts } from '../../utils/adoptRoutine'
 
 const moods = [
   { id: 'happy', label: 'Feliz', emoji: '😊', color: 'from-yellow-400 to-orange-500' },
@@ -77,6 +76,7 @@ export default function Social() {
   const [commenting, setCommenting] = useState({})
   const [voting, setVoting] = useState({})
   const [routineModal, setRoutineModal] = useState(null)
+  const [adoptingRoutine, setAdoptingRoutine] = useState(false)
   const fileInputRef = useRef(null)
   const imagePreviewRefs = useRef({})
 
@@ -117,16 +117,35 @@ export default function Social() {
     }
   }, [searchParams, posts, setSearchParams])
 
-  const adoptRoutine = () => {
+  const adoptRoutine = async () => {
     if (!routineModal) return
-    const local = toStartableTemplate(routineModal)
+    setAdoptingRoutine(true)
     try {
-      const stored = JSON.parse(localStorage.getItem(WORKOUT_TEMPLATES_KEY) || '[]')
-      localStorage.setItem(WORKOUT_TEMPLATES_KEY, JSON.stringify([...stored, local]))
-      toast.success('Rutina adoptada en Entrenos')
-      setRoutineModal(null)
-    } catch {
-      toast.error('No se pudo guardar')
+      const result = await adoptRoutineToWorkouts(routineModal, { author: routineModal.user })
+      if (result.ok) {
+        toast.success(
+          result.offline
+            ? 'Rutina guardada localmente (sin conexión)'
+            : 'Rutina adoptada en Entrenos'
+        )
+        setRoutineModal(null)
+        return
+      }
+      if (result.already) {
+        await dialog.alert(
+          result.message ||
+            'Ya adoptaste esta rutina. Elimínala en Entrenos si quieres volver a adoptarla.',
+          {
+            title: 'Ya la adoptaste',
+            confirmLabel: 'Entendido',
+            tone: 'info'
+          }
+        )
+        return
+      }
+      toast.error(result.message || 'No se pudo guardar')
+    } finally {
+      setAdoptingRoutine(false)
     }
   }
 
@@ -1321,6 +1340,7 @@ export default function Social() {
         routine={routineModal}
         author={routineModal?.user}
         onAdopt={adoptRoutine}
+        adopting={adoptingRoutine}
       />
 
       <SharePostSheet

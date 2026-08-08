@@ -68,11 +68,13 @@ export const TUTORIAL_CATALOG = [
   {
     id: TUTORIAL_IDS.WORKOUTS,
     title: 'Entrenamientos',
-    short: 'Crear, iniciar y completar',
+    short: 'Crear, explorar y GymRats',
     icon: '💪',
-    description: 'Crea rutinas, inicia una sesión, completa ejercicios y controla descansos.',
+    description:
+      'Crea rutinas, explora las públicas de la comunidad, adopta como GymRat, colabora editando y controla tus sesiones.',
     completionKey: 'qyntra_tutorial_workouts_done',
-    settingsKey: 'tutorialWorkoutsCompleted'
+    settingsKey: 'tutorialWorkoutsCompleted',
+    contentVersion: 3
   },
   {
     id: TUTORIAL_IDS.COMMUNITY,
@@ -356,14 +358,48 @@ const WORKOUT_STEPS = [
     path: '/workouts',
     target: 'tour-workouts-create',
     title: 'Crear una rutina',
-    body: 'Arma tu rutina con ejercicios, series y repeticiones a tu medida.'
+    body: 'Arma tu rutina con ejercicios, series y repeticiones a tu medida. Puedes marcarla pública para la comunidad.'
+  },
+  {
+    id: 'wo-explore',
+    path: '/workouts',
+    target: 'tour-workouts-explore',
+    title: 'Explorar rutinas',
+    body: 'Descubre rutinas públicas de otros GymRats. Cada tarjeta muestra cuántas personas ya la adoptaron.'
   },
   {
     id: 'wo-list',
     path: '/workouts',
     target: 'tour-workouts-list',
     title: 'Tus rutinas',
-    body: 'Aquí aparecen tus rutinas guardadas. Elige una para iniciar cuando estés listo.'
+    body: 'Aquí están tus rutinas. Si adoptaste una de otro GymRat, verás siempre la etiqueta del creador original.'
+  },
+  {
+    id: 'wo-gymrat',
+    path: '/workouts',
+    target: 'tour-workout-gymrat-creator',
+    demo: 'workout-gymrat',
+    forceDemo: true,
+    title: 'Etiqueta del creador',
+    body: 'Las rutinas adoptadas muestran «GymRat de @usuario». El creador recibe una notificación cuando alguien adopta su rutina.'
+  },
+  {
+    id: 'wo-collaborator',
+    path: '/workouts',
+    target: 'tour-workout-gymrat-creator',
+    demo: 'workout-collaborator',
+    forceDemo: true,
+    title: 'Ser colaborador GymRat',
+    body: 'Si editas una rutina adoptada, te conviertes en colaborador: tu burbuja aparece en la rutina original (Explorar). Al ver tu versión, cada ejercicio lleva etiqueta Autor, Editada o Colaborador. Esa versión no se puede volver a adoptar.'
+  },
+  {
+    id: 'wo-delete-adopted',
+    path: '/workouts',
+    target: 'tour-workouts-list',
+    demo: 'workout-delete-adopted',
+    forceDemo: true,
+    title: 'Eliminar una adopción editada',
+    body: 'Al borrar una rutina adoptada y editada, la app te avisa: se elimina tu adopción GymRat, dejas de ser colaborador y desaparece tu variante. Para volver a tenerla, debes adoptarla otra vez.'
   },
   {
     id: 'wo-start',
@@ -858,7 +894,7 @@ const STORIES_STEPS = [
     path: '/profile',
     target: 'tour-profile-favorites',
     title: 'Álbumes favoritos',
-    body: 'En tu perfil, Favoritos guarda historias destacadas. Mantén pulsada una burbuja propia para editar la portada.'
+    body: 'En tu perfil, Favoritos guarda historias destacadas. Mantén pulsada una burbuja propia para editar la portada o renombrar el álbum con el lápiz.'
   }
 ]
 

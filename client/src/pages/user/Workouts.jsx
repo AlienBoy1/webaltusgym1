@@ -12,7 +12,10 @@ import {
   FiEdit2,
   FiCompass,
   FiGlobe,
-  FiSearch
+  FiSearch,
+  FiUser,
+  FiUsers,
+  FiEye
 } from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -33,9 +36,94 @@ import {
 } from '../../utils/workoutSession'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
+import { useAuthStore } from '../../store/authStore'
+import { useAppDialog } from '../../components/AppDialog'
+import RoutineDetailModal, { isAdoptedFromOther } from '../../components/RoutineDetailModal'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 const DEFAULT_REST_SECONDS = 60
+
+function gymratCreatorLabel(template, meId) {
+  const creator = template?.originalCreator
+  const creatorId = template?.originalCreatorId || creator?.id || creator?._id
+  if (!creatorId || String(creatorId) === String(meId || '')) return null
+  if (creator?.username) return `@${String(creator.username).replace(/^@+/, '')}`
+  if (creator?.name) return creator.name
+  return null
+}
+
+function mergeServerRoutines(prev, data) {
+  const pending = []
+  const byKey = new Map()
+  prev.forEach((t) => {
+    byKey.set(String(t.id), t)
+    if (t.serverId) byKey.set(`s:${t.serverId}`, t)
+  })
+
+  const merged = prev.map((t) => {
+    const match = data.find(
+      (r) =>
+        String(r.id || r._id) === String(t.serverId || '') ||
+        (r.localId && String(r.localId) === String(t.id))
+    )
+    if (!match) {
+      if (t.sourceRoutineId && t.isEditedFork && t.serverId) pending.push(t)
+      return t
+    }
+
+    const serverId = match.id || match._id || t.serverId
+    const sourceRoutineId = match.sourceRoutineId || t.sourceRoutineId || null
+    const localEdited = Boolean(t.isEditedFork)
+    const serverEdited = Boolean(match.isEditedFork)
+    const contentDiverged =
+      Boolean(sourceRoutineId) &&
+      (String(t.name || '') !== String(match.name || '') ||
+        JSON.stringify(t.exercises || []) !== JSON.stringify(match.exercises || []))
+    const isEditedFork = serverEdited || localEdited || contentDiverged
+
+    const next = {
+      ...t,
+      serverId,
+      isPublic: match.isPublic ?? t.isPublic,
+      sourceRoutineId,
+      originalCreatorId: match.originalCreatorId || t.originalCreatorId || null,
+      originalCreator: match.originalCreator || t.originalCreator || null,
+      adoptCount: match.adoptCount ?? t.adoptCount ?? 0,
+      isEditedFork
+    }
+
+    if (sourceRoutineId && isEditedFork && serverId && (!serverEdited || contentDiverged)) {
+      pending.push(next)
+    }
+    return next
+  })
+
+  for (const r of data) {
+    const sid = String(r.id || r._id || '')
+    if (!sid) continue
+    const already =
+      byKey.has(`s:${sid}`) ||
+      (r.localId && byKey.has(String(r.localId))) ||
+      merged.some((t) => String(t.serverId || '') === sid)
+    if (already) continue
+    merged.push({
+      id: r.localId || sid,
+      name: r.name,
+      color: r.color || 'primary',
+      exercises: r.exercises || [],
+      isPublic: Boolean(r.isPublic),
+      days: Array.isArray(r.days) ? r.days : [],
+      serverId: sid,
+      sourceRoutineId: r.sourceRoutineId || null,
+      originalCreatorId: r.originalCreatorId || null,
+      originalCreator: r.originalCreator || null,
+      adoptCount: Number(r.adoptCount) || 0,
+      isEditedFork: Boolean(r.isEditedFork)
+    })
+  }
+
+  return { merged, pending }
+}
 
 const WEEK_DAYS = [
   { id: 1, short: 'Lun', full: 'Lunes' },
@@ -180,12 +268,16 @@ function ShareWorkoutPrompt({ workout, onShare, onClose, onViewHistory }) {
 export default function Workouts() {
   const location = useLocation()
   const navigate = useNavigate()
+  const dialog = useAppDialog()
+  const me = useAuthStore((s) => s.user)
+  const meId = me?._id || me?.id
   const hydrated = useRef(false)
   const restStartedAt = useRef(null)
   const [restHistory, setRestHistory] = useState([])
   const [lastSavedWorkout, setLastSavedWorkout] = useState(null)
   const [showSharePrompt, setShowSharePrompt] = useState(false)
   const [shareTarget, setShareTarget] = useState(null)
+  const [previewRoutine, setPreviewRoutine] = useState(null)
   const [sharing, setSharing] = useState(false)
   const [dayFilter, setDayFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -193,6 +285,50 @@ export default function Workouts() {
   const [exerciseListFilter, setExerciseListFilter] = useState('pending') // 'pending' | 'completed'
   const [templates, setTemplates] = useState(loadTemplatesFromStorage)
   const [activeWorkout, setActiveWorkout] = useState(null)
+
+  // Merge GymRat / creator metadata from server into local templates
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/workouts/routines')
+        if (cancelled || !Array.isArray(data)) return
+
+        let pendingCollabSync = []
+        setTemplates((prev) => {
+          const { merged, pending } = mergeServerRoutines(prev, data)
+          pendingCollabSync = pending
+          return merged
+        })
+
+        for (const routine of pendingCollabSync) {
+          if (cancelled) break
+          try {
+            await api.post('/workouts/routines', {
+              id: routine.serverId,
+              localId: routine.id,
+              name: routine.name,
+              exercises: routine.exercises,
+              color: routine.color || 'primary',
+              isPublic: Boolean(routine.isPublic),
+              days: Array.isArray(routine.days) ? routine.days : [],
+              sourceRoutineId: routine.sourceRoutineId,
+              originalCreatorId: routine.originalCreatorId,
+              markCollaborator: true
+            })
+          } catch {
+            /* keep local; next visit retries */
+          }
+        }
+      } catch {
+        /* offline / schema pending — local list still works */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const [sessionStart, setSessionStart] = useState(null)
   const [restActive, setRestActive] = useState(false)
   const [restRemaining, setRestRemaining] = useState(0)
@@ -276,7 +412,10 @@ export default function Workouts() {
         exercises: routine.exercises,
         color: routine.color || 'primary',
         isPublic: Boolean(routine.isPublic),
-        days: normalizeDays(routine.days)
+        days: normalizeDays(routine.days),
+        sourceRoutineId: routine.sourceRoutineId || undefined,
+        originalCreatorId: routine.originalCreatorId || undefined,
+        markCollaborator: Boolean(routine.isEditedFork)
       }
       const { data } = await api.post('/workouts/routines', payload)
       return data
@@ -616,6 +755,8 @@ export default function Workouts() {
     const colors = ['primary', 'cyan', 'purple', 'green']
 
     if (editingId) {
+      const previous = templates.find((t) => t.id === editingId)
+      const becomesCollaborator = previous ? isAdoptedFromOther(previous, meId) : false
       let updatedRoutine = null
       setTemplates((current) =>
         current.map((t) => {
@@ -625,7 +766,8 @@ export default function Workouts() {
             name: newRoutine.name.trim(),
             exercises: newRoutine.exercises,
             isPublic: Boolean(newRoutine.isPublic),
-            days: normalizeDays(newRoutine.days)
+            days: normalizeDays(newRoutine.days),
+            isEditedFork: becomesCollaborator ? true : Boolean(t.isEditedFork)
           }
           return updatedRoutine
         })
@@ -640,14 +782,26 @@ export default function Workouts() {
                     ...t,
                     serverId: synced.id || synced._id,
                     isPublic: synced.isPublic,
-                    days: normalizeDays(synced.days ?? t.days)
+                    days: normalizeDays(synced.days ?? t.days),
+                    isEditedFork: Boolean(synced.isEditedFork || t.isEditedFork),
+                    originalCreator: synced.originalCreator || t.originalCreator,
+                    originalCreatorId: synced.originalCreatorId || t.originalCreatorId,
+                    sourceRoutineId: synced.sourceRoutineId || t.sourceRoutineId
                   }
                 : t
             )
           )
+        } else if (becomesCollaborator || updatedRoutine.isEditedFork) {
+          toast.error(
+            'No se pudo sincronizar tu edición de colaborador. Revisa la conexión y vuelve a guardar.'
+          )
         }
       }
-      toast.success('Rutina actualizada')
+      toast.success(
+        becomesCollaborator
+          ? 'Rutina actualizada · ahora eres colaborador GymRat'
+          : 'Rutina actualizada'
+      )
     } else {
       const created = {
         ...newRoutine,
@@ -680,7 +834,23 @@ export default function Workouts() {
     setNewRoutine(resetNewRoutine())
   }
 
-  const openEditRoutine = (template) => {
+  const openEditRoutine = async (template) => {
+    if (isAdoptedFromOther(template, meId)) {
+      const creator =
+        template.originalCreator?.username
+          ? `@${String(template.originalCreator.username).replace(/^@+/, '')}`
+          : template.originalCreator?.name || 'otro GymRat'
+      const ok = await dialog.confirm(
+        `Esta rutina fue creada por ${creator}. Si la editas, el crédito del creador se mantiene y tú te conviertes en colaborador GymRat de esta rutina. Las versiones editadas no se pueden volver a adoptar por terceros.`,
+        {
+          title: 'Editar rutina de otro GymRat',
+          confirmLabel: 'Editar como colaborador',
+          cancelLabel: 'Cancelar',
+          tone: 'info'
+        }
+      )
+      if (!ok) return
+    }
     setEditingId(template.id)
     setNewRoutine({
       name: template.name,
@@ -691,11 +861,49 @@ export default function Workouts() {
     setShowCreateModal(true)
   }
 
+  const openPreviewRoutine = (template) => {
+    setPreviewRoutine(template)
+  }
+
   const deleteRoutine = async (template) => {
-    if (!window.confirm(`¿Eliminar la rutina "${template.name}"?`)) return
+    const adopted = isAdoptedFromOther(template, meId) || Boolean(template.sourceRoutineId)
+    const edited = Boolean(template.isEditedFork)
+
+    let message = `¿Eliminar la rutina "${template.name}"?`
+    let title = 'Eliminar rutina'
+    let confirmLabel = 'Eliminar'
+
+    if (adopted && edited) {
+      title = 'Eliminar adopción editada'
+      confirmLabel = 'Eliminar todo'
+      message =
+        `Al eliminar "${template.name}" se quitará tu adopción como GymRat del creador y de esa rutina, ` +
+        `se borrará tu variante editada de la app y dejarás de ser colaborador de esa rutina. Esta acción no se puede deshacer.`
+    } else if (adopted) {
+      title = 'Eliminar rutina adoptada'
+      confirmLabel = 'Eliminar adopción'
+      message =
+        `Al eliminar "${template.name}" dejarás de ser GymRat de esa rutina. ` +
+        `Podrás volver a adoptarla después desde Explorar o la comunidad.`
+    }
+
+    const ok = await dialog.confirm(message, {
+      title,
+      confirmLabel,
+      cancelLabel: 'Cancelar',
+      tone: 'danger'
+    })
+    if (!ok) return
+
     setTemplates((current) => current.filter((t) => t.id !== template.id))
     await syncRoutineToServer(template, { remove: true })
-    toast.success('Rutina eliminada')
+    toast.success(
+      adopted && edited
+        ? 'Adopción, colaboración y variante eliminadas'
+        : adopted
+          ? 'Adopción eliminada'
+          : 'Rutina eliminada'
+    )
   }
 
   const togglePublic = async (template) => {
@@ -1173,6 +1381,7 @@ export default function Workouts() {
           <button
             type="button"
             onClick={() => navigate('/explore-routines')}
+            data-tour="tour-workouts-explore"
             className="btn-secondary inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm sm:w-auto"
           >
             <FiCompass size={18} /> Explorar rutinas
@@ -1288,6 +1497,29 @@ export default function Workouts() {
                       {template.isPublic ? ' · Pública' : ''}
                     </p>
                     <h2 className="mt-2 font-display text-2xl text-app">{template.name}</h2>
+                    {(() => {
+                      const creatorLabel = gymratCreatorLabel(template, meId)
+                      if (!creatorLabel) return null
+                      return (
+                        <span
+                          data-tour={i === 0 ? 'tour-workout-gymrat-creator' : undefined}
+                          className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]"
+                          title="Creador original de la rutina"
+                        >
+                          <FiUser size={12} className="shrink-0" />
+                          <span className="truncate">
+                            {template.isEditedFork ? 'Colaborador · ' : ''}
+                            GymRat de {creatorLabel}
+                          </span>
+                        </span>
+                      )
+                    })()}
+                    {template.isPublic && Number(template.adoptCount) > 0 && (
+                      <span className="mt-2 ml-0 inline-flex items-center gap-1 rounded-full bg-[color:var(--bg-muted)] px-2 py-0.5 text-[11px] font-medium text-app-secondary sm:ml-2">
+                        <FiUsers size={11} />
+                        {template.adoptCount} GymRats
+                      </span>
+                    )}
                     {templateDays.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {templateDays.map((dayId) => {
@@ -1326,6 +1558,15 @@ export default function Workouts() {
                   )}
                 </ul>
                 <div className="mt-4 flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openPreviewRoutine(template)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
+                    title="Ver rutina"
+                    aria-label="Ver rutina"
+                  >
+                    <FiEye size={13} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => openEditRoutine(template)}
@@ -1525,6 +1766,15 @@ export default function Workouts() {
           </div>
         )}
       </AnimatePresence>
+
+      <RoutineDetailModal
+        open={Boolean(previewRoutine)}
+        onClose={() => setPreviewRoutine(null)}
+        routine={previewRoutine}
+        author={previewRoutine?.originalCreator || null}
+        canAdopt={false}
+        subtitle="Vista previa"
+      />
     </div>
   )
 }

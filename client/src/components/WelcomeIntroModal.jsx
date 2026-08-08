@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiAward, FiTarget, FiTrendingUp, FiUsers, FiZap } from 'react-icons/fi'
@@ -12,6 +12,30 @@ import {
 
 const SETTING_KEY = 'qyntraWelcomeSeen'
 
+function welcomeLocalKey(uid) {
+  return uid ? `qyntra_welcome_seen:${uid}` : null
+}
+
+function readWelcomeSeenLocal(uid) {
+  const key = welcomeLocalKey(uid)
+  if (!key) return false
+  try {
+    return localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeWelcomeSeenLocal(uid) {
+  const key = welcomeLocalKey(uid)
+  if (!key) return
+  try {
+    localStorage.setItem(key, '1')
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * One-time product intro for every authenticated user (new + existing).
  * Persisted in profiles.settings.qyntraWelcomeSeen — blocks tutorials until dismissed.
@@ -22,6 +46,26 @@ export default function WelcomeIntroModal() {
   const updateUser = useAuthStore((s) => s.updateUser)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const healTriedRef = useRef(new Set())
+
+  const markSeenLocally = (uid, settingsBase) => {
+    writeWelcomeSeenLocal(uid)
+    updateUser({
+      settings: { ...(settingsBase || {}), [SETTING_KEY]: true }
+    })
+  }
+
+  const healDbIfNeeded = (uid, settingsBase) => {
+    if (!uid || healTriedRef.current.has(String(uid))) return
+    if (settingsBase?.[SETTING_KEY] === true) return
+    if (!readWelcomeSeenLocal(uid)) return
+    healTriedRef.current.add(String(uid))
+    markSeenLocally(uid, settingsBase)
+    api.put('/users/profile', { settings: { [SETTING_KEY]: true } }).catch(() => {
+      /* local already true — retry next session */
+      healTriedRef.current.delete(String(uid))
+    })
+  }
 
   useEffect(() => {
     const tryOpen = () => {
@@ -31,7 +75,8 @@ export default function WelcomeIntroModal() {
         return
       }
       const u = useAuthStore.getState().user
-      if (!u?.id && !u?._id) return
+      const uid = u?.id || u?._id
+      if (!uid) return
       if (!u.username) {
         setWelcomeBlocking(false)
         setOpen(false)
@@ -39,7 +84,12 @@ export default function WelcomeIntroModal() {
       }
       if (document.body.dataset.qyntraTutorial === '1') return
 
-      if (u.settings?.[SETTING_KEY] === true) {
+      const seenInSettings = u.settings?.[SETTING_KEY] === true
+      const seenLocal = readWelcomeSeenLocal(uid)
+
+      // Already dismissed — never flash open. Heal DB if only local survived a failed PUT.
+      if (seenInSettings || seenLocal) {
+        if (seenLocal && !seenInSettings) healDbIfNeeded(uid, u.settings)
         setWelcomeBlocking(false)
         setOpen(false)
         return
@@ -74,49 +124,30 @@ export default function WelcomeIntroModal() {
   const dismiss = async () => {
     if (saving) return
     setSaving(true)
+    const uid = user?.id || user?._id
     const nextSettings = {
       ...(useAuthStore.getState().user?.settings || {}),
       [SETTING_KEY]: true
     }
+    // Persist locally first so a later login never flashes the modal again
+    writeWelcomeSeenLocal(uid)
+    updateUser({ settings: nextSettings })
     try {
       const { data } = await api.put('/users/profile', { settings: { [SETTING_KEY]: true } })
       if (data?.user) {
-        updateUser(data.user)
-      } else {
-        updateUser({ settings: nextSettings })
+        updateUser({
+          ...data.user,
+          settings: { ...(data.user.settings || {}), [SETTING_KEY]: true }
+        })
       }
     } catch {
-      // Persist locally so we don't trap the user if the network fails once
-      updateUser({ settings: nextSettings })
-      try {
-        const uid = user?.id || user?._id
-        if (uid) localStorage.setItem(`qyntra_welcome_seen:${uid}`, '1')
-      } catch {
-        /* ignore */
-      }
+      /* local persistence already applied */
     } finally {
       setWelcomeBlocking(false)
       setOpen(false)
       setSaving(false)
     }
   }
-
-  // Local fallback if settings never synced
-  useEffect(() => {
-    const uid = user?.id || user?._id
-    if (!uid || user?.settings?.[SETTING_KEY]) return
-    try {
-      if (localStorage.getItem(`qyntra_welcome_seen:${uid}`) === '1') {
-        updateUser({
-          settings: { ...(user.settings || {}), [SETTING_KEY]: true }
-        })
-        setWelcomeBlocking(false)
-        setOpen(false)
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [user?.id, user?._id, user?.settings, updateUser])
 
   // Retroactive tutorial / milestone badges for existing accounts
   useEffect(() => {
@@ -126,7 +157,17 @@ export default function WelcomeIntroModal() {
     ;(async () => {
       try {
         const { data } = await api.post('/users/badges/sync')
-        if (!cancelled && data?.user) updateUser(data.user)
+        if (cancelled || !data?.user) return
+        // Preserve welcome-seen if badge sync returns stale settings from DB
+        const prevSettings = useAuthStore.getState().user?.settings || {}
+        const incoming = data.user
+        const mergedSettings = {
+          ...(incoming.settings || {}),
+          ...(prevSettings[SETTING_KEY] === true || readWelcomeSeenLocal(uid)
+            ? { [SETTING_KEY]: true }
+            : {})
+        }
+        updateUser({ ...incoming, settings: mergedSettings })
       } catch {
         /* ignore */
       }

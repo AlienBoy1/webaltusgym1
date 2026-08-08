@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FiPlus,
@@ -32,10 +32,23 @@ import { dispatchStoryClose, dispatchStoryOpen } from '../utils/presence'
 import ProtectedMedia from './ProtectedMedia'
 import { compressImageFile } from '../utils/compressImage'
 import UserNoteBadge from './UserNoteBadge'
+import PresenceDot from './PresenceDot'
 import { saveStoryMedia, shareStoryToNetwork } from '../utils/shareStoryMedia'
 import TutorialHelpButton from './TutorialHelpButton'
 import { TUTORIAL_IDS } from '../tutorials/registry'
 import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
+import {
+  comparePresencePeople,
+  formatActivePresenceLabel,
+  getPresenceMeta,
+  getUserLastSeen,
+  getUserPresenceEntry,
+  getUserStatus,
+  hydrateLastSeenBulk,
+  isPresenceOnline,
+  presenceDisplayName,
+  subscribePresenceMap
+} from '../utils/presence'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -73,6 +86,9 @@ export default function StoriesRail({
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [groups, setGroups] = useState([])
+  const [communityPeople, setCommunityPeople] = useState([])
+  const [presenceNow, setPresenceNow] = useState(() => Date.now())
+  const [presenceTick, setPresenceTick] = useState(0)
   const [reactions, setReactions] = useState([])
   const [viewer, setViewer] = useState(null)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -222,7 +238,14 @@ export default function StoriesRail({
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/stories/feed')
+      const feedUrl = '/stories/feed?scope=community'
+      const [feedRes, communityRes] = await Promise.all([
+        api.get(feedUrl),
+        showRail
+          ? api.get('/users/community-rail?limit=48').catch(() => ({ data: { people: [] } }))
+          : Promise.resolve({ data: { people: [] } })
+      ])
+      const data = feedRes.data
       const next = data.groups || []
       setGroups((prev) => {
         const mediaById = new Map()
@@ -248,12 +271,92 @@ export default function StoriesRail({
         }))
       })
       setReactions(data.reactions || [])
+      if (showRail) {
+        const list = Array.isArray(communityRes?.data?.people) ? communityRes.data.people : []
+        hydrateLastSeenBulk(list)
+        setCommunityPeople(list)
+      }
       return next
     } catch {
       setGroups([])
+      if (showRail) setCommunityPeople([])
       return []
     }
-  }, [])
+  }, [showRail])
+
+  useEffect(() => {
+    if (!showRail) return undefined
+    const unsub = subscribePresenceMap(() => setPresenceTick((n) => n + 1))
+    const clock = window.setInterval(() => setPresenceNow(Date.now()), 30_000)
+    return () => {
+      unsub()
+      window.clearInterval(clock)
+    }
+  }, [showRail])
+
+  const railPeers = useMemo(() => {
+    if (!showRail) return []
+    const myId = String(user?._id || user?.id || '')
+    const groupByUser = new Map()
+    groups.forEach((g, idx) => {
+      const uid = String(g.user?._id || g.user || '')
+      if (!uid || uid === myId) return
+      groupByUser.set(uid, { group: g, groupIndex: idx })
+    })
+
+    const peopleMap = new Map()
+    for (const p of communityPeople) {
+      const id = String(p._id || p.id || '')
+      if (!id || id === myId) continue
+      peopleMap.set(id, p)
+    }
+    for (const [uid, { group }] of groupByUser) {
+      if (peopleMap.has(uid)) continue
+      peopleMap.set(uid, {
+        _id: uid,
+        id: uid,
+        name: group.user?.name,
+        username: group.user?.username,
+        avatar: group.user?.avatar,
+        lastSeenAt: null,
+        hasStory: true,
+        hasUnseen: Boolean(group.hasUnseen)
+      })
+    }
+
+    const getUpdatedAt = (id) => getUserPresenceEntry(id)?.updatedAt || 0
+    const list = [...peopleMap.values()]
+    list.sort((a, b) => {
+      const aId = String(a._id || a.id)
+      const bId = String(b._id || b.id)
+      const aEntry = groupByUser.get(aId)
+      const bEntry = groupByUser.get(bId)
+      const aHas = Boolean(aEntry) || Boolean(a.hasStory)
+      const bHas = Boolean(bEntry) || Boolean(b.hasStory)
+      if (aHas !== bHas) return aHas ? -1 : 1
+      const aUnseen = Boolean(aEntry?.group?.hasUnseen || a.hasUnseen)
+      const bUnseen = Boolean(bEntry?.group?.hasUnseen || b.hasUnseen)
+      if (aUnseen !== bUnseen) return aUnseen ? -1 : 1
+      return comparePresencePeople(
+        a,
+        b,
+        getUserStatus,
+        (id) => getUserLastSeen(id),
+        getUpdatedAt
+      )
+    })
+
+    return list.map((person) => {
+      const id = String(person._id || person.id)
+      const entry = groupByUser.get(id)
+      return {
+        person,
+        groupIndex: entry?.groupIndex ?? -1,
+        hasStory: Boolean(entry),
+        hasUnseen: Boolean(entry?.group?.hasUnseen)
+      }
+    })
+  }, [showRail, groups, communityPeople, user?._id, user?.id, presenceTick, presenceNow])
 
   const openStoryFromId = useCallback(async (storyId, currentGroups) => {
     if (!storyId) return
@@ -348,7 +451,9 @@ export default function StoriesRail({
       let fresh = groupsRef.current
       if (!fresh?.length) fresh = await load()
       if (cancelled) return
-      const gi = fresh.findIndex((g) => (g.user?._id || g.user) === userId)
+      const gi = fresh.findIndex(
+        (g) => String(g.user?._id || g.user || '') === String(userId)
+      )
       if (gi >= 0) {
         setViewer({ groupIndex: gi, storyIndex: 0 })
         setReply('')
@@ -448,6 +553,41 @@ export default function StoriesRail({
     'story-viewer'
   )
 
+  const requestCloseStoryMenu = useHistoryBackLayer(
+    Boolean(viewer) && menuOpen && !shareOpen && !favoritesOpen && !viewersOpen,
+    () => setMenuOpen(false),
+    'story-menu'
+  )
+
+  const requestCloseStoryShare = useHistoryBackLayer(
+    Boolean(viewer) && shareOpen,
+    () => setShareOpen(false),
+    'story-share'
+  )
+
+  const requestCloseStoryFavorites = useHistoryBackLayer(
+    Boolean(viewer) && favoritesOpen,
+    () => setFavoritesOpen(false),
+    'story-favorites'
+  )
+
+  const requestCloseStoryViewers = useHistoryBackLayer(
+    Boolean(viewer) && viewersOpen,
+    () => {
+      setViewersOpen(false)
+      setViewers([])
+    },
+    'story-viewers'
+  )
+
+  const requestCloseCompose = useHistoryBackLayer(
+    composeOpen,
+    () => {
+      resetCompose()
+    },
+    'story-compose'
+  )
+
   const openViewers = async () => {
     if (!currentStory || !isOwnStory) return
     setMenuOpen(false)
@@ -530,8 +670,7 @@ export default function StoriesRail({
     if (viewer == null) return
     const group = groups[viewer.groupIndex]
     if (!group) {
-      if (window.history.state?.qyntraStory) window.history.back()
-      else closeViewer()
+      requestCloseViewer()
       return
     }
     if (viewer.storyIndex < group.stories.length - 1) {
@@ -539,10 +678,9 @@ export default function StoriesRail({
     } else if (viewer.groupIndex < groups.length - 1) {
       setViewer({ groupIndex: viewer.groupIndex + 1, storyIndex: 0 })
     } else {
-      if (window.history.state?.qyntraStory) window.history.back()
-      else closeViewer()
+      requestCloseViewer()
     }
-  }, [viewer, groups, closeViewer])
+  }, [viewer, groups, requestCloseViewer])
 
   const goPrev = () => {
     if (viewer == null) return
@@ -1000,30 +1138,101 @@ export default function StoriesRail({
             )
           })()}
 
-          {groups.map((group, idx) => {
-            const uid = group.user?._id || group.user
-            const isMine = uid === user?._id
-            if (isMine) return null
-            const ring = group.hasUnseen
-              ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
-              : 'bg-[color:var(--border-strong)]'
-            return (
-              <button
-                key={uid}
-                type="button"
-                onClick={() => openGroup(idx)}
-                className="flex w-[72px] shrink-0 flex-col items-center gap-1.5"
-              >
-                <div className={`relative rounded-full p-[2px] ${ring}`}>
-                  <div className="rounded-full bg-elevated p-[2px]">
-                    <Avatar avatar={group.user?.avatar} name={group.user?.name} size="story" />
+          {railPeers.map(({ person, groupIndex, hasStory, hasUnseen }) => {
+            const uid = person._id || person.id
+            const status = getUserStatus(uid)
+            const lastSeen = getUserLastSeen(uid) || person.lastSeenAt
+            const label = formatActivePresenceLabel(status, lastSeen, presenceNow)
+            const meta = getPresenceMeta(status)
+            const online = isPresenceOnline(status)
+            const display = presenceDisplayName(person)
+
+            if (hasStory && groupIndex >= 0) {
+              const ring = hasUnseen
+                ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
+                : 'bg-[color:var(--border-strong)]'
+              return (
+                <button
+                  key={uid}
+                  type="button"
+                  onClick={() => openGroup(groupIndex)}
+                  className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 text-center"
+                >
+                  <div className={`relative rounded-full p-[2px] ${ring}`}>
+                    <div className="rounded-full bg-elevated p-[2px]">
+                      <Avatar avatar={person.avatar} name={person.name} size="story" />
+                    </div>
+                    <PresenceDot
+                      userId={uid}
+                      size="md"
+                      showOffline={false}
+                      borderClass="border-[color:var(--bg-elevated)]"
+                    />
+                    <UserNoteBadge userId={uid} maxChars={28} />
                   </div>
+                  <div className="w-full min-w-0 px-0.5">
+                    <p
+                      className="truncate text-[11px] font-semibold leading-tight text-[color:var(--text-primary)]"
+                      title={display}
+                    >
+                      {display}
+                    </p>
+                    <p
+                      className={`mt-0.5 truncate text-[10px] font-medium leading-tight ${
+                        online ? meta.textClass : 'text-[color:var(--text-muted)]'
+                      }`}
+                      title={label}
+                    >
+                      {label}
+                    </p>
+                  </div>
+                </button>
+              )
+            }
+
+            return (
+              <Link
+                key={uid}
+                to={`/user/${uid}`}
+                className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 text-center outline-none"
+              >
+                <div className="relative">
+                  <div
+                    className={`rounded-full p-[2px] ${
+                      online
+                        ? 'bg-gradient-to-br from-accent-green/90 to-primary-500/70'
+                        : 'bg-transparent'
+                    }`}
+                  >
+                    <div className="rounded-full bg-[color:var(--bg-elevated)] p-[2px]">
+                      <Avatar avatar={person.avatar} name={person.name} size="story" />
+                    </div>
+                  </div>
+                  <PresenceDot
+                    userId={uid}
+                    size="md"
+                    showOffline={false}
+                    borderClass="border-[color:var(--bg-elevated)]"
+                  />
                   <UserNoteBadge userId={uid} maxChars={28} />
                 </div>
-                <span className="w-full truncate text-center text-[11px] text-app-secondary">
-                  {group.user?.name?.split(' ')[0] || 'User'}
-                </span>
-              </button>
+                <div className="w-full min-w-0 px-0.5">
+                  <p
+                    className="truncate text-[11px] font-semibold leading-tight text-[color:var(--text-primary)]"
+                    title={display}
+                  >
+                    {display}
+                  </p>
+                  <p
+                    className={`mt-0.5 truncate text-[10px] font-medium leading-tight ${
+                      online ? meta.textClass : 'text-[color:var(--text-muted)]'
+                    }`}
+                    title={label}
+                  >
+                    {label}
+                  </p>
+                </div>
+              </Link>
             )
           })}
         </div>
@@ -1089,7 +1298,7 @@ export default function StoriesRail({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="story-composer force-dark fixed inset-0 z-[90] bg-black"
+            className="story-composer force-dark fixed inset-0 z-[200] bg-black"
           >
             <div className="relative mx-auto flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -1187,7 +1396,7 @@ export default function StoriesRail({
       {/* Viewer — media stage dark; panels follow theme via story-adaptive-panel */}
       <AnimatePresence>
         {currentStory && currentGroup && (
-          <div className="story-viewer force-dark fixed inset-0 z-[80] flex items-center justify-center bg-black">
+          <div className="story-viewer force-dark fixed inset-0 z-[200] flex items-center justify-center bg-black">
             <div className="relative flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 {currentGroup.stories.map((s, i) => (

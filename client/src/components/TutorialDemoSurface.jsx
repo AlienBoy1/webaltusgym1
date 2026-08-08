@@ -1,4 +1,4 @@
-import { FiCheck, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye } from 'react-icons/fi'
+import { FiCheck, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye, FiUser, FiCompass } from 'react-icons/fi'
 
 /**
  * Premium fallback surfaces when a real UI target is missing.
@@ -20,6 +20,79 @@ export default function TutorialDemoSurface({ demoId }) {
         <p className="mt-1 text-xs text-[color:var(--text-muted)]">6 ejercicios · ~45 min</p>
         <div className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3">
           <FiPlay size={16} /> Iniciar
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'workout-gymrat') {
+    return (
+      <div data-tour="tour-workout-gymrat-creator" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Adoptada
+        </p>
+        <h3 className="mt-1 font-display text-lg text-[color:var(--text-primary)]">Push Day</h3>
+        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]">
+          <FiUser size={12} /> GymRat de @coach_alex
+        </span>
+        <div className="mt-3 flex items-center gap-2 text-xs text-[color:var(--text-muted)]">
+          <FiCompass size={12} /> Explora rutinas públicas y adopta las tuyas
+        </div>
+        <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-[color:var(--bg-muted)] px-2 py-1 text-[11px] font-medium text-[color:var(--text-secondary)]">
+          <FiUsers size={11} /> 12 GymRats
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'workout-collaborator') {
+    return (
+      <div data-tour="tour-workout-gymrat-creator" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Colaborador
+        </p>
+        <h3 className="mt-1 font-display text-lg text-[color:var(--text-primary)]">Push Day · editada</h3>
+        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]">
+          <FiUsers size={12} /> Colaborador · GymRat de @coach_alex
+        </span>
+        <div className="mt-4">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+            En la rutina original
+          </p>
+          <div className="flex gap-3">
+            {['Tú', '@mia', '@leo'].map((label) => (
+              <div key={label} className="flex flex-col items-center gap-1">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--bg-muted)] text-[11px] font-bold text-[color:var(--text-primary)]">
+                  {label === 'Tú' ? 'YO' : label.slice(1, 3).toUpperCase()}
+                </div>
+                <span className="text-[10px] text-[color:var(--text-muted)]">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'workout-delete-adopted') {
+    return (
+      <div data-tour="tour-workouts-list" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Eliminar
+        </p>
+        <div className="mt-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] p-3">
+          <p className="text-sm font-semibold text-[color:var(--text-primary)]">Eliminar adopción editada</p>
+          <p className="mt-2 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+            Se quita tu GymRat, dejas de ser colaborador y se borra tu variante editada.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <div className="flex-1 rounded-xl border border-[color:var(--border-subtle)] py-2 text-center text-xs">
+              Cancelar
+            </div>
+            <div className="flex-1 rounded-xl bg-red-500/90 py-2 text-center text-xs font-semibold text-white">
+              Eliminar todo
+            </div>
+          </div>
         </div>
       </div>
     )

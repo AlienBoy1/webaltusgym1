@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { FiCamera, FiEye, FiX } from 'react-icons/fi'
 import { Avatar } from '../utils/avatarUtils'
 import ProtectedMedia from './ProtectedMedia'
+import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 
 /**
  * Profile avatar with optional story ring, Ver foto / Ver historia menu,
@@ -19,6 +20,18 @@ export default function ProfileAvatar({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [photoOpen, setPhotoOpen] = useState(false)
+
+  const requestCloseMenu = useHistoryBackLayer(
+    menuOpen && !photoOpen,
+    () => setMenuOpen(false),
+    'profile-avatar-menu'
+  )
+
+  const requestClosePhoto = useHistoryBackLayer(
+    photoOpen,
+    () => setPhotoOpen(false),
+    'profile-avatar-photo'
+  )
 
   const ringClass = hasStories
     ? 'p-[3px] rounded-full bg-gradient-to-tr from-[color:var(--color-primary)] via-[color:var(--color-accent)] to-[color:var(--color-primary)]'
@@ -52,8 +65,8 @@ export default function ProfileAvatar({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[120] flex items-end justify-center bg-black/55 p-3 sm:items-center sm:p-4"
-              onClick={() => setMenuOpen(false)}
+              className="fixed inset-0 z-[210] flex items-end justify-center bg-black/55 p-3 sm:items-center sm:p-4"
+              onClick={requestCloseMenu}
             >
               <motion.div
                 initial={{ y: 24, opacity: 0.96 }}
@@ -73,8 +86,9 @@ export default function ProfileAvatar({
                     type="button"
                     className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm hover:bg-[color:var(--bg-muted)]"
                     onClick={() => {
-                      setMenuOpen(false)
-                      onViewStory?.()
+                      requestCloseMenu()
+                      // Wait for menu history entry to pop before opening story layer
+                      window.setTimeout(() => onViewStory?.(), 100)
                     }}
                   >
                     <FiEye className="text-[color:var(--color-primary)]" size={18} /> Ver Historia
@@ -84,8 +98,8 @@ export default function ProfileAvatar({
                   type="button"
                   className="flex w-full items-center gap-2.5 border-t border-[color:var(--border-subtle)] px-4 py-3 text-left text-sm hover:bg-[color:var(--bg-muted)]"
                   onClick={() => {
-                    setMenuOpen(false)
-                    setPhotoOpen(true)
+                    requestCloseMenu()
+                    window.setTimeout(() => setPhotoOpen(true), 100)
                   }}
                 >
                   <FiCamera className="text-[color:var(--color-accent)]" size={18} /> Ver foto
@@ -93,7 +107,7 @@ export default function ProfileAvatar({
                 <button
                   type="button"
                   className="w-full border-t border-[color:var(--border-subtle)] px-4 py-2.5 text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-muted)]"
-                  onClick={() => setMenuOpen(false)}
+                  onClick={requestCloseMenu}
                 >
                   Cancelar
                 </button>
@@ -111,14 +125,14 @@ export default function ProfileAvatar({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[130] flex items-center justify-center bg-black/90 p-4"
-              onClick={() => setPhotoOpen(false)}
+              className="fixed inset-0 z-[210] flex items-center justify-center bg-black/90 p-4"
+              onClick={requestClosePhoto}
               onContextMenu={(e) => e.preventDefault()}
             >
               <button
                 type="button"
                 className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white"
-                onClick={() => setPhotoOpen(false)}
+                onClick={requestClosePhoto}
                 aria-label="Cerrar"
               >
                 <FiX size={22} />

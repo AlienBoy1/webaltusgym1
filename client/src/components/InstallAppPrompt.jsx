@@ -16,13 +16,18 @@ import {
   getDeferredInstallPrompt
 } from '../utils/pwaInstall'
 import { isInstalledApp } from '../utils/appMode'
+import {
+  canShowPrompt,
+  setInstallBlocking,
+  subscribeAppGate
+} from '../utils/appGate'
 
 const SHOW_DELAY_MS = 2200
 
 /**
  * Premium in-app install sheet for browser sessions.
  * - Guests: every visit; no "never show"
- * - Logged-in: every visit/session until "No volver a mostrar"
+ * - Logged-in: after higher-priority gate prompts; every session until "No volver a mostrar"
  */
 export default function InstallAppPrompt() {
   const user = useAuthStore((s) => s.user)
@@ -42,21 +47,53 @@ export default function InstallAppPrompt() {
     if (isInstalledApp()) return undefined
     if (!shouldOfferInstall({ isLoggedIn })) return undefined
 
-    const t = window.setTimeout(() => {
-      if (!isInstalledApp() && shouldOfferInstall({ isLoggedIn })) setOpen(true)
-    }, SHOW_DELAY_MS)
+    // Guests are outside the auth onboarding queue
+    if (!isLoggedIn) {
+      const t = window.setTimeout(() => {
+        if (!isInstalledApp() && shouldOfferInstall({ isLoggedIn: false })) setOpen(true)
+      }, SHOW_DELAY_MS)
+      const onInstalled = () => setOpen(false)
+      window.addEventListener('appinstalled', onInstalled)
+      return () => {
+        window.clearTimeout(t)
+        window.removeEventListener('appinstalled', onInstalled)
+      }
+    }
 
-    const onInstalled = () => setOpen(false)
+    const tryShow = () => {
+      if (isInstalledApp() || !shouldOfferInstall({ isLoggedIn: true })) {
+        setInstallBlocking(false)
+        setOpen(false)
+        return
+      }
+      if (document.body.dataset.qyntraTutorial === '1') return
+      if (!canShowPrompt('install')) {
+        setOpen(false)
+        return
+      }
+      setInstallBlocking(true)
+      setOpen(true)
+    }
+
+    const t = window.setTimeout(tryShow, SHOW_DELAY_MS)
+    const unsub = subscribeAppGate(tryShow)
+    const onInstalled = () => {
+      setInstallBlocking(false)
+      setOpen(false)
+    }
     window.addEventListener('appinstalled', onInstalled)
     return () => {
       window.clearTimeout(t)
+      unsub()
       window.removeEventListener('appinstalled', onInstalled)
+      setInstallBlocking(false)
     }
   }, [isLoggedIn, user?._id, user?.id])
 
   const closeSession = () => {
     setOpen(false)
     setIosSteps(false)
+    setInstallBlocking(false)
     // Logged-in: snooze until next browser session. Guests: just close (shows again next visit/load).
     if (isLoggedIn) dismissInstallForSession()
   }
@@ -64,6 +101,7 @@ export default function InstallAppPrompt() {
   const closeForever = () => {
     setOpen(false)
     setIosSteps(false)
+    setInstallBlocking(false)
     neverShowInstallPrompt()
   }
 
@@ -77,6 +115,7 @@ export default function InstallAppPrompt() {
       const result = await promptNativeInstall()
       setInstalling(false)
       if (result.ok) {
+        setInstallBlocking(false)
         setOpen(false)
         return
       }
