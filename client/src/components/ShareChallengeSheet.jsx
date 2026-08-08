@@ -6,7 +6,7 @@ import { FiX, FiUsers, FiShare2, FiPlusSquare, FiTarget } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import toast from 'react-hot-toast'
 import { buildNativePostShareImage } from '../utils/buildNativePostShareImage'
-import { buildChallengeSharePayload } from '../utils/challengeUtils'
+import { buildChallengeSharePayload, getChallengeExercises } from '../utils/challengeUtils'
 import {
   buildChallengeInviteShareText,
   getChallengesUrl,
@@ -276,6 +276,21 @@ export default function ShareChallengeSheet({ open, challenge, onClose }) {
                       text={challenge.description || 'Invita a la comunidad a unirse a este reto'}
                     />
                   </div>
+                  {getChallengeExercises(challenge).length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {getChallengeExercises(challenge).map((ex) => (
+                        <div
+                          key={ex.id}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1 text-[11px]"
+                        >
+                          <span className="truncate text-[color:var(--text-primary)]">{ex.name}</span>
+                          <span className="shrink-0 font-semibold text-accent-yellow">
+                            {ex.targetReps} reps
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

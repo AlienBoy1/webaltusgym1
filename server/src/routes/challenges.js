@@ -47,6 +47,13 @@ function normalizeExercises(raw) {
     .filter(Boolean)
 }
 
+function resolveChallengeExercises(challenge) {
+  if (!challenge) return []
+  const fromCol = normalizeExercises(challenge.exercises)
+  if (fromCol.length) return fromCol
+  return normalizeExercises(challenge.reward?.exercises)
+}
+
 function clampExerciseProgress(exercises, progressInput) {
   const list = normalizeExercises(exercises)
   const src =
@@ -55,13 +62,15 @@ function clampExerciseProgress(exercises, progressInput) {
       : {}
   const map = {}
   let total = 0
+  let allComplete = list.length > 0
   for (const ex of list) {
     const raw = Number(src[ex.id] ?? src[ex.name] ?? 0)
     const val = Number.isFinite(raw) ? Math.max(0, Math.min(ex.targetReps, raw)) : 0
     map[ex.id] = val
     total += val
+    if (val < ex.targetReps) allComplete = false
   }
-  return { map, total }
+  return { map, total, allComplete }
 }
 
 function mapParticipant(row, userMap, includeLevel = false) {
@@ -192,7 +201,8 @@ async function createChallengeWithJoin({
 
   let resolvedGoal = Number(goal)
   if (mode === 'quantity' && normalizedExercises.length) {
-    resolvedGoal = normalizedExercises.reduce((sum, ex) => sum + ex.targetReps, 0)
+    // Goal = number of exercises to finish (each has its own reps target)
+    resolvedGoal = normalizedExercises.length
   }
   if (!Number.isFinite(resolvedGoal) || resolvedGoal <= 0) {
     const err = new Error('El objetivo debe ser mayor a 0')
@@ -242,6 +252,20 @@ async function createChallengeWithJoin({
   }
 
   if (error) throw error
+
+  // Keep column in sync when insert fell back without exercises col or empty array won
+  if (normalizedExercises.length) {
+    const colEmpty = !Array.isArray(challenge.exercises) || challenge.exercises.length === 0
+    if (colEmpty) {
+      const { data: synced } = await supabaseAdmin
+        .from('challenges')
+        .update({ exercises: normalizedExercises })
+        .eq('id', challenge.id)
+        .select('*')
+        .maybeSingle()
+      if (synced) challenge = synced
+    }
+  }
 
   await supabaseAdmin.from('challenge_participants').insert({
     challenge_id: challenge.id,
@@ -750,9 +774,13 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Reto no encontrado' })
     }
 
-    if (isTimeGoalChallenge(challenge)) {
+    const exercises = resolveChallengeExercises(challenge)
+    const timeGoal = isTimeGoalChallenge(challenge)
+
+    // Time goals without exercises: result is registered after the timer
+    if (timeGoal && !exercises.length) {
       return res.status(400).json({
-        message: 'En retos de tiempo el progreso se registra al completar el cronómetro'
+        message: 'En retos de tiempo el resultado se registra al completar el cronómetro'
       })
     }
 
@@ -771,15 +799,17 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'Debes tener el reto activo para actualizar progreso' })
     }
 
-    const exercises = normalizeExercises(challenge.exercises || challenge.reward?.exercises)
     const goal = Number(challenge.goal) || 0
     let nextProgress = 0
     let nextExerciseProgress = participant.exercise_progress || {}
+    let allExercisesComplete = false
 
     if (exercises.length) {
       const clamped = clampExerciseProgress(exercises, exerciseProgress)
       nextExerciseProgress = clamped.map
-      nextProgress = Math.min(goal, clamped.total)
+      allExercisesComplete = clamped.allComplete
+      // Store completed-exercise count for leaderboard (not a summed-reps goal)
+      nextProgress = exercises.filter((ex) => (clamped.map[ex.id] || 0) >= ex.targetReps).length
     } else {
       if (progress === undefined || progress === null || Number(progress) < 0) {
         return res.status(400).json({
@@ -789,7 +819,19 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       nextProgress = Math.min(goal, Number(progress))
     }
 
-    const reachedGoal = goal > 0 && nextProgress >= goal
+    const reachedGoal = exercises.length
+      ? allExercisesComplete
+      : goal > 0 && nextProgress >= goal
+
+    // For time challenges, exercises can fill while the timer runs;
+    // only auto-pause when goals are done and (for time) the clock already met target.
+    let shouldAutoPause = reachedGoal && participant.status === 'active'
+    if (timeGoal && shouldAutoPause) {
+      const elapsed = computeElapsedMs(participant)
+      const targetMs = getTimeGoalMs(challenge)
+      shouldAutoPause = targetMs > 0 && elapsed >= targetMs * 0.98
+    }
+
     const nowIso = new Date().toISOString()
     const updatePayload = {
       progress: nextProgress,
@@ -797,8 +839,7 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       exercise_progress: nextExerciseProgress
     }
 
-    // Hitting the objective pauses the stopwatch so the user can finish for XP
-    if (reachedGoal && participant.status === 'active') {
+    if (shouldAutoPause) {
       let accumulated = Number(participant.accumulated_ms) || 0
       if (participant.started_at) {
         accumulated += Math.max(0, Date.now() - new Date(participant.started_at).getTime())
@@ -842,10 +883,17 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       (p) => (p.user?.id || p.user?._id || p.user) === req.user.id
     )
 
+    const canComplete = timeGoal
+      ? false // time challenges complete via timer + result confirmation
+      : reachedGoal && !participant.completed
+
     res.json({
-      message: reachedGoal
-        ? 'Objetivo alcanzado. Reto pausado: puedes completar y obtener XP'
-        : 'Progreso actualizado',
+      message:
+        shouldAutoPause
+          ? 'Ejercicios completados. Reto pausado: puedes obtener XP'
+          : allExercisesComplete && timeGoal
+            ? 'Ejercicios al objetivo. Continúa hasta completar el tiempo'
+            : 'Progreso actualizado',
       participant: updatedPart || {
         ...mapParticipant(updatedParticipant, {}),
         user: req.user.id
@@ -858,8 +906,9 @@ router.put('/:id/progress', authenticate, async (req, res) => {
         exercises,
         participants: hydrated.participants
       },
-      canComplete: reachedGoal && !participant.completed,
-      autoPaused: reachedGoal,
+      canComplete,
+      allExercisesComplete,
+      autoPaused: shouldAutoPause,
       userStats: {
         xp: updatedUser?.stats?.xp || 0,
         level: updatedUser?.stats?.level || 1
@@ -904,7 +953,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
     const timeGoal = isTimeGoalChallenge(challenge)
     const targetMs = getTimeGoalMs(challenge)
     let finalAccumulatedMs = computeElapsedMs(participant)
-    const exercises = normalizeExercises(challenge.exercises || challenge.reward?.exercises)
+    const exercises = resolveChallengeExercises(challenge)
 
     // Cap time-goal chronometer at the objective
     if (timeGoal && targetMs > 0 && finalAccumulatedMs > targetMs) {
@@ -927,10 +976,12 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       progressValue = Number(challenge.goal)
 
       if (exercises.length) {
-        const clamped = clampExerciseProgress(exercises, exerciseProgress)
+        const input = exerciseProgress || participant.exercise_progress || {}
+        const clamped = clampExerciseProgress(exercises, input)
         nextExerciseProgress = clamped.map
         parsedResult = clamped.total
         resolvedResultUnit = 'reps'
+        progressValue = exercises.filter((ex) => (clamped.map[ex.id] || 0) >= ex.targetReps).length
       } else {
         if (parsedResult == null || Number.isNaN(parsedResult) || parsedResult < 0) {
           return res.status(400).json({
@@ -946,6 +997,15 @@ router.post('/:id/complete', authenticate, async (req, res) => {
           }
         }
       }
+    } else if (exercises.length) {
+      const clamped = clampExerciseProgress(exercises, participant.exercise_progress || {})
+      if (!clamped.allComplete) {
+        return res.status(400).json({
+          message: 'Completa el objetivo de cada ejercicio antes de finalizar'
+        })
+      }
+      nextExerciseProgress = clamped.map
+      progressValue = exercises.length
     } else if (progressValue < Number(challenge.goal)) {
       return res.status(400).json({ message: 'No has alcanzado el objetivo del reto' })
     }

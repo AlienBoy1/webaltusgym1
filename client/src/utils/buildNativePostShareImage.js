@@ -181,8 +181,10 @@ function estimateBlockHeight(kind, data) {
     // Height kept in sync with drawFeatureCard challenge layout
     const desc = String(data?.challengeDescription || '').trim()
     const descH = desc ? Math.min(120, Math.max(40, Math.ceil(desc.length / 42) * 34)) : 0
+    const challengeEx = Array.isArray(data?.exercises) ? data.exercises.filter((e) => e?.name) : []
+    const exH = challengeEx.length ? Math.min(6, challengeEx.length) * 44 + 16 : 0
     const chips = data?.shareMode !== 'completed' ? 0 : 78
-    return 70 + 90 + descH + 150 + chips + 72
+    return 70 + 90 + descH + exH + 150 + chips + 72
   }
   if (kind === 'embed') return 80 + estimatePayloadHeight(data)
   return 40
@@ -233,9 +235,11 @@ function formatShareElapsed(ms) {
 function estimateChallengeCardHeight(wd) {
   const desc = String(wd?.challengeDescription || '').trim()
   const descH = desc ? Math.min(120, Math.max(40, Math.ceil(desc.length / 42) * 34)) : 0
+  const challengeEx = Array.isArray(wd?.exercises) ? wd.exercises.filter((e) => e?.name) : []
+  const exH = challengeEx.length ? challengeEx.slice(0, 6).length * 44 + 16 : 0
   const isInvite = wd?.shareMode !== 'completed'
   const chips = !isInvite ? 78 : 0
-  return 70 + 90 + descH + 150 + chips + 72
+  return 70 + 90 + descH + exH + 150 + chips + 72
 }
 
 async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
@@ -343,6 +347,27 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
       iy = wrapText(ctx, desc, x + 28, iy, w - 56, 32, 3) + 18
     }
 
+    const challengeEx = (Array.isArray(wd.exercises) ? wd.exercises : [])
+      .filter((e) => e?.name)
+      .slice(0, 6)
+    if (challengeEx.length) {
+      challengeEx.forEach((ex) => {
+        ctx.fillStyle = P.featureInset
+        roundRect(ctx, x + 28, iy, w - 56, 40, 12)
+        ctx.fill()
+        ctx.fillStyle = P.featureInsetText
+        ctx.font = '600 20px Outfit, system-ui, sans-serif'
+        ctx.fillText(String(ex.name).slice(0, 28), x + 40, iy + 26)
+        ctx.fillStyle = '#FACC15'
+        ctx.textAlign = 'right'
+        ctx.font = '700 18px Outfit, system-ui, sans-serif'
+        ctx.fillText(`${ex.targetReps ?? ex.reps ?? '—'} reps`, x + w - 40, iy + 26)
+        ctx.textAlign = 'left'
+        iy += 48
+      })
+      iy += 8
+    }
+
     const isTime =
       wd.goalMode === 'time' ||
       ['min', 'mins', 'minuto', 'minutos', 'seg', 'segundos'].includes(
@@ -351,7 +376,10 @@ async function drawFeatureCard(ctx, { x, y, w, kind, wd }) {
     const boxW = (w - 56 - 24) / 3
     const boxH = 96
     const boxes = [
-      { value: challengeGoalLabel(wd), label: isTime ? 'Tiempo objetivo' : 'Objetivo' },
+      {
+        value: challengeEx.length ? String(challengeEx.length) : challengeGoalLabel(wd),
+        label: challengeEx.length ? 'Ejercicios' : isTime ? 'Tiempo objetivo' : 'Objetivo'
+      },
       { value: String(wd.participantsCount ?? '—'), label: 'Participantes' },
       {
         value:

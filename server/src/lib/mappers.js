@@ -149,11 +149,12 @@ export function mapChallenge(row, extras = {}) {
   if (!row) return null
   const reward = row.reward || {}
   const goalMode = row.goal_mode || reward.goalMode || 'quantity'
-  const rawExercises = Array.isArray(row.exercises)
-    ? row.exercises
-    : Array.isArray(reward.exercises)
-      ? reward.exercises
-      : []
+  const rawExercises =
+    Array.isArray(row.exercises) && row.exercises.length > 0
+      ? row.exercises
+      : Array.isArray(reward.exercises) && reward.exercises.length > 0
+        ? reward.exercises
+        : []
   const exercises = rawExercises
     .map((ex, index) => {
       const name = String(ex?.name || '').trim()

@@ -16,11 +16,54 @@ export function normalizeChallengeExercises(raw) {
     .filter(Boolean)
 }
 
+/**
+ * Resolve exercises from challenge / workoutData / reward.
+ * Prefer non-empty column; never let `[]` hide reward.exercises.
+ */
+export function getChallengeExercises(source) {
+  if (!source) return []
+  const direct = normalizeChallengeExercises(source.exercises)
+  if (direct.length) return direct
+  const nested = normalizeChallengeExercises(source.reward?.exercises)
+  if (nested.length) return nested
+  // Shared post / share payload may nest under workoutData
+  const wd = source.workoutData || source.workout_data
+  if (wd) {
+    const fromWd = normalizeChallengeExercises(wd.exercises)
+    if (fromWd.length) return fromWd
+  }
+  return []
+}
+
 export function sumExerciseTargets(exercises) {
   return normalizeChallengeExercises(exercises).reduce((sum, ex) => sum + ex.targetReps, 0)
 }
 
-/** Cap each entry to its exercise target; return { map, total }. */
+/** True when every exercise has reached its own target. */
+export function areAllExercisesComplete(exercises, progressMap = {}) {
+  const list = normalizeChallengeExercises(exercises)
+  if (!list.length) return false
+  return list.every((ex) => Number(progressMap?.[ex.id] ?? 0) >= ex.targetReps)
+}
+
+export function countCompletedExercises(exercises, progressMap = {}) {
+  const list = normalizeChallengeExercises(exercises)
+  return list.filter((ex) => Number(progressMap?.[ex.id] ?? 0) >= ex.targetReps).length
+}
+
+/** Average 0–100 of per-exercise completion (not a summed total). */
+export function exerciseProgressPercent(exercises, progressMap = {}) {
+  const list = normalizeChallengeExercises(exercises)
+  if (!list.length) return 0
+  const pct =
+    list.reduce((sum, ex) => {
+      const done = Math.min(ex.targetReps, Math.max(0, Number(progressMap?.[ex.id] ?? 0)))
+      return sum + (done / ex.targetReps) * 100
+    }, 0) / list.length
+  return Math.min(100, Math.round(pct))
+}
+
+/** Cap each entry to its exercise target; return { map, total, allComplete }. */
 export function clampExerciseProgress(exercises, progressInput) {
   const list = normalizeChallengeExercises(exercises)
   const src =
@@ -29,13 +72,15 @@ export function clampExerciseProgress(exercises, progressInput) {
       : {}
   const map = {}
   let total = 0
+  let allComplete = list.length > 0
   for (const ex of list) {
     const raw = Number(src[ex.id] ?? src[ex.name] ?? 0)
     const val = Number.isFinite(raw) ? Math.max(0, Math.min(ex.targetReps, raw)) : 0
     map[ex.id] = val
     total += val
+    if (val < ex.targetReps) allComplete = false
   }
-  return { map, total }
+  return { map, total, allComplete }
 }
 
 export function isTimeGoalChallenge(challengeOrData) {
@@ -121,7 +166,7 @@ export function buildChallengeSharePayload(challenge, opts = {}) {
     challengeGoal: challenge.goal ?? challenge.challengeGoal,
     challengeUnit: challenge.unit || challenge.challengeUnit || null,
     goalMode,
-    exercises: normalizeChallengeExercises(challenge.exercises || challenge.reward?.exercises),
+    exercises: getChallengeExercises(challenge),
     rewardXp: challenge.reward?.xp || xpAwarded || 100,
     participantsCount: challenge.participants?.length || challenge.participantsCount || 0,
     endDate,

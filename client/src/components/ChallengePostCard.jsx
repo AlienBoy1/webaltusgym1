@@ -11,7 +11,7 @@ import {
   formatChallengeGoal,
   formatElapsed,
   isTimeGoalChallenge,
-  normalizeChallengeExercises
+  getChallengeExercises
 } from '../utils/challengeUtils'
 import { useAuthStore } from '../store/authStore'
 import FormattedText from './FormattedText'
@@ -33,7 +33,10 @@ export default function ChallengePostCard({ data, className = '' }) {
 
   const isInvite = data.shareMode !== 'completed'
   const isTime = isTimeGoalChallenge(data)
-  const goalLabel = formatChallengeGoal(data)
+  const exercises = getChallengeExercises(data)
+  const goalLabel = exercises.length
+    ? `${exercises.length} ejercicios`
+    : formatChallengeGoal(data)
   const endDate = data.challengeEndDate || data.endDate
   const expired = endDate ? new Date(endDate) < new Date() : false
 
@@ -122,17 +125,20 @@ export default function ChallengePostCard({ data, className = '' }) {
           </div>
         ) : null}
 
-        {normalizeChallengeExercises(data.exercises).length > 0 && (
-          <ul className="mt-2 space-y-1 text-xs text-app-secondary">
-            {normalizeChallengeExercises(data.exercises)
-              .slice(0, 4)
-              .map((ex) => (
-                <li key={ex.id} className="flex justify-between gap-2">
-                  <span className="truncate">{ex.name}</span>
-                  <span className="shrink-0 text-app">{ex.targetReps} reps</span>
-                </li>
-              ))}
-          </ul>
+        {exercises.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {exercises.map((ex) => (
+              <div
+                key={ex.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-app bg-elevated/70 px-3 py-2 text-xs sm:text-sm"
+              >
+                <span className="min-w-0 truncate font-medium text-app">{ex.name}</span>
+                <span className="shrink-0 rounded-full bg-accent-yellow/15 px-2 py-0.5 font-semibold text-accent-yellow">
+                  {ex.targetReps} reps
+                </span>
+              </div>
+            ))}
+          </div>
         )}
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
