@@ -1,6 +1,7 @@
 /**
  * Native share image for Dashboard welcome card.
- * mode: 'external' → logo + invite CTA | 'story' → Seguir+ + mutual follow invite
+ * Card height hugs content (like the in-app hero); CTA sits in a tight stack.
+ * mode: 'external' → logo + invite | 'story' → Seguir+ + mutual follow
  */
 
 import { getShareThemePalette } from './shareThemePalette'
@@ -14,6 +15,25 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, radius)
   ctx.arcTo(x, y, x + w, y, radius)
   ctx.closePath()
+}
+
+function countWrappedLines(ctx, text, maxWidth, maxLines = 6) {
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+  if (!words.length) return 1
+  let line = ''
+  let lines = 0
+  for (let i = 0; i < words.length; i++) {
+    const test = line ? `${line} ${words[i]}` : words[i]
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines += 1
+      line = words[i]
+      if (lines >= maxLines - 1) return maxLines
+    } else {
+      line = test
+    }
+  }
+  if (line) lines += 1
+  return Math.max(1, lines)
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 6) {
@@ -75,11 +95,67 @@ function drawAppIcon(ctx, x, y, size, primary, primaryRgb) {
   ctx.stroke()
 }
 
+/**
+ * Single layout model used for both measure and paint.
+ */
+function buildLayout(ctx, { w, name, username, motivation, motivation2 }) {
+  const padX = 40
+  const padTop = 36
+  const padBottom = 34
+  const innerW = w - padX * 2
+  const nameLh = 48
+  const q1Lh = 34
+  const q2Lh = 30
+
+  ctx.font = 'bold 48px Bebas Neue, Outfit, system-ui, sans-serif'
+  const nameLines = countWrappedLines(ctx, String(name || 'Atleta').toUpperCase(), innerW, 2)
+
+  ctx.font = '500 28px Outfit, system-ui, sans-serif'
+  const m1Lines = countWrappedLines(ctx, motivation, innerW - 28, 3)
+
+  ctx.font = 'italic 500 24px Outfit, system-ui, sans-serif'
+  const m2Lines = countWrappedLines(ctx, motivation2, innerW - 28, 2)
+
+  const greetingY = padTop + 22
+  const nameY = greetingY + 44
+  const nameBlockH = nameLines * nameLh
+  const userY = nameY + nameBlockH + (username ? 6 : 0)
+  const chipsY = username ? userY + 36 : nameY + nameBlockH + 18
+  const box1Y = chipsY + 28
+  const box1InnerTop = 18
+  const box1LabelH = 18
+  const box1Gap = 14
+  const box1H = box1InnerTop + box1LabelH + box1Gap + m1Lines * q1Lh + 18
+  const box2Y = box1Y + box1H + 12
+  const box2H = 16 + m2Lines * q2Lh + 16
+  const h = box2Y + box2H + padBottom
+
+  return {
+    w,
+    h,
+    padX,
+    innerW,
+    nameLh,
+    q1Lh,
+    q2Lh,
+    greetingY,
+    nameY,
+    userY,
+    chipsY,
+    box1Y,
+    box1H,
+    box1InnerTop,
+    box1LabelH,
+    box1Gap,
+    box2Y,
+    box2H
+  }
+}
+
 function drawWelcomeCard(ctx, {
   x,
   y,
-  w,
-  h,
+  layout,
   greeting,
   name,
   username,
@@ -90,95 +166,120 @@ function drawWelcomeCard(ctx, {
   primaryRgb,
   accentRgb
 }) {
-  const g = ctx.createLinearGradient(x, y, x + w, y + h)
-  g.addColorStop(0, `rgba(${primaryRgb},0.95)`)
-  g.addColorStop(0.5, `rgba(${primaryRgb},0.72)`)
-  g.addColorStop(1, `rgba(${accentRgb},0.42)`)
+  const { w, h } = layout
+  const g = ctx.createLinearGradient(x, y, x + w * 0.2, y + h)
+  g.addColorStop(0, `rgba(${primaryRgb},0.96)`)
+  g.addColorStop(0.55, `rgba(${primaryRgb},0.74)`)
+  g.addColorStop(1, `rgba(${accentRgb},0.45)`)
   ctx.fillStyle = g
-  roundRect(ctx, x, y, w, h, 40)
+  roundRect(ctx, x, y, w, h, 36)
   ctx.fill()
 
-  // soft orbs
-  ctx.fillStyle = 'rgba(255,255,255,0.1)'
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'
   ctx.beginPath()
-  ctx.arc(x + w - 40, y + 36, 90, 0, Math.PI * 2)
+  ctx.arc(x + w - 28, y + 24, 64, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = 'rgba(0,0,0,0.12)'
+  ctx.fillStyle = 'rgba(0,0,0,0.1)'
   ctx.beginPath()
-  ctx.arc(x + 48, y + h - 30, 70, 0, Math.PI * 2)
+  ctx.arc(x + 36, y + h - 20, 48, 0, Math.PI * 2)
   ctx.fill()
   ctx.strokeStyle = 'rgba(255,255,255,0.1)'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.arc(x + w * 0.72, y + h * 0.78, 48, 0, Math.PI * 2)
+  ctx.arc(x + w * 0.8, y + h * 0.55, 32, 0, Math.PI * 2)
   ctx.stroke()
 
-  let cy = y + 52
-  ctx.fillStyle = 'rgba(255,255,255,0.82)'
-  ctx.font = '600 26px Outfit, system-ui, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText(greeting || 'Hola', x + 40, cy)
+  ctx.textBaseline = 'alphabetic'
 
-  cy += 56
+  ctx.fillStyle = 'rgba(255,255,255,0.84)'
+  ctx.font = '600 24px Outfit, system-ui, sans-serif'
+  ctx.fillText(greeting || 'Hola', x + layout.padX, y + layout.greetingY)
+
   ctx.fillStyle = '#0B1220'
-  ctx.font = 'bold 56px Bebas Neue, Outfit, system-ui, sans-serif'
-  const nameEnd = wrapText(ctx, String(name || 'Atleta').toUpperCase(), x + 40, cy, w - 80, 54, 2)
+  ctx.font = 'bold 48px Bebas Neue, Outfit, system-ui, sans-serif'
+  wrapText(
+    ctx,
+    String(name || 'Atleta').toUpperCase(),
+    x + layout.padX,
+    y + layout.nameY,
+    layout.innerW,
+    layout.nameLh,
+    2
+  )
 
-  cy = nameEnd + 8
   if (username) {
-    ctx.fillStyle = 'rgba(255,255,255,0.88)'
-    ctx.font = '600 28px Outfit, system-ui, sans-serif'
-    ctx.fillText(`@${String(username).replace(/^@+/, '')}`, x + 40, cy)
-    cy += 42
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.font = '600 24px Outfit, system-ui, sans-serif'
+    ctx.fillText(`@${String(username).replace(/^@+/, '')}`, x + layout.padX, y + layout.userY)
   }
 
-  // social chips
   const chips = [
     { label: 'Seguidores', value: followers },
     { label: 'Seguidos', value: following }
   ]
-  let chipX = x + 40
+  let chipX = x + layout.padX
+  const chipBaseline = y + layout.chipsY
   chips.forEach((chip) => {
     const label = `${chip.value} ${chip.label}`
-    ctx.font = '600 22px Outfit, system-ui, sans-serif'
+    ctx.font = '600 20px Outfit, system-ui, sans-serif'
     const tw = ctx.measureText(label).width
     ctx.fillStyle = 'rgba(255,255,255,0.18)'
-    roundRect(ctx, chipX, cy - 24, tw + 28, 40, 20)
+    roundRect(ctx, chipX, chipBaseline - 22, tw + 26, 36, 18)
     ctx.fill()
     ctx.fillStyle = '#FFFFFF'
-    ctx.fillText(label, chipX + 14, cy + 4)
-    chipX += tw + 40
+    ctx.fillText(label, chipX + 13, chipBaseline + 2)
+    chipX += tw + 34
   })
-  cy += 48
 
-  // quote 1
-  const box1H = 170
+  const b1x = x + layout.padX - 4
+  const b1y = y + layout.box1Y
+  const b1w = layout.innerW + 8
   ctx.fillStyle = 'rgba(0,0,0,0.28)'
-  roundRect(ctx, x + 36, cy, w - 72, box1H, 24)
+  roundRect(ctx, b1x, b1y, b1w, layout.box1H, 22)
   ctx.fill()
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)'
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'
   ctx.lineWidth = 1.5
-  roundRect(ctx, x + 36, cy, w - 72, box1H, 24)
+  roundRect(ctx, b1x, b1y, b1w, layout.box1H, 22)
   ctx.stroke()
   ctx.fillStyle = 'rgba(255,255,255,0.62)'
-  ctx.font = '700 18px Outfit, system-ui, sans-serif'
-  ctx.fillText('MOTIVACIÓN QYNTRA', x + 56, cy + 36)
+  ctx.font = '700 15px Outfit, system-ui, sans-serif'
+  ctx.fillText(
+    'MOTIVACIÓN QYNTRA',
+    x + layout.padX + 14,
+    b1y + layout.box1InnerTop + layout.box1LabelH
+  )
   ctx.fillStyle = 'rgba(255,255,255,0.96)'
-  ctx.font = '500 30px Outfit, system-ui, sans-serif'
-  wrapText(ctx, motivation, x + 56, cy + 78, w - 112, 38, 3)
-  cy += box1H + 18
+  ctx.font = '500 28px Outfit, system-ui, sans-serif'
+  wrapText(
+    ctx,
+    motivation,
+    x + layout.padX + 14,
+    b1y + layout.box1InnerTop + layout.box1LabelH + layout.box1Gap + 24,
+    layout.innerW - 28,
+    layout.q1Lh,
+    3
+  )
 
-  // quote 2
-  const box2H = 120
+  const b2x = b1x
+  const b2y = y + layout.box2Y
   ctx.fillStyle = 'rgba(255,255,255,0.08)'
-  roundRect(ctx, x + 36, cy, w - 72, box2H, 20)
+  roundRect(ctx, b2x, b2y, b1w, layout.box2H, 18)
   ctx.fill()
   ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-  roundRect(ctx, x + 36, cy, w - 72, box2H, 20)
+  roundRect(ctx, b2x, b2y, b1w, layout.box2H, 18)
   ctx.stroke()
-  ctx.fillStyle = 'rgba(255,255,255,0.78)'
-  ctx.font = 'italic 500 26px Outfit, system-ui, sans-serif'
-  wrapText(ctx, motivation2, x + 56, cy + 48, w - 112, 34, 2)
+  ctx.fillStyle = 'rgba(255,255,255,0.8)'
+  ctx.font = 'italic 500 24px Outfit, system-ui, sans-serif'
+  wrapText(
+    ctx,
+    motivation2,
+    x + layout.padX + 14,
+    b2y + 16 + 22,
+    layout.innerW - 28,
+    layout.q2Lh,
+    2
+  )
 }
 
 /**
@@ -206,31 +307,50 @@ export async function buildNativeWelcomeShareImage(payload = {}) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  const stage = ctx.createLinearGradient(0, 0, W, H)
+  const stage = ctx.createLinearGradient(0, 0, W * 0.35, H)
   stage.addColorStop(0, P.bg0)
-  stage.addColorStop(0.55, P.bg1)
+  stage.addColorStop(0.5, P.bg1)
   stage.addColorStop(1, P.bg2)
   ctx.fillStyle = stage
   ctx.fillRect(0, 0, W, H)
   ctx.fillStyle = P.brandOrb
   ctx.beginPath()
-  ctx.arc(160, 220, 200, 0, Math.PI * 2)
+  ctx.arc(120, 260, 260, 0, Math.PI * 2)
   ctx.fill()
   ctx.fillStyle = P.accentOrb
   ctx.beginPath()
-  ctx.arc(920, 1680, 260, 0, Math.PI * 2)
+  ctx.arc(960, 1560, 300, 0, Math.PI * 2)
   ctx.fill()
 
-  const cardX = 56
-  const cardY = mode === 'story' ? 160 : 120
-  const cardW = W - 112
-  const cardH = mode === 'story' ? 1120 : 1180
+  const cardX = 64
+  const cardW = W - 128
+  const layout = buildLayout(ctx, {
+    w: cardW,
+    name,
+    username,
+    motivation,
+    motivation2
+  })
+
+  const ctaGap = 24
+  const ctaH = mode === 'story' ? 248 : 236
+  const stackH = layout.h + ctaGap + ctaH
+  const stackTop = Math.round((H - stackH) / 2)
+  const cardY = Math.max(100, stackTop)
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(0,0,0,0.2)'
+  ctx.shadowBlur = 36
+  ctx.shadowOffsetY = 16
+  ctx.fillStyle = 'rgba(0,0,0,0.001)'
+  roundRect(ctx, cardX, cardY, cardW, layout.h, 36)
+  ctx.fill()
+  ctx.restore()
 
   drawWelcomeCard(ctx, {
     x: cardX,
     y: cardY,
-    w: cardW,
-    h: cardH,
+    layout,
     greeting,
     name,
     username,
@@ -242,55 +362,71 @@ export async function buildNativeWelcomeShareImage(payload = {}) {
     accentRgb: P.accentRgb
   })
 
+  const ctaY = cardY + layout.h + ctaGap
+  const ctaX = cardX + 8
+  const ctaW = cardW - 16
+
+  ctx.fillStyle = P.mode === 'light' ? 'rgba(255,255,255,0.94)' : 'rgba(18,22,32,0.94)'
+  roundRect(ctx, ctaX, ctaY, ctaW, ctaH, 26)
+  ctx.fill()
+  ctx.strokeStyle = P.border
+  ctx.lineWidth = 1.5
+  roundRect(ctx, ctaX, ctaY, ctaW, ctaH, 26)
+  ctx.stroke()
+
   if (mode === 'story') {
-    const by = cardY + cardH + 48
-    // Seguir+ pill
-    const btnW = 280
-    const btnH = 72
+    const btnW = 248
+    const btnH = 60
     const bx = (W - btnW) / 2
+    const by = ctaY + 32
     ctx.fillStyle = P.primary
-    roundRect(ctx, bx, by, btnW, btnH, 36)
+    roundRect(ctx, bx, by, btnW, btnH, 30)
     ctx.fill()
     ctx.fillStyle = '#FFFFFF'
-    ctx.font = '700 32px Outfit, system-ui, sans-serif'
+    ctx.font = '700 28px Outfit, system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('Seguir+', bx + btnW / 2, by + 46)
+    ctx.textBaseline = 'middle'
+    ctx.fillText('Seguir+', bx + btnW / 2, by + btnH / 2 + 1)
 
+    ctx.textBaseline = 'alphabetic'
     ctx.fillStyle = P.text
-    ctx.font = '600 30px Outfit, system-ui, sans-serif'
-    ctx.fillText('Sigámonos mutuamente', W / 2, by + 130)
+    ctx.font = '700 28px Outfit, system-ui, sans-serif'
+    ctx.fillText('Sigámonos mutuamente', W / 2, by + btnH + 44)
     ctx.fillStyle = P.textSecondary
-    ctx.font = '500 26px Outfit, system-ui, sans-serif'
+    ctx.font = '500 23px Outfit, system-ui, sans-serif'
     wrapText(
       ctx,
       'Haz crecer la comunidad Qyntra: motiva, entrena y progresa conmigo.',
-      100,
-      by + 180,
-      W - 200,
-      34,
-      3
+      ctaX + 36,
+      by + btnH + 84,
+      ctaW - 72,
+      30,
+      2
     )
     ctx.textAlign = 'left'
   } else {
-    const by = cardY + cardH + 56
-    drawAppIcon(ctx, W / 2 - 44, by, 88, P.primary, P.primaryRgb)
-    ctx.fillStyle = P.primary
-    ctx.font = '700 22px Outfit, system-ui, sans-serif'
+    const iconSize = 58
+    const rowY = ctaY + 32
+    drawAppIcon(ctx, W / 2 - iconSize / 2, rowY, iconSize, P.primary, P.primaryRgb)
+
     ctx.textAlign = 'center'
-    ctx.fillText('QYNTRA GYM', W / 2, by + 124)
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = P.primary
+    ctx.font = '700 17px Outfit, system-ui, sans-serif'
+    ctx.fillText('QYNTRA GYM', W / 2, rowY + iconSize + 24)
     ctx.fillStyle = P.text
-    ctx.font = '700 36px Outfit, system-ui, sans-serif'
-    ctx.fillText('Únete a la comunidad', W / 2, by + 178)
+    ctx.font = '700 30px Outfit, system-ui, sans-serif'
+    ctx.fillText('Únete a la comunidad', W / 2, rowY + iconSize + 62)
     ctx.fillStyle = P.textSecondary
-    ctx.font = '500 26px Outfit, system-ui, sans-serif'
+    ctx.font = '500 22px Outfit, system-ui, sans-serif'
     wrapText(
       ctx,
       'Entrena · Progresa · Comparte. Descarga Qyntra Gym y empieza tu racha hoy.',
-      110,
-      by + 230,
-      W - 220,
-      34,
-      3
+      ctaX + 32,
+      rowY + iconSize + 100,
+      ctaW - 64,
+      28,
+      2
     )
     ctx.textAlign = 'left'
   }
