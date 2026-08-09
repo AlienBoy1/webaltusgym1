@@ -296,7 +296,8 @@ export default function Workouts() {
   const dialog = useAppDialog()
   const me = useAuthStore((s) => s.user)
   const meId = me?._id || me?.id
-  const hydrated = useRef(false)
+  // Hydrate synchronously from LS so remounts (nav slide) never clear the session mid-flight.
+  const hydrated = useRef(true)
   const restStartedAt = useRef(null)
   const [restHistory, setRestHistory] = useState([])
   const [lastSavedWorkout, setLastSavedWorkout] = useState(null)
@@ -309,7 +310,7 @@ export default function Workouts() {
   /** During active session: which exercises to show in the checklist */
   const [exerciseListFilter, setExerciseListFilter] = useState('pending') // 'pending' | 'completed'
   const [templates, setTemplates] = useState(loadTemplatesFromStorage)
-  const [activeWorkout, setActiveWorkout] = useState(null)
+  const [activeWorkout, setActiveWorkout] = useState(() => getWorkoutSession()?.activeWorkout ?? null)
 
   // Merge GymRat / creator metadata from server into local templates
   useEffect(() => {
@@ -354,14 +355,37 @@ export default function Workouts() {
     }
   }, [])
 
-  const [sessionStart, setSessionStart] = useState(null)
-  const [restActive, setRestActive] = useState(false)
-  const [restRemaining, setRestRemaining] = useState(0)
-  const [restEndsAt, setRestEndsAt] = useState(null)
-  const [restTotal, setRestTotal] = useState(DEFAULT_REST_SECONDS)
-  const [restTimerSource, setRestTimerSource] = useState(null)
-  const [completedExercises, setCompletedExercises] = useState([])
-  const [workoutTime, setWorkoutTime] = useState(0)
+  const [sessionStart, setSessionStart] = useState(() => getWorkoutSession()?.sessionStart ?? null)
+  const [restActive, setRestActive] = useState(() => {
+    const saved = getWorkoutSession()
+    if (!saved?.activeWorkout || !saved?.sessionStart) return false
+    return getRestRemaining(saved, Date.now()) > 0
+  })
+  const [restRemaining, setRestRemaining] = useState(() => {
+    const saved = getWorkoutSession()
+    if (!saved?.activeWorkout || !saved?.sessionStart) return 0
+    return getRestRemaining(saved, Date.now())
+  })
+  const [restEndsAt, setRestEndsAt] = useState(() => {
+    const saved = getWorkoutSession()
+    if (!saved?.activeWorkout || !saved?.sessionStart) return null
+    return getRestRemaining(saved, Date.now()) > 0 ? saved.restEndsAt : null
+  })
+  const [restTotal, setRestTotal] = useState(() => {
+    const saved = getWorkoutSession()
+    return saved?.restDuration || DEFAULT_REST_SECONDS
+  })
+  const [restTimerSource, setRestTimerSource] = useState(
+    () => getWorkoutSession()?.restTimerSource || null
+  )
+  const [completedExercises, setCompletedExercises] = useState(
+    () => getWorkoutSession()?.completedExercises || []
+  )
+  const [workoutTime, setWorkoutTime] = useState(() => {
+    const saved = getWorkoutSession()
+    if (!saved?.sessionStart) return 0
+    return getElapsedSeconds(saved, Date.now())
+  })
   const [preferences, setPreferences] = useState(
     () =>
       getWorkoutPreferences() || {
@@ -453,24 +477,8 @@ export default function Workouts() {
     }
   }
 
-  // Restore session once — never clear before hydration
-  useEffect(() => {
-    const saved = getWorkoutSession()
-    if (saved?.activeWorkout && saved?.sessionStart) {
-      const now = Date.now()
-      const restLeft = getRestRemaining(saved, now)
-      setActiveWorkout(saved.activeWorkout)
-      setSessionStart(saved.sessionStart)
-      setCompletedExercises(saved.completedExercises || [])
-      setWorkoutTime(getElapsedSeconds(saved, now))
-      setRestActive(restLeft > 0)
-      setRestEndsAt(restLeft > 0 ? saved.restEndsAt : null)
-      setRestRemaining(restLeft)
-      setRestTimerSource(saved.restTimerSource || null)
-      setRestTotal(saved.restDuration || preferences?.restTimerDefault || DEFAULT_REST_SECONDS)
-    }
-    hydrated.current = true
-  }, [preferences?.restTimerDefault])
+  // Session is restored synchronously from localStorage on mount (see useState inits).
+  // Do not clear storage while remounting via MainNavSlideOutlet.
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)

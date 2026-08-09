@@ -35,13 +35,27 @@ function isHorizontallyScrollable(el) {
   return false
 }
 
+function hasVisibleBlockingModal() {
+  const nodes = document.querySelectorAll('[aria-modal="true"]')
+  for (const el of nodes) {
+    if (!(el instanceof HTMLElement)) continue
+    const style = window.getComputedStyle(el)
+    if (style.display === 'none' || style.visibility === 'hidden') continue
+    if (Number(style.opacity) === 0) continue
+    if (el.getAttribute('data-no-nav-block') === '1') continue
+    const r = el.getBoundingClientRect()
+    if (r.width > 8 && r.height > 8) return true
+  }
+  return false
+}
+
 function shouldIgnoreTarget(target) {
   if (!target?.closest) return true
   if (target.closest(IGNORE_SELECTOR)) return true
   if (isHorizontallyScrollable(target)) return true
   // Don't steal gestures while overlays / tutorials own the screen
   if (document.body.dataset.qyntraTutorial === '1') return true
-  if (document.querySelector('[aria-modal="true"]')) return true
+  if (hasVisibleBlockingModal()) return true
   return false
 }
 

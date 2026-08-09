@@ -29,25 +29,25 @@ export default function MainNavSlideOutlet({ className = '' }) {
   const isMainNav = MAIN_NAV_PATHS.includes(location.pathname)
 
   return (
-    <div className={`relative overflow-hidden ${className}`}>
-      <AnimatePresence mode="popLayout" initial={false} custom={dir}>
+    <div className={`relative overflow-x-clip ${className}`}>
+      <AnimatePresence initial={false} custom={dir}>
         <motion.div
           key={location.pathname}
           data-tour={isMainNav ? 'tour-main-content' : undefined}
           custom={dir}
           initial={
             dir === 0
-              ? { x: 0, opacity: 1 }
-              : { x: dir > 0 ? '42%' : '-42%', opacity: 0.72 }
+              ? false
+              : { x: dir > 0 ? '36%' : '-36%', opacity: 0.88 }
           }
           animate={{ x: 0, opacity: 1 }}
           exit={
             dir === 0
-              ? { x: 0, opacity: 1 }
-              : { x: dir > 0 ? '-42%' : '42%', opacity: 0.72 }
+              ? undefined
+              : { x: dir > 0 ? '-28%' : '28%', opacity: 0.88 }
           }
-          transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
-          className="will-change-transform"
+          transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+          className="relative w-full"
         >
           <Outlet />
         </motion.div>

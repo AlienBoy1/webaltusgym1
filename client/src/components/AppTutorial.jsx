@@ -15,6 +15,7 @@ import { markTutorialCompletedVersion } from '../tutorials/spotlight'
 import TutorialDemoSurface from './TutorialDemoSurface'
 import { canStartTutorials, subscribeAppGate, setTutorialBlocking } from '../utils/appGate'
 import { showBadgeUnlockCelebration } from './BadgeUnlockCelebration'
+import { getWorkoutSession } from '../utils/workoutSession'
 
 export const TUTORIAL_STORAGE_KEY = 'qyntra_tutorial_done'
 export const TUTORIAL_START_EVENT = 'qyntra:start-tutorial'
@@ -509,8 +510,12 @@ export default function AppTutorial() {
         if (force) setTutorialBlocking(false)
         return
       }
-      completingRef.current = false
       const nextId = id || TUTORIAL_IDS.QUICK_START
+      if (nextId === TUTORIAL_IDS.MAIN_NAV && getWorkoutSession()?.activeWorkout && !force) {
+        setTutorialBlocking(false)
+        return
+      }
+      completingRef.current = false
       const nextSteps = getTutorialSteps(nextId)
       setTutorialId(nextId)
       setStepIndex(0)
@@ -583,6 +588,8 @@ export default function AppTutorial() {
     if (!user.username) return undefined
     if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return undefined
     if (hasCompletedTutorial(user, TUTORIAL_IDS.MAIN_NAV)) return undefined
+    // Never yank the user out of a live workout session.
+    if (getWorkoutSession()?.activeWorkout) return undefined
     setTutorialBlocking(true)
     if (!canStartTutorials()) return undefined
     const t = window.setTimeout(() => start(TUTORIAL_IDS.MAIN_NAV), 480)
@@ -611,9 +618,27 @@ export default function AppTutorial() {
         return
       }
       if (!hasCompletedTutorial(u, TUTORIAL_IDS.MAIN_NAV)) {
+        if (getWorkoutSession()?.activeWorkout) return
         window.setTimeout(() => start(TUTORIAL_IDS.MAIN_NAV), 400)
       }
     })
+  }, [open, start])
+
+  // After a workout ends, MAIN_NAV can finally start if still pending.
+  useEffect(() => {
+    const maybeStartMainNav = () => {
+      if (open) return
+      if (useAuthStore.getState().initializing) return
+      const u = useAuthStore.getState().user
+      if (!u?.username) return
+      if (!hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) return
+      if (hasCompletedTutorial(u, TUTORIAL_IDS.MAIN_NAV)) return
+      if (getWorkoutSession()?.activeWorkout) return
+      if (!canStartTutorials()) return
+      start(TUTORIAL_IDS.MAIN_NAV)
+    }
+    window.addEventListener('qyntra:workout-session', maybeStartMainNav)
+    return () => window.removeEventListener('qyntra:workout-session', maybeStartMainNav)
   }, [open, start])
 
   useEffect(() => {
