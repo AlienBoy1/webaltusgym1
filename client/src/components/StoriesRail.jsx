@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -1384,6 +1385,10 @@ export default function StoriesRail({
       </>
       )}
 
+      {/* Portaled: parent MainNavSlideOutlet uses transform, which breaks position:fixed */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <>
       {/* Full-screen WhatsApp-style story preview composer (always dark chrome) */}
       <AnimatePresence>
         {composeOpen && (
@@ -2229,6 +2234,9 @@ export default function StoriesRail({
           </div>
         )}
       </AnimatePresence>
+          </>,
+          document.body
+        )}
     </>
   )
 }
