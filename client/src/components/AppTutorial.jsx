@@ -554,7 +554,6 @@ export default function AppTutorial() {
       return undefined
     }
     if (hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) {
-      setTutorialBlocking(false)
       return undefined
     }
     setTutorialBlocking(true)
@@ -572,15 +571,42 @@ export default function AppTutorial() {
     user
   ])
 
-  // Retry when gates flip to ready
+  // Main nav: once after quick start for every account that has not seen it
+  useEffect(() => {
+    if (initializing || !user || open) return undefined
+    if (!user.username) return undefined
+    if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return undefined
+    if (hasCompletedTutorial(user, TUTORIAL_IDS.MAIN_NAV)) return undefined
+    setTutorialBlocking(true)
+    if (!canStartTutorials()) return undefined
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.MAIN_NAV), 480)
+    return () => window.clearTimeout(t)
+  }, [
+    initializing,
+    user?.id,
+    user?._id,
+    user?.username,
+    user?.settings?.tutorialCompleted,
+    user?.settings?.tutorialMainNavCompleted,
+    open,
+    start,
+    user
+  ])
+
+  // Retry auto tutorials when higher-priority gates release
   useEffect(() => {
     return subscribeAppGate((gate) => {
       if (!gate.canStartTutorials) return
       if (useAuthStore.getState().initializing) return
       const u = useAuthStore.getState().user
       if (!u?.username || open) return
-      if (hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) return
-      window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START), 400)
+      if (!hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) {
+        window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START), 400)
+        return
+      }
+      if (!hasCompletedTutorial(u, TUTORIAL_IDS.MAIN_NAV)) {
+        window.setTimeout(() => start(TUTORIAL_IDS.MAIN_NAV), 400)
+      }
     })
   }, [open, start])
 
@@ -588,6 +614,7 @@ export default function AppTutorial() {
     if (initializing || !user || open) return undefined
     if (!user.username) return undefined
     if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return undefined
+    if (!hasCompletedTutorial(user, TUTORIAL_IDS.MAIN_NAV)) return undefined
     if (location.pathname !== '/profile') return undefined
     if (hasCompletedTutorial(user, TUTORIAL_IDS.PROFILE_EDIT)) return undefined
     setTutorialBlocking(true)
@@ -629,6 +656,8 @@ export default function AppTutorial() {
   const finish = useCallback(async () => {
     if (completingRef.current) return
     completingRef.current = true
+    const chainMainNav =
+      tutorialId === TUTORIAL_IDS.QUICK_START && !hasCompletedTutorial(user, TUTORIAL_IDS.MAIN_NAV)
     setOpen(false)
     setReady(false)
     setUseDemo(false)
@@ -638,6 +667,11 @@ export default function AppTutorial() {
     const uid = userIdOf(user)
     writeLocalCompletion(currentMeta.completionKey, uid)
     markTutorialCompletedVersion(user, tutorialId)
+
+    // Chain before await / Nuevo prompt (CLOSED sync waits ~420ms).
+    if (chainMainNav) {
+      window.setTimeout(() => start(TUTORIAL_IDS.MAIN_NAV), 280)
+    }
 
     if (tutorialId === TUTORIAL_IDS.QUICK_START) {
       try {
@@ -680,7 +714,7 @@ export default function AppTutorial() {
         ...(tutorialId === TUTORIAL_IDS.QUICK_START ? { tutorialCompleted: true } : {})
       })
     }
-  }, [tutorialId, updateUser, user])
+  }, [tutorialId, updateUser, user, start])
 
   const next = () => {
     if (isLast) finish()

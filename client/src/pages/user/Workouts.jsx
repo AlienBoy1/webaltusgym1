@@ -46,6 +46,8 @@ import {
   isQiSiProfile,
   isQiSiRoutine,
   qisiPublicBlockMessage,
+  qisiEditBlockMessage,
+  qisiEditBlockTitle,
   QISI_HANDLE,
   QISI_NAME
 } from '../../utils/qisi'
@@ -791,6 +793,19 @@ export default function Workouts() {
       toast.error('Completa todos los campos antes de guardar la rutina')
       return
     }
+
+    if (editingId) {
+      const previous = templates.find((t) => t.id === editingId)
+      if (previous && (isQiSiRoutine(previous) || isQiSiProfile(previous?.originalCreator))) {
+        await dialog.alert(qisiEditBlockMessage(), {
+          title: qisiEditBlockTitle(),
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        })
+        return
+      }
+    }
+
     const colors = ['primary', 'cyan', 'purple', 'green']
 
     if (editingId) {
@@ -874,6 +889,14 @@ export default function Workouts() {
   }
 
   const openEditRoutine = async (template) => {
+    if (isQiSiRoutine(template) || isQiSiProfile(template?.originalCreator)) {
+      await dialog.alert(qisiEditBlockMessage(), {
+        title: qisiEditBlockTitle(),
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     if (isAdoptedFromOther(template, meId)) {
       const creator =
         template.originalCreator?.username
@@ -947,8 +970,8 @@ export default function Workouts() {
 
   const togglePublic = async (template) => {
     if (isQiSiRoutine(template) || isQiSiProfile(template?.originalCreator)) {
-      await dialog.alert(qisiPublicBlockMessage(), {
-        title: `Rutinas de ${QISI_NAME}`,
+      await dialog.alert(qisiEditBlockMessage(), {
+        title: qisiEditBlockTitle(),
         confirmLabel: 'Entendido',
         tone: 'info'
       })
@@ -1453,6 +1476,10 @@ export default function Workouts() {
               tutorialId={TUTORIAL_IDS.WORKOUTS}
               message="Esta pantalla tiene un tutorial para crear rutinas, iniciar sesiones y completar ejercicios."
             />
+            <TutorialHelpButton
+              tutorialId={TUTORIAL_IDS.QYSI_TRAINING}
+              message="Aprende a abrir QySi, elegir variante y nivel, adoptar la rutina e iniciar. Las de QySi no se editan."
+            />
           </div>
           <p className="mt-2 max-w-lg text-sm text-app-secondary sm:text-base">
             Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.
@@ -1668,7 +1695,16 @@ export default function Workouts() {
                     type="button"
                     onClick={() => openEditRoutine(template)}
                     className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
-                    title="Editar"
+                    title={
+                      isQiSiRoutine(template)
+                        ? `Las rutinas de ${QISI_NAME} no se pueden editar`
+                        : 'Editar'
+                    }
+                    aria-label={
+                      isQiSiRoutine(template)
+                        ? `Las rutinas de ${QISI_NAME} no se pueden editar`
+                        : 'Editar'
+                    }
                   >
                     <FiEdit2 size={13} />
                   </button>

@@ -175,7 +175,7 @@ export default function InstallAppPrompt() {
 
   return createPortal(
     <AnimatePresence>
-      {open && (
+      {open && (isLoggedIn ? canShowPrompt('install') : true) && (
         <motion.div
           className="app-overlay-sheet fixed inset-0 z-[140] flex items-end sm:items-center justify-center p-0 sm:p-4"
           initial={{ opacity: 0 }}

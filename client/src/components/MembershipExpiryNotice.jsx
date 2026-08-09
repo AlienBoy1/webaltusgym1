@@ -159,7 +159,7 @@ export default function MembershipExpiryNotice() {
     setOpen(false)
   }
 
-  if (typeof document === 'undefined' || !open || !user) return null
+  if (typeof document === 'undefined' || !open || !user || !canShowPrompt('membership')) return null
 
   return createPortal(
     <AnimatePresence>

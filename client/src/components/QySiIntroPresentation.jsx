@@ -273,7 +273,7 @@ export default function QySiIntroPresentation() {
 
   return createPortal(
     <AnimatePresence>
-      {open && (
+      {open && canShowPrompt('qysi') && (
         <motion.div
           className="fixed inset-0 z-[190] flex items-end justify-center overflow-hidden sm:items-center"
           initial={{ opacity: 0 }}

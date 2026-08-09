@@ -64,6 +64,7 @@ export default function NewTutorialPrompt() {
       }
       if (document.body.dataset.qyntraTutorial === '1') {
         setPayload(null)
+        setTutorialNoticeBlocking(false)
         return
       }
 
@@ -111,7 +112,7 @@ export default function NewTutorialPrompt() {
     }
   }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, initializing])
 
-  if (typeof document === 'undefined' || !payload) return null
+  if (typeof document === 'undefined' || !payload || !canShowPrompt('tutorialNotice')) return null
 
   const count = payload.items.length
   const allUpdates = payload.items.every((i) => i.kind === 'update')
@@ -145,6 +146,7 @@ export default function NewTutorialPrompt() {
       : 'Hay tutoriales nuevos y actualizaciones listas para ti.'
 
   const Icon = allUpdates ? FiRefreshCw : FiBookOpen
+  const singleIcon = count === 1 ? payload.items[0]?.icon : null
 
   return createPortal(
     <AnimatePresence>
@@ -178,15 +180,16 @@ export default function NewTutorialPrompt() {
             <div className="relative px-5 pt-5 pb-4">
               <div className="flex items-start gap-3">
                 <span
-                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
+                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl leading-none"
                   style={{
                     background: allUpdates
                       ? 'rgba(250,204,21,0.16)'
                       : 'rgba(var(--color-primary-rgb),0.16)',
                     color: allUpdates ? '#FACC15' : 'var(--color-primary)'
                   }}
+                  aria-hidden
                 >
-                  <Icon size={22} />
+                  {singleIcon || <Icon size={22} />}
                 </span>
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
@@ -200,19 +203,41 @@ export default function NewTutorialPrompt() {
                   </p>
                 </div>
               </div>
+
               {count > 1 && (
-                <ul className="mt-4 max-h-36 space-y-1.5 overflow-y-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/60 p-2.5">
+                <div className="mt-3 flex flex-wrap gap-1.5">
                   {payload.items.map((item) => (
-                    <li
-                      key={item.id}
-                      className="truncate px-1.5 py-1 text-sm text-[color:var(--text-primary)]"
+                    <span
+                      key={`ico-${item.id}`}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] text-lg"
+                      title={item.title}
+                      aria-hidden
                     >
-                      {item.kind === 'update' ? '↻ ' : '✦ '}
-                      {item.title}
-                    </li>
+                      {item.icon || '📖'}
+                    </span>
                   ))}
-                </ul>
+                </div>
               )}
+
+              <ul className="mt-4 max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/60 p-2">
+                {payload.items.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-[color:var(--text-primary)]"
+                  >
+                    <span
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color:var(--bg-elevated)] text-base leading-none"
+                      aria-hidden
+                    >
+                      {item.icon || '📖'}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{item.title}</span>
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
+                      {item.kind === 'update' ? 'Actualizado' : 'Nuevo'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
             <div
               className="flex gap-2 border-t border-[color:var(--border-subtle)] px-5 py-4"

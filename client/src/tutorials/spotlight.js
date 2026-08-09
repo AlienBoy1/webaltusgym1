@@ -210,6 +210,8 @@ export function getPendingTutorialNotices(user) {
     }
 
     if (!isKnown && !completed) {
+      // Auto-started tours use the spotlight layer, not the «Nuevo» sheet.
+      if (item.autoStartAfterQuickStart) continue
       notices.push({ ...item, kind: 'new' })
     }
   }

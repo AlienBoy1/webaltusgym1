@@ -1,4 +1,5 @@
-import { FiCheck, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye, FiUser, FiCompass } from 'react-icons/fi'
+import { FiCheck, FiLock, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye, FiUser, FiCompass } from 'react-icons/fi'
+import QySiAvatar from './QySiAvatar'
 
 /**
  * Premium fallback surfaces when a real UI target is missing.
@@ -21,6 +22,80 @@ export default function TutorialDemoSurface({ demoId }) {
         <div className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3">
           <FiPlay size={16} /> Iniciar
         </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'nav-swipe') {
+    const tabs = ['Inicio', 'Social', 'Entrenos', 'Progreso', 'Perfil']
+    return (
+      <div data-tour="tour-nav-swipe-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="relative px-4 pt-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Ejemplo · Deslizar
+          </p>
+          <p className="mt-1 font-display text-base text-[color:var(--text-primary)]">
+            Desliza la pantalla
+          </p>
+          <div className="relative mt-4 h-28 overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]">
+            <div
+              className="absolute inset-y-0 left-0 flex w-[300%] items-center"
+              style={{ animation: 'qyntra-nav-swipe-demo 2.8s ease-in-out infinite' }}
+            >
+              {['Inicio', 'Social', 'Entrenos'].map((label) => (
+                <div
+                  key={label}
+                  className="flex h-full w-1/3 flex-col items-center justify-center gap-1 px-4"
+                >
+                  <span className="rounded-full bg-[rgba(var(--color-primary-rgb),0.16)] px-3 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]">
+                    {label}
+                  </span>
+                  <span className="text-center text-xs text-[color:var(--text-muted)]">
+                    Contenido de {label}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div
+              className="pointer-events-none absolute bottom-3 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full bg-[color:var(--bg-elevated)] shadow-md"
+              style={{ animation: 'qyntra-nav-finger-demo 2.8s ease-in-out infinite' }}
+              aria-hidden
+            >
+              <span className="block h-3.5 w-3.5 rounded-full bg-[color:var(--color-primary)]" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between pb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+            <span>← Anterior</span>
+            <span>Siguiente →</span>
+          </div>
+        </div>
+        <div className="flex justify-around border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/60 px-1 py-2">
+          {tabs.map((label, i) => (
+            <div
+              key={label}
+              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 ${
+                i === 1 ? 'text-[color:var(--color-primary)]' : 'text-[color:var(--text-muted)]'
+              }`}
+            >
+              <span className="text-[9px] font-semibold leading-tight">{label}</span>
+              {i === 1 && (
+                <span className="h-1 w-1 rounded-full bg-[color:var(--color-primary)]" />
+              )}
+            </div>
+          ))}
+        </div>
+        <style>{`
+          @keyframes qyntra-nav-swipe-demo {
+            0%, 12% { transform: translateX(0); }
+            38%, 52% { transform: translateX(-33.333%); }
+            78%, 100% { transform: translateX(-66.666%); }
+          }
+          @keyframes qyntra-nav-finger-demo {
+            0%, 12% { transform: translate(-20%, 0); opacity: 0.85; }
+            38%, 52% { transform: translate(-50%, 0); opacity: 1; }
+            78%, 100% { transform: translate(-80%, 0); opacity: 0.85; }
+          }
+        `}</style>
       </div>
     )
   }
@@ -890,6 +965,167 @@ export default function TutorialDemoSurface({ demoId }) {
             {label}
           </div>
         ))}
+      </div>
+    )
+  }
+
+  if (demoId === 'qysi-fab') {
+    return (
+      <div data-tour="tour-qysi-fab-demo" className={`${shell} overflow-hidden p-0`}>
+        <div className="relative flex h-36 items-end justify-end bg-[radial-gradient(ellipse_at_70%_40%,rgba(var(--color-primary-rgb),0.22),transparent_65%)] px-5 pb-5">
+          <p className="absolute left-4 top-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+            Ejemplo · Burbuja
+          </p>
+          <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[color:var(--bg-elevated)] py-2 pl-2 pr-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.35)]">
+            <QySiAvatar size={36} />
+            <span className="text-sm font-semibold text-[color:var(--text-primary)]">QySi</span>
+          </div>
+        </div>
+        <p className="border-t border-[color:var(--border-subtle)] px-4 py-3 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+          La burbuja flota en Entrenamientos. Tócala para abrir el asistente.
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'qysi-offer') {
+    return (
+      <div data-tour="tour-qysi-offer-demo" className={`${shell} p-4`}>
+        <div className="flex items-center gap-2.5">
+          <QySiAvatar size={40} />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+              Ejemplo · Oferta
+            </p>
+            <p className="font-display text-base text-[color:var(--text-primary)]">Qué te da QySi</p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {['Gimnasio', 'Casa', 'Calistenia', 'Running', 'Full body'].map((label, i) => (
+            <div
+              key={label}
+              className={`rounded-xl border px-2.5 py-2.5 text-center text-[11px] font-semibold ${
+                i === 0
+                  ? 'border-[rgba(var(--color-primary-rgb),0.45)] bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]'
+                  : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] text-[color:var(--text-secondary)]'
+              } ${i === 4 ? 'col-span-2' : ''}`}
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'qysi-path') {
+    return (
+      <div data-tour="tour-qysi-path-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Ruta
+        </p>
+        <p className="mt-1 font-display text-base text-[color:var(--text-primary)]">Arma tu plan</p>
+        <ol className="mt-3 space-y-2">
+          {[
+            { n: '1', t: 'Dónde entrenas', d: 'Gimnasio', active: false },
+            { n: '2', t: 'Enfoque', d: 'Full body', active: true },
+            { n: '3', t: 'Nivel', d: 'Elige…', active: false }
+          ].map((row) => (
+            <li
+              key={row.n}
+              className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${
+                row.active
+                  ? 'border-[rgba(var(--color-primary-rgb),0.45)] bg-[rgba(var(--color-primary-rgb),0.1)]'
+                  : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]'
+              }`}
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[rgba(var(--color-primary-rgb),0.16)] text-xs font-bold text-[color:var(--color-primary)]">
+                {row.n}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold text-[color:var(--text-primary)]">{row.t}</span>
+                <span className="text-[11px] text-[color:var(--text-muted)]">{row.d}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    )
+  }
+
+  if (demoId === 'qysi-adopt') {
+    return (
+      <div data-tour="tour-qysi-adopt-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Adoptar
+        </p>
+        <div className="mt-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] p-3">
+          <div className="flex items-center gap-2">
+            <QySiAvatar size={28} />
+            <div>
+              <p className="text-sm font-semibold text-[color:var(--text-primary)]">QySi · Full Body</p>
+              <p className="text-[11px] text-[color:var(--text-muted)]">6 ejercicios · intermedio</p>
+            </div>
+          </div>
+          <div className="btn-primary mt-3 flex w-full items-center justify-center gap-2 py-2.5 text-sm">
+            Adoptar rutina
+          </div>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+          Tras adoptarla, aparece en tu lista con la etiqueta de QySi.
+        </p>
+      </div>
+    )
+  }
+
+  if (demoId === 'qysi-no-edit') {
+    return (
+      <div data-tour="tour-qysi-no-edit-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Bloqueo
+        </p>
+        <div className="mt-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-[color:var(--text-primary)]">QySi · Full Body</p>
+              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[rgba(var(--color-primary-rgb),0.12)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--color-primary)]">
+                <QySiAvatar size={12} /> QySi
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] px-2 py-1 text-[10px] font-semibold text-[color:var(--text-muted)]">
+              <FiLock size={11} /> Bloqueada
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 opacity-45">
+            <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] py-2 text-center text-[11px] text-[color:var(--text-muted)] line-through">
+              Editar
+            </div>
+            <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] py-2 text-center text-[11px] text-[color:var(--text-muted)] line-through">
+              Hacer pública
+            </div>
+          </div>
+          <p className="mt-3 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+            Entrena tal cual o crea tu propia rutina si quieres personalizar.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'qysi-start') {
+    return (
+      <div data-tour="tour-qysi-start-demo" className={`${shell} p-4`}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-primary)]">
+          Ejemplo · Iniciar
+        </p>
+        <h3 className="mt-1 font-display text-lg text-[color:var(--text-primary)]">QySi · Full Body</h3>
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]">
+          <QySiAvatar size={14} /> Rutina de QySi
+        </span>
+        <p className="mt-2 text-xs text-[color:var(--text-muted)]">6 ejercicios · ~45 min</p>
+        <div className="btn-primary mt-4 flex w-full items-center justify-center gap-2 py-3">
+          <FiPlay size={16} /> Iniciar
+        </div>
       </div>
     )
   }

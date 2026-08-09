@@ -206,7 +206,7 @@ export default function WelcomeIntroModal() {
 
   return createPortal(
     <AnimatePresence>
-      {open && (
+      {open && canShowPrompt('welcome') && (
         <motion.div
           className="fixed inset-0 z-[220] flex items-end justify-center sm:items-center p-0 sm:p-4"
           initial={{ opacity: 0 }}

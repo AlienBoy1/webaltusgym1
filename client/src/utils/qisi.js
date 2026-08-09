@@ -59,8 +59,19 @@ export function isQiSiRoutine(rowOrTemplate) {
 export function qisiPublicBlockMessage() {
   return (
     'Esta rutina pertenece a QySi, nuestro Sistema inteligente Qyntra interno (@Qyntra-inner). ' +
-    'Las rutinas de QySi no se pueden hacer públicas ni aparecen en Explorar rutinas.'
+    'Las rutinas de QySi no se pueden editar ni hacer públicas, y no aparecen en Explorar rutinas.'
   )
+}
+
+export function qisiEditBlockMessage() {
+  return (
+    'Las rutinas de QySi (@Qyntra-inner) no se pueden editar ni hacer públicas. ' +
+    'Están diseñadas para entrenarse tal cual. Si quieres algo distinto, crea tu propia rutina.'
+  )
+}
+
+export function qisiEditBlockTitle() {
+  return 'Rutinas de QySi'
 }
 
 export function displayQiSiHandle(username) {

@@ -527,7 +527,11 @@ export default function MainLayout() {
             </NavLink>
 
             {/* Desktop primary nav (also used as tutorial targets when bottom nav is hidden) */}
-            <nav className="ml-2 hidden items-center gap-0.5 md:flex" aria-label="Navegación principal">
+            <nav
+              data-tour="tour-main-nav"
+              className="ml-2 hidden items-center gap-0.5 md:flex"
+              aria-label="Navegación principal"
+            >
               {navItems.map((item) => (
                 <NavLink
                   key={`desk-${item.path}`}
@@ -880,6 +884,7 @@ export default function MainLayout() {
       {/* Bottom Navigation (Mobile) — hide while a chat thread is open */}
       <nav
         data-no-swipe
+        data-tour="tour-main-nav"
         className={`glass fixed bottom-0 left-0 right-0 z-50 px-2 py-2 md:hidden ${
           chatThreadOpen ? 'pointer-events-none invisible translate-y-full' : ''
         }`}

@@ -12,6 +12,7 @@ import {
 
 export const TUTORIAL_IDS = {
   QUICK_START: 'quick_start',
+  MAIN_NAV: 'main_nav',
   PROFILE_EDIT: 'profile_edit',
   WORKOUTS: 'workouts',
   COMMUNITY: 'community',
@@ -23,7 +24,8 @@ export const TUTORIAL_IDS = {
   PROGRESS: 'progress',
   REST_TIMES: 'rest_times',
   PRIVACY_PERMISSIONS: 'privacy_permissions',
-  QYSI_WELCOME: 'qysi_welcome'
+  QYSI_WELCOME: 'qysi_welcome',
+  QYSI_TRAINING: 'qysi_training'
 }
 
 /**
@@ -59,6 +61,19 @@ export const TUTORIAL_CATALOG = [
     isDefaultOnboarding: true
   },
   {
+    id: TUTORIAL_IDS.MAIN_NAV,
+    title: 'Navegar entre pantallas',
+    short: 'Barra inferior y deslizamiento',
+    icon: '↔️',
+    description:
+      'Aprende a moverte entre Inicio, Social, Entrenos, Progreso y Perfil tocando la barra o deslizando horizontalmente.',
+    completionKey: 'qyntra_tutorial_main_nav_done',
+    settingsKey: 'tutorialMainNavCompleted',
+    /** Spotlight auto-starts after quick_start; hide from «Nuevo» stack. */
+    autoStartAfterQuickStart: true,
+    contentVersion: 2
+  },
+  {
     id: TUTORIAL_IDS.QYSI_WELCOME,
     title: 'Bienvenida de QySi',
     short: 'Presentación del trainer inteligente',
@@ -68,6 +83,17 @@ export const TUTORIAL_CATALOG = [
     completionKey: 'qyntra_qysi_intro_seen',
     settingsKey: 'qysiIntroSeenV2',
     launcher: 'qysi_intro'
+  },
+  {
+    id: TUTORIAL_IDS.QYSI_TRAINING,
+    title: 'Entrenando con QySi',
+    short: 'Adoptar rutinas del trainer inteligente',
+    icon: '⚡',
+    description:
+      'Abre el asistente, elige tu variante y nivel, adopta la rutina e inicia. Las de QySi no se pueden editar ni hacer públicas.',
+    completionKey: 'qyntra_tutorial_qysi_training_done',
+    settingsKey: 'tutorialQysiTrainingCompleted',
+    contentVersion: 2
   },
   {
     id: TUTORIAL_IDS.PROFILE_EDIT,
@@ -173,6 +199,53 @@ export const TUTORIAL_CATALOG = [
     description: 'Activa el almacenamiento, controla notificaciones y decide si tu perfil es público o privado.',
     completionKey: 'qyntra_tutorial_privacy_permissions_done',
     settingsKey: 'tutorialPrivacyPermissionsCompleted'
+  }
+]
+
+const MAIN_NAV_STEPS = [
+  {
+    id: 'mn-swipe',
+    path: '/dashboard',
+    target: 'tour-nav-swipe-demo',
+    demo: 'nav-swipe',
+    forceDemo: true,
+    title: 'Desliza',
+    body: 'Desliza horizontalmente: izquierda = siguiente, derecha = anterior. También puedes tocar la barra.'
+  },
+  {
+    id: 'mn-home',
+    path: '/dashboard',
+    target: 'nav-dashboard',
+    title: 'Inicio',
+    body: 'Primera pestaña. Toca o desliza para cambiar de pantalla.'
+  },
+  {
+    id: 'mn-social',
+    path: '/social',
+    target: 'nav-social',
+    title: 'Social',
+    body: 'La app se mueve contigo. Así es el desplazamiento entre secciones.'
+  },
+  {
+    id: 'mn-workouts',
+    path: '/workouts',
+    target: 'nav-workouts',
+    title: 'Entrenos',
+    body: 'Siguiente pestaña: la pantalla cambia al instante.'
+  },
+  {
+    id: 'mn-progress',
+    path: '/progress',
+    target: 'nav-progress',
+    title: 'Progreso',
+    body: 'Sigue deslizando o tocando para seguir el recorrido.'
+  },
+  {
+    id: 'mn-profile',
+    path: '/profile',
+    target: 'nav-profile',
+    title: 'Perfil',
+    body: 'Última pestaña. Ya dominas la mecánica: toca o desliza cuando quieras.'
   }
 ]
 
@@ -444,6 +517,70 @@ const WORKOUT_STEPS = [
     target: 'tour-my-workouts',
     title: 'Historial de entrenamientos',
     body: 'Revisa sesiones completadas y comparte tus avances con la comunidad.'
+  }
+]
+
+const QYSI_TRAINING_STEPS = [
+  {
+    id: 'qysi-nav',
+    path: '/workouts',
+    target: 'nav-workouts',
+    title: 'Entrenamientos',
+    body: 'QySi vive aquí. Todo el flujo del trainer inteligente empieza en este apartado.'
+  },
+  {
+    id: 'qysi-fab',
+    path: '/workouts',
+    target: 'tour-qysi-fab-demo',
+    demo: 'qysi-fab',
+    forceDemo: true,
+    title: 'Abre a QySi',
+    body: 'La burbuja flotante abre el asistente. También puedes llegar desde su perfil con «Entrenar con QySi».'
+  },
+  {
+    id: 'qysi-what',
+    path: '/workouts',
+    target: 'tour-qysi-offer-demo',
+    demo: 'qysi-offer',
+    forceDemo: true,
+    title: 'Qué puedes hacer',
+    body: 'QySi te ofrece 5 variantes (gimnasio, casa, calistenia, running y full body). Eliges enfoque y nivel, y te entrega una rutina lista.'
+  },
+  {
+    id: 'qysi-path',
+    path: '/workouts',
+    target: 'tour-qysi-path-demo',
+    demo: 'qysi-path',
+    forceDemo: true,
+    title: 'Elige tu ruta',
+    body: 'Paso a paso: 1) dónde entrenas · 2) qué enfoque · 3) tu nivel. QySi arma el plan según esa combinación.'
+  },
+  {
+    id: 'qysi-adopt',
+    path: '/workouts',
+    target: 'tour-qysi-adopt-demo',
+    demo: 'qysi-adopt',
+    forceDemo: true,
+    title: 'Adopta la rutina',
+    body: 'Al adoptar, la rutina queda en tu lista de Entrenamientos con la etiqueta de QySi. Ya puedes iniciar sesión cuando quieras.'
+  },
+  {
+    id: 'qysi-no-edit',
+    path: '/workouts',
+    target: 'tour-qysi-no-edit-demo',
+    demo: 'qysi-no-edit',
+    forceDemo: true,
+    title: 'Sin editar ni publicar',
+    body: 'Las rutinas de QySi no se pueden editar ni hacer públicas. Están diseñadas para entrenarse tal cual. Si quieres algo distinto, crea tu propia rutina.'
+  },
+  {
+    id: 'qysi-start',
+    path: '/workouts',
+    target: 'tour-qysi-start-demo',
+    demo: 'qysi-start',
+    forceDemo: true,
+    title: 'Inicia y entrena',
+    body: 'Pulsa Iniciar en la tarjeta adoptada. Llevas el mismo flujo de sesión, descansos y progreso que con cualquier otra rutina.'
   }
 ]
 
@@ -913,6 +1050,7 @@ const STORIES_STEPS = [
 
 export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.QUICK_START]: QUICK_START_STEPS,
+  [TUTORIAL_IDS.MAIN_NAV]: MAIN_NAV_STEPS,
   [TUTORIAL_IDS.PROFILE_EDIT]: PROFILE_STEPS,
   [TUTORIAL_IDS.WORKOUTS]: WORKOUT_STEPS,
   [TUTORIAL_IDS.COMMUNITY]: COMMUNITY_STEPS,
@@ -923,7 +1061,8 @@ export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.INVITES]: INVITE_STEPS,
   [TUTORIAL_IDS.PROGRESS]: PROGRESS_STEPS,
   [TUTORIAL_IDS.REST_TIMES]: REST_TIMES_STEPS,
-  [TUTORIAL_IDS.PRIVACY_PERMISSIONS]: PRIVACY_PERMISSIONS_STEPS
+  [TUTORIAL_IDS.PRIVACY_PERMISSIONS]: PRIVACY_PERMISSIONS_STEPS,
+  [TUTORIAL_IDS.QYSI_TRAINING]: QYSI_TRAINING_STEPS
 }
 
 export function getTutorialMeta(id) {

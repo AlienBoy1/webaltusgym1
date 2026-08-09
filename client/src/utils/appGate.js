@@ -101,6 +101,16 @@ export function setPromptIntent(layer, wants) {
   const releasingActive = intent[layer] && !next && activeLayer === layer
   intent[layer] = next
 
+  // Claiming a layer cancels the inter-prompt pause so chained tutorials
+  // (e.g. quick_start → main_nav) can start without losing the race.
+  if (next && Date.now() < layerCooldownUntil) {
+    layerCooldownUntil = 0
+    if (cooldownTimer) {
+      window.clearTimeout(cooldownTimer)
+      cooldownTimer = null
+    }
+  }
+
   if (releasingActive) {
     layerCooldownUntil = Date.now() + LAYER_COOLDOWN_MS
     activeLayer = null

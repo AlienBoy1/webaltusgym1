@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { mapWorkout, mapProfile } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
-import { isQiSiProfile, isQiSiRoutine, isQiSiUsername, qisiPublicBlockMessage } from '../utils/qisi.js'
+import { isQiSiProfile, isQiSiRoutine, isQiSiUsername, qisiPublicBlockMessage, qisiEditBlockMessage } from '../utils/qisi.js'
 
 const router = express.Router()
 
@@ -581,6 +581,19 @@ router.post('/routines', authenticate, async (req, res) => {
         .eq('user_id', req.user.id)
         .maybeSingle()
       if (!existing) return res.status(404).json({ message: 'Rutina no encontrada' })
+
+      const isQiSiRow =
+        existing.source_kind === 'qisi' ||
+        bodySourceKind === 'qisi' ||
+        req.body?.isQiSi ||
+        isQiSiRoutine({ ...existing, sourceKind: existing.source_kind })
+      if (isQiSiRow) {
+        return res.status(400).json({
+          code: 'QISI_NOT_EDITABLE',
+          message: qisiEditBlockMessage()
+        })
+      }
+
       if (Boolean(isPublic)) {
         let creator = null
         if (existing.original_creator_id) {
@@ -735,6 +748,24 @@ router.put('/routines/:id', authenticate, async (req, res) => {
       .eq('user_id', req.user.id)
       .maybeSingle()
     if (!existing) return res.status(404).json({ message: 'Rutina no encontrada' })
+
+    const isQiSiRow =
+      existing.source_kind === 'qisi' ||
+      isQiSiRoutine({ ...existing, sourceKind: existing.source_kind })
+    if (isQiSiRow) {
+      const mutatingContent =
+        name !== undefined ||
+        exercises !== undefined ||
+        color !== undefined ||
+        days !== undefined ||
+        (isPublic !== undefined && Boolean(isPublic))
+      if (mutatingContent) {
+        return res.status(400).json({
+          code: 'QISI_NOT_EDITABLE',
+          message: qisiEditBlockMessage()
+        })
+      }
+    }
 
     if (isPublic !== undefined && Boolean(isPublic)) {
       let creator = null
