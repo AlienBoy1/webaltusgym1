@@ -71,7 +71,7 @@ export const TUTORIAL_CATALOG = [
     settingsKey: 'tutorialMainNavCompleted',
     /** Spotlight auto-starts after quick_start; hide from «Nuevo» stack. */
     autoStartAfterQuickStart: true,
-    contentVersion: 2
+    contentVersion: 3
   },
   {
     id: TUTORIAL_IDS.QYSI_WELCOME,
@@ -204,48 +204,71 @@ export const TUTORIAL_CATALOG = [
 
 const MAIN_NAV_STEPS = [
   {
-    id: 'mn-swipe',
+    id: 'mn-intro',
     path: '/dashboard',
-    target: 'tour-nav-swipe-demo',
-    demo: 'nav-swipe',
-    forceDemo: true,
-    title: 'Desliza',
-    body: 'Desliza horizontalmente: izquierda = siguiente, derecha = anterior. También puedes tocar la barra.'
-  },
-  {
-    id: 'mn-home',
-    path: '/dashboard',
-    target: 'nav-dashboard',
-    title: 'Inicio',
-    body: 'Primera pestaña. Toca o desliza para cambiar de pantalla.'
+    target: 'tour-main-nav',
+    title: 'Desplaza entre pantallas',
+    body: 'Mira cómo la app se desliza. El tutorial hará el scroll por ti: primero hacia adelante, luego hacia atrás.',
+    autoAdvanceMs: 1800,
+    liveSwipe: true
   },
   {
     id: 'mn-social',
     path: '/social',
-    target: 'nav-social',
-    title: 'Social',
-    body: 'La app se mueve contigo. Así es el desplazamiento entre secciones.'
+    target: 'tour-main-content',
+    title: 'Siguiente →',
+    body: 'Deslizas a la izquierda y avanzas a Social.',
+    autoAdvanceMs: 1500,
+    liveSwipe: true,
+    swipeDir: 1
   },
   {
     id: 'mn-workouts',
     path: '/workouts',
-    target: 'nav-workouts',
-    title: 'Entrenos',
-    body: 'Siguiente pestaña: la pantalla cambia al instante.'
+    target: 'tour-main-content',
+    title: 'Siguiente →',
+    body: 'Otro desliz a la izquierda: Entrenos.',
+    autoAdvanceMs: 1500,
+    liveSwipe: true,
+    swipeDir: 1
   },
   {
     id: 'mn-progress',
     path: '/progress',
-    target: 'nav-progress',
-    title: 'Progreso',
-    body: 'Sigue deslizando o tocando para seguir el recorrido.'
+    target: 'tour-main-content',
+    title: 'Siguiente →',
+    body: 'Sigues deslizando hacia Progreso.',
+    autoAdvanceMs: 1500,
+    liveSwipe: true,
+    swipeDir: 1
   },
   {
     id: 'mn-profile',
     path: '/profile',
-    target: 'nav-profile',
-    title: 'Perfil',
-    body: 'Última pestaña. Ya dominas la mecánica: toca o desliza cuando quieras.'
+    target: 'tour-main-content',
+    title: 'Siguiente →',
+    body: 'Última pestaña hacia adelante: Perfil.',
+    autoAdvanceMs: 1600,
+    liveSwipe: true,
+    swipeDir: 1
+  },
+  {
+    id: 'mn-back',
+    path: '/progress',
+    target: 'tour-main-content',
+    title: '← Anterior',
+    body: 'Ahora al revés: deslizas a la derecha y vuelves a Progreso.',
+    autoAdvanceMs: 1700,
+    liveSwipe: true,
+    swipeDir: -1
+  },
+  {
+    id: 'mn-end',
+    path: '/progress',
+    target: 'tour-main-nav',
+    title: 'Tu turno',
+    body: 'Izquierda = siguiente · derecha = anterior. También puedes tocar la barra inferior.',
+    liveSwipe: true
   }
 ]
 

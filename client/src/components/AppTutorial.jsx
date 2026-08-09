@@ -341,6 +341,7 @@ export default function AppTutorial() {
   const [cardStyle, setCardStyle] = useState(() => placeCardNear(null))
   const [useDemo, setUseDemo] = useState(false)
   const [ready, setReady] = useState(false)
+  const [swipeCue, setSwipeCue] = useState(null)
   const completingRef = useRef(false)
   const cardRef = useRef(null)
   const alignGen = useRef(0)
@@ -383,7 +384,12 @@ export default function AppTutorial() {
     const needsMenu = Boolean(step.openAvatarMenu)
     setAvatarMenuOpen(needsMenu)
 
-    if (step.path && !pathMatches(window.location.pathname, step.path, window.location.search)) {
+    const leftPath =
+      step.path && !pathMatches(window.location.pathname, step.path, window.location.search)
+    if (leftPath) {
+      if (step.liveSwipe && step.swipeDir) {
+        setSwipeCue({ dir: step.swipeDir, key: `${step.id}-${Date.now()}` })
+      }
       navigate(step.path)
     }
 
@@ -404,8 +410,8 @@ export default function AppTutorial() {
         }
 
         scrollTargetIntoView(step.target)
-        // Wait longer when opening avatar menu so items finish animating in
-        const settleMs = needsMenu ? 100 : 48
+        // Live swipe: wait for MainNavSlideOutlet motion to settle
+        const settleMs = step.liveSwipe ? (leftPath ? 420 : 80) : needsMenu ? 100 : 48
         await new Promise((r) => window.requestAnimationFrame(() => window.setTimeout(r, settleMs)))
         if (gen !== alignGen.current) return
 
@@ -725,12 +731,31 @@ export default function AppTutorial() {
     if (!isFirst) setStepIndex((i) => Math.max(i - 1, 0))
   }
 
+  // Auto-drive live swipe demos so the tutorial itself “scrolls” the app.
+  useEffect(() => {
+    if (!open || !ready || !step?.autoAdvanceMs) return undefined
+    const ms = Number(step.autoAdvanceMs)
+    if (!(ms > 0)) return undefined
+    const t = window.setTimeout(() => {
+      if (stepIndex >= steps.length - 1) finish()
+      else setStepIndex((i) => Math.min(i + 1, steps.length - 1))
+    }, ms)
+    return () => window.clearTimeout(t)
+  }, [open, ready, stepIndex, step?.autoAdvanceMs, step?.id, steps.length, finish])
+
+  useEffect(() => {
+    if (!swipeCue) return undefined
+    const t = window.setTimeout(() => setSwipeCue(null), 720)
+    return () => window.clearTimeout(t)
+  }, [swipeCue])
+
   useEffect(() => {
     if (open) {
       hadOpenRef.current = true
       setTutorialBlocking(true)
       return
     }
+    setSwipeCue(null)
     setTutorialBlocking(false)
     delete document.body.dataset.qyntraTutorial
     if (hadOpenRef.current) {
@@ -743,6 +768,8 @@ export default function AppTutorial() {
 
   const arrow = cardStyle.arrow
   const spot = rect
+  const liveSwipe = Boolean(step.liveSwipe)
+  const dimFill = liveSwipe ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.72)'
 
   const overlay = (
     <div
@@ -772,7 +799,7 @@ export default function AppTutorial() {
           <rect
             width="100%"
             height="100%"
-            fill="rgba(0,0,0,0.72)"
+            fill={dimFill}
             mask="url(#qyntra-tour-mask)"
           />
         </svg>
@@ -787,13 +814,60 @@ export default function AppTutorial() {
             left: spot.left,
             width: spot.width,
             height: spot.height,
-            outline: '2.5px solid color-mix(in srgb, var(--color-primary, #FF6B35) 90%, white)',
+            outline: liveSwipe
+              ? '2px solid color-mix(in srgb, var(--color-primary, #FF6B35) 70%, white)'
+              : '2.5px solid color-mix(in srgb, var(--color-primary, #FF6B35) 90%, white)',
             outlineOffset: 2,
-            boxShadow:
-              '0 0 0 5px color-mix(in srgb, var(--color-primary, #FF6B35) 26%, transparent)',
+            boxShadow: liveSwipe
+              ? '0 0 0 4px color-mix(in srgb, var(--color-primary, #FF6B35) 18%, transparent)'
+              : '0 0 0 5px color-mix(in srgb, var(--color-primary, #FF6B35) 26%, transparent)',
             transition: 'top 160ms ease, left 160ms ease, width 160ms ease, height 160ms ease'
           }}
         />
+      )}
+
+      {swipeCue && (
+        <div
+          key={swipeCue.key}
+          className="pointer-events-none absolute inset-0 z-[4] overflow-hidden"
+          aria-hidden
+        >
+          <div
+            className="absolute top-[42%] left-1/2"
+            style={{
+              animation:
+                swipeCue.dir > 0
+                  ? 'qyntra-tutorial-finger-next 0.62s ease-in-out forwards'
+                  : 'qyntra-tutorial-finger-prev 0.62s ease-in-out forwards'
+            }}
+          >
+            <div className="relative -translate-x-1/2 -translate-y-1/2">
+              <span className="absolute inset-[-14px] rounded-full bg-[rgba(var(--color-primary-rgb),0.28)] blur-md" />
+              <span className="relative flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/80 bg-[color:var(--color-primary)] shadow-[0_12px_36px_rgba(0,0,0,0.45)]">
+                <span className="text-lg font-bold text-white">
+                  {swipeCue.dir > 0 ? '←' : '→'}
+                </span>
+              </span>
+              <span className="mt-2 block text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-white drop-shadow">
+                {swipeCue.dir > 0 ? 'Siguiente' : 'Anterior'}
+              </span>
+            </div>
+          </div>
+          <style>{`
+            @keyframes qyntra-tutorial-finger-next {
+              0% { transform: translateX(72px); opacity: 0; }
+              18% { opacity: 1; }
+              82% { opacity: 1; }
+              100% { transform: translateX(-88px); opacity: 0; }
+            }
+            @keyframes qyntra-tutorial-finger-prev {
+              0% { transform: translateX(-72px); opacity: 0; }
+              18% { opacity: 1; }
+              82% { opacity: 1; }
+              100% { transform: translateX(88px); opacity: 0; }
+            }
+          `}</style>
+        </div>
       )}
 
       {useDemo && step.demo && (
@@ -804,7 +878,9 @@ export default function AppTutorial() {
 
       <div
         ref={cardRef}
-        className="absolute z-[3] flex flex-col overflow-visible rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+        className={`absolute z-[3] flex flex-col overflow-visible rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.45)] ${
+          liveSwipe ? 'max-w-[min(340px,calc(100vw-1.5rem))]' : ''
+        }`}
         style={{
           top: cardStyle.top,
           left: cardStyle.left,

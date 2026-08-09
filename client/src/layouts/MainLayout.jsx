@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiHome, FiUsers, FiActivity, FiTrendingUp, FiUser, FiBell, FiSettings, FiCalendar, FiTarget, FiMessageCircle, FiLogOut, FiArrowLeft, FiSearch, FiX, FiMoon, FiSun, FiUserPlus, FiBookOpen } from 'react-icons/fi'
 import { useState, useEffect, useRef } from 'react'
@@ -33,6 +33,7 @@ import { installMediaProtection } from '../components/ProtectedMedia'
 import { prefetchRoute } from '../utils/routePrefetch'
 import { getStoredToken, getStoredRefreshToken } from '../utils/tokenStorage'
 import { supabase } from '../lib/supabase'
+import MainNavSlideOutlet from '../components/MainNavSlideOutlet'
 import { useMainNavSwipe } from '../hooks/useMainNavSwipe'
 
 const navItems = [
@@ -877,7 +878,7 @@ export default function MainLayout() {
               : 'mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6'
           }
         >
-          <Outlet />
+          <MainNavSlideOutlet />
         </div>
       </main>
       
