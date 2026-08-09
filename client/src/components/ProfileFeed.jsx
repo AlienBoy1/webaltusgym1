@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { MentionText } from './MentionInput'
 import ProtectedMedia from './ProtectedMedia'
 import ChallengePostCard from './ChallengePostCard'
+import QySiShareCard, { isQySiShareData } from './QySiShareCard'
 import { countComments } from '../utils/commentTree'
 
 /**
@@ -150,9 +151,16 @@ export default function ProfileFeed({
                 </div>
               )}
 
+            {workout && isQySiShareData(workout) && (
+              <div className="mx-4 mb-3" data-no-post-open>
+                <QySiShareCard data={workout} variant="feed" />
+              </div>
+            )}
+
             {workout &&
               post.postType !== 'challenge' &&
-              workout.shareKind !== 'challenge' && (
+              workout.shareKind !== 'challenge' &&
+              !isQySiShareData(workout) && (
               <button
                 type="button"
                 data-no-post-open

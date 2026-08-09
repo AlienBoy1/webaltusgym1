@@ -9,10 +9,12 @@ import {
   setNotificationsBlocking
 } from '../utils/appGate'
 import { TUTORIAL_CLOSED_EVENT } from './AppTutorial'
+import { useAuthStore } from '../store/authStore'
 
 export default function NotificationPrompt({ onAccept, onDecline }) {
   const [show, setShow] = useState(false)
   const [eligible, setEligible] = useState(false)
+  const initializing = useAuthStore((s) => s.initializing)
 
   useEffect(() => {
     let cancelled = false
@@ -29,7 +31,12 @@ export default function NotificationPrompt({ onAccept, onDecline }) {
   }, [])
 
   useEffect(() => {
-    if (!eligible) return undefined
+    if (!eligible || initializing) {
+      if (initializing) {
+        setShow(false)
+      }
+      return undefined
+    }
 
     const tryShow = () => {
       if (localStorage.getItem('notificationPrompted')) {
@@ -37,25 +44,24 @@ export default function NotificationPrompt({ onAccept, onDecline }) {
         setNotificationsBlocking(false)
         return
       }
-      if (document.body.dataset.qyntraTutorial === '1') return
-      if (!canShowPrompt('notifications')) {
+      if (document.body.dataset.qyntraTutorial === '1') {
         setShow(false)
         return
       }
       setNotificationsBlocking(true)
-      setShow(true)
+      setShow(canShowPrompt('notifications'))
     }
 
-    const t = window.setTimeout(tryShow, 600)
     const unsub = subscribeAppGate(() => tryShow())
-    const onClosed = () => window.setTimeout(tryShow, 400)
+    tryShow()
+    const onClosed = () => window.setTimeout(tryShow, 420)
     window.addEventListener(TUTORIAL_CLOSED_EVENT, onClosed)
     return () => {
-      window.clearTimeout(t)
       unsub()
       window.removeEventListener(TUTORIAL_CLOSED_EVENT, onClosed)
+      setNotificationsBlocking(false)
     }
-  }, [eligible])
+  }, [eligible, initializing])
 
   const handleAccept = async () => {
     localStorage.setItem('notificationPrompted', 'true')

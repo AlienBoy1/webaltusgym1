@@ -4,8 +4,32 @@ import { mapPost } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
 import { resolveMentions, notifyPostMentions } from '../utils/mentions.js'
+import { isQiSiProfile, isQiSiUsername } from '../utils/qisi.js'
 
 const router = express.Router()
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+async function resolveProfileTarget(raw) {
+  const key = String(raw || '').trim()
+  if (!key) return null
+  if (UUID_RE.test(key)) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, settings, profile')
+      .eq('id', key)
+      .maybeSingle()
+    return data || null
+  }
+  const uname = key.replace(/^@+/, '').toLowerCase()
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('id, username, settings, profile')
+    .eq('username', uname)
+    .maybeSingle()
+  return data || null
+}
 
 const POST_REACTION_EMOJIS = new Set(['❤️', '💪', '🧴', '🔥', '⚡', '🏆'])
 
@@ -1582,21 +1606,22 @@ router.post('/:id/share', authenticate, async (req, res) => {
 // Follow user — public profiles follow instantly; private require approval
 router.post('/:id/follow', authenticate, async (req, res) => {
   try {
-    const targetUserId = req.params.id
+    const targetUser = await resolveProfileTarget(req.params.id)
+    if (!targetUser) {
+      return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+    const targetUserId = targetUser.id
     const currentUserId = req.user.id
 
     if (targetUserId === currentUserId) {
       return res.status(400).json({ message: 'No puedes seguirte a ti mismo' })
     }
 
-    const { data: targetUser } = await supabaseAdmin
-      .from('profiles')
-      .select('id, name, settings')
-      .eq('id', targetUserId)
-      .maybeSingle()
-
-    if (!targetUser) {
-      return res.status(404).json({ message: 'Usuario no encontrado' })
+    if (isQiSiProfile(targetUser) || isQiSiUsername(targetUser.username)) {
+      return res.status(403).json({
+        message: 'QySi es una cuenta de sistema y no se puede seguir',
+        code: 'QISI_NO_FOLLOW'
+      })
     }
 
     const { data: existingFollow } = await supabaseAdmin
@@ -1916,17 +1941,23 @@ router.get('/followers', authenticate, async (req, res) => {
 // Get follow status
 router.get('/:id/follow-status', authenticate, async (req, res) => {
   try {
-    const targetUserId = req.params.id
-
-    const { data: targetUser } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('id', targetUserId)
-      .maybeSingle()
-
+    const targetUser = await resolveProfileTarget(req.params.id)
     if (!targetUser) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
+
+    // System trainer account — no follow graph
+    if (isQiSiProfile(targetUser) || isQiSiUsername(targetUser.username)) {
+      return res.json({
+        isFollowing: false,
+        hasPendingRequest: false,
+        followersCount: 0,
+        followingCount: 0,
+        isSystemAccount: true
+      })
+    }
+
+    const targetUserId = targetUser.id
 
     const [{ data: follow }, { data: pending }, { count: followersCount }, { count: followingCount }] =
       await Promise.all([

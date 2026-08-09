@@ -25,15 +25,27 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
   const fetchBadges = async () => {
     try {
       setLoading(true)
-      
-      // Fetch user badges and all badge definitions in parallel
+
       const [userData, badgeDefinitions] = await Promise.all([
         api.get(`/users/${userId}`),
         api.get('/users/badges/definitions')
       ])
-      
-      setUserBadges(userData.data.badges || [])
-      setAllBadges(badgeDefinitions.data || [])
+
+      const defs = Array.isArray(badgeDefinitions.data) ? badgeDefinitions.data : []
+      const ownedRaw = Array.isArray(userData.data?.badges) ? userData.data.badges : []
+
+      // Deduplicate by id and drop empty entries (avoids React key collisions)
+      const seen = new Set()
+      const owned = []
+      for (const b of ownedRaw) {
+        const key = String(b?.id || b?._id || '').trim()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        owned.push(b)
+      }
+
+      setUserBadges(owned)
+      setAllBadges(defs.filter((b) => b && String(b.id || b._id || '').trim()))
     } catch (error) {
       console.error('Error fetching badges:', error)
       setUserBadges([])
@@ -44,7 +56,7 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
   }
 
   const getUserBadgeIds = () => {
-    return userBadges.map(b => b.id || b._id)
+    return userBadges.map((b) => b.id || b._id).filter(Boolean)
   }
 
   const isBadgeUnlocked = (badgeId) => {
@@ -108,162 +120,178 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
   if (!isOpen) return null
 
   return createPortal(
-    <AnimatePresence>
-      <div
-        className="app-overlay-sheet fixed inset-0 z-[120] flex items-end sm:items-center sm:justify-center bg-black/70"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          onClick={(e) => e.stopPropagation()}
-          className="app-bottom-sheet-panel flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] overflow-hidden"
-          style={{
-            background: 'var(--bg-card)',
-            maxHeight: 'min(92svh, 720px)'
-          }}
-        >
-          <div
-            className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4"
-            style={{ background: 'var(--bg-card)', borderColor: 'var(--border-subtle)' }}
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            key="badges-modal-root"
+            className="app-overlay-sheet fixed inset-0 z-[120] flex items-end sm:items-center sm:justify-center bg-black/70"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
           >
-            <h2 className="font-display text-xl flex items-center gap-2">
-              <FiAward className="text-accent-yellow" />
-              Insignias
-            </h2>
-            <button
-              onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[color:var(--bg-muted)]"
+            <motion.div
+              key="badges-sheet"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              onClick={(e) => e.stopPropagation()}
+              className="app-bottom-sheet-panel flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-[color:var(--border-subtle)] overflow-hidden"
+              style={{
+                background: 'var(--bg-card)',
+                maxHeight: 'min(92svh, 720px)'
+              }}
             >
-              <FiX size={22} />
-            </button>
-          </div>
-
-          <div
-            className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
-            style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
-          >
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="w-8 h-8 border-4 border-[color:var(--border-subtle)] border-t-primary-500 rounded-full animate-spin mx-auto" />
+              <div
+                className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-subtle)' }}
+              >
+                <h2 className="font-display text-xl flex items-center gap-2">
+                  <FiAward className="text-accent-yellow" />
+                  Insignias
+                </h2>
+                <button
+                  onClick={onClose}
+                  className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[color:var(--bg-muted)]"
+                >
+                  <FiX size={22} />
+                </button>
               </div>
-            ) : allBadges.length === 0 ? (
-              <div className="text-center py-12" style={{ color: 'var(--text-secondary)' }}>
-                <FiAward size={48} className="mx-auto mb-4 opacity-50" />
-                <p>No hay insignias disponibles</p>
+
+              <div
+                className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
+                style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
+              >
+                {loading ? (
+                  <div className="text-center py-12">
+                    <div className="w-8 h-8 border-4 border-[color:var(--border-subtle)] border-t-primary-500 rounded-full animate-spin mx-auto" />
+                  </div>
+                ) : allBadges.length === 0 ? (
+                  <div className="text-center py-12" style={{ color: 'var(--text-secondary)' }}>
+                    <FiAward size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>No hay insignias disponibles</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-3 mb-5">
+                      <div className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-muted)' }}>
+                        <div className="text-xl font-bold text-primary-500">{allBadges.length}</div>
+                        <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Total</div>
+                      </div>
+                      <div className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-muted)' }}>
+                        <div className="text-xl font-bold text-accent-green">{userBadges.length}</div>
+                        <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Desbloqueadas</div>
+                      </div>
+                      <div className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-muted)' }}>
+                        <div className="text-xl font-bold" style={{ color: 'var(--text-muted)' }}>{Math.max(0, allBadges.length - userBadges.length)}</div>
+                        <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Bloqueadas</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {allBadges.map((badge, index) => {
+                        const badgeKey = String(badge?.id || badge?._id || `def-${index}`)
+                        const unlocked = isBadgeUnlocked(badge.id || badge._id)
+                        const userBadge = userBadges.find(
+                          (b) => String(b.id || b._id || '') === badgeKey
+                        )
+
+                        return (
+                          <motion.button
+                            type="button"
+                            key={badgeKey}
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: Math.min(index * 0.03, 0.5) }}
+                            onClick={() => setSelectedBadge(badge)}
+                            className={`relative min-h-[140px] rounded-2xl border p-4 text-center transition-all active:scale-[0.97] ${
+                              unlocked
+                                ? 'border-accent-green/40 hover:border-accent-green'
+                                : 'opacity-60 hover:opacity-80'
+                            }`}
+                            style={{
+                              background: unlocked
+                                ? 'rgba(34,197,94,0.06)'
+                                : 'var(--bg-muted)',
+                              borderColor: unlocked ? undefined : 'var(--border-subtle)'
+                            }}
+                          >
+                            <div className="absolute top-2.5 right-2.5">
+                              {unlocked
+                                ? <FiUnlock className="text-accent-green" size={14} />
+                                : <FiLock size={14} style={{ color: 'var(--text-muted)' }} />}
+                            </div>
+
+                            <div className={`text-4xl sm:text-5xl mb-2 ${unlocked ? '' : 'grayscale'}`}>
+                              {badge.icon}
+                            </div>
+                            <div className="font-semibold text-sm mb-1" style={{ color: unlocked ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                              {badge.name}
+                            </div>
+                            <div className="text-[11px] mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                              {badge.type === 'xp' && `${badge.xpRequired || badge.threshold} XP`}
+                              {badge.type === 'workout' && `${badge.threshold} entrenamientos`}
+                              {badge.type === 'streak' && `${badge.threshold} días`}
+                              {badge.type === 'level' && `Nivel ${badge.threshold}`}
+                              {badge.type === 'challenge' && `${badge.threshold} retos`}
+                              {badge.type === 'class' && `${badge.threshold} clases`}
+                              {badge.type === 'social' && `${badge.threshold} interacciones`}
+                              {badge.type === 'tutorial' && badge.tutorialKey && 'Tutorial de inicio'}
+                              {badge.type === 'tutorial' && !badge.tutorialKey && badge.threshold >= 12 && 'Todos los tutoriales'}
+                              {badge.type === 'tutorial' && !badge.tutorialKey && badge.threshold < 12 && `${badge.threshold} tutoriales`}
+                              {badge.xpReward ? ` · +${badge.xpReward} XP` : ''}
+                            </div>
+                            {badge.difficulty && (
+                              <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full ${
+                                badge.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' :
+                                badge.difficulty === 'normal' ? 'bg-blue-500/20 text-blue-400' :
+                                badge.difficulty === 'epic' ? 'bg-purple-500/20 text-purple-400' :
+                                badge.difficulty === 'legendary' ? 'bg-orange-500/20 text-orange-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>
+                                {badge.difficulty === 'easy' ? 'Fácil' :
+                                 badge.difficulty === 'normal' ? 'Normal' :
+                                 badge.difficulty === 'epic' ? 'Épico' :
+                                 badge.difficulty === 'legendary' ? 'Legendario' :
+                                 'Leyenda'}
+                              </span>
+                            )}
+                            {userBadge?.earnedAt && (
+                              <div className="mt-1.5 text-[10px] text-accent-green flex items-center justify-center gap-1">
+                                <FiCalendar size={10} />
+                                {(() => {
+                                  try {
+                                    const date = typeof userBadge.earnedAt === 'string'
+                                      ? parseISO(userBadge.earnedAt)
+                                      : new Date(userBadge.earnedAt)
+                                    return format(date, 'dd MMM yyyy', { locale: es })
+                                  } catch {
+                                    return new Date(userBadge.earnedAt).toLocaleDateString('es-ES')
+                                  }
+                                })()}
+                              </div>
+                            )}
+                          </motion.button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-3 gap-3 mb-5">
-                  <div className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-muted)' }}>
-                    <div className="text-xl font-bold text-primary-500">{allBadges.length}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Total</div>
-                  </div>
-                  <div className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-muted)' }}>
-                    <div className="text-xl font-bold text-accent-green">{userBadges.length}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Desbloqueadas</div>
-                  </div>
-                  <div className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-muted)' }}>
-                    <div className="text-xl font-bold" style={{ color: 'var(--text-muted)' }}>{allBadges.length - userBadges.length}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Bloqueadas</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {allBadges.map((badge, index) => {
-                    const unlocked = isBadgeUnlocked(badge.id)
-                    const userBadge = userBadges.find(b => (b.id || b._id) === badge.id)
-
-                    return (
-                      <motion.button
-                        type="button"
-                        key={String(badge.id || badge._id || `badge-${index}`)}
-                        initial={{ opacity: 0, y: 16 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(index * 0.03, 0.5) }}
-                        onClick={() => setSelectedBadge(badge)}
-                        className={`relative min-h-[140px] rounded-2xl border p-4 text-center transition-all active:scale-[0.97] ${
-                          unlocked
-                            ? 'border-accent-green/40 hover:border-accent-green'
-                            : 'opacity-60 hover:opacity-80'
-                        }`}
-                        style={{
-                          background: unlocked
-                            ? 'rgba(34,197,94,0.06)'
-                            : 'var(--bg-muted)',
-                          borderColor: unlocked ? undefined : 'var(--border-subtle)'
-                        }}
-                      >
-                        <div className="absolute top-2.5 right-2.5">
-                          {unlocked
-                            ? <FiUnlock className="text-accent-green" size={14} />
-                            : <FiLock size={14} style={{ color: 'var(--text-muted)' }} />}
-                        </div>
-
-                        <div className={`text-4xl sm:text-5xl mb-2 ${unlocked ? '' : 'grayscale'}`}>
-                          {badge.icon}
-                        </div>
-                        <div className="font-semibold text-sm mb-1" style={{ color: unlocked ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                          {badge.name}
-                        </div>
-                        <div className="text-[11px] mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                          {badge.type === 'xp' && `${badge.xpRequired || badge.threshold} XP`}
-                          {badge.type === 'workout' && `${badge.threshold} entrenamientos`}
-                          {badge.type === 'streak' && `${badge.threshold} días`}
-                          {badge.type === 'level' && `Nivel ${badge.threshold}`}
-                          {badge.type === 'challenge' && `${badge.threshold} retos`}
-                          {badge.type === 'class' && `${badge.threshold} clases`}
-                          {badge.type === 'social' && `${badge.threshold} interacciones`}
-                          {badge.type === 'tutorial' && badge.tutorialKey && 'Tutorial de inicio'}
-                          {badge.type === 'tutorial' && !badge.tutorialKey && badge.threshold >= 12 && 'Todos los tutoriales'}
-                          {badge.type === 'tutorial' && !badge.tutorialKey && badge.threshold < 12 && `${badge.threshold} tutoriales`}
-                          {badge.xpReward ? ` · +${badge.xpReward} XP` : ''}
-                        </div>
-                        {badge.difficulty && (
-                          <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full ${
-                            badge.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' :
-                            badge.difficulty === 'normal' ? 'bg-blue-500/20 text-blue-400' :
-                            badge.difficulty === 'epic' ? 'bg-purple-500/20 text-purple-400' :
-                            badge.difficulty === 'legendary' ? 'bg-orange-500/20 text-orange-400' :
-                            'bg-yellow-500/20 text-yellow-400'
-                          }`}>
-                            {badge.difficulty === 'easy' ? 'Fácil' :
-                             badge.difficulty === 'normal' ? 'Normal' :
-                             badge.difficulty === 'epic' ? 'Épico' :
-                             badge.difficulty === 'legendary' ? 'Legendario' :
-                             'Leyenda'}
-                          </span>
-                        )}
-                        {userBadge?.earnedAt && (
-                          <div className="mt-1.5 text-[10px] text-accent-green flex items-center justify-center gap-1">
-                            <FiCalendar size={10} />
-                            {(() => {
-                              try {
-                                const date = typeof userBadge.earnedAt === 'string'
-                                  ? parseISO(userBadge.earnedAt)
-                                  : new Date(userBadge.earnedAt)
-                                return format(date, 'dd MMM yyyy', { locale: es })
-                              } catch {
-                                return new Date(userBadge.earnedAt).toLocaleDateString('es-ES')
-                              }
-                            })()}
-                          </div>
-                        )}
-                      </motion.button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
-      </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {selectedBadge && (
-          <div
+          <motion.div
+            key="badge-detail"
             className="fixed inset-0 z-[130] flex items-end sm:items-center sm:justify-center bg-black/80 p-0 sm:p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             onClick={() => setSelectedBadge(null)}
           >
             <motion.div
@@ -287,8 +315,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
               </div>
 
               {(() => {
-                const unlocked = isBadgeUnlocked(selectedBadge.id)
-                const userBadge = userBadges.find(b => (b.id || b._id) === selectedBadge.id)
+                const unlocked = isBadgeUnlocked(selectedBadge.id || selectedBadge._id)
+                const userBadge = userBadges.find(
+                  (b) => String(b.id || b._id || '') === String(selectedBadge.id || selectedBadge._id || '')
+                )
 
                 return (
                   <div className="text-center space-y-4">
@@ -400,10 +430,10 @@ export default function BadgesModal({ isOpen, onClose, userId }) {
                 )
               })()}
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
-    </AnimatePresence>,
+    </>,
     document.body
   )
 }

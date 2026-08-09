@@ -2,13 +2,18 @@
  * Sequential login/onboarding prompts — only one visible at a time.
  *
  * Priority (highest → lowest):
- * 1. update        — UpdateCenter
- * 2. username      — UsernameSetupModal
- * 3. welcome       — WelcomeIntroModal
- * 4. tutorial      — AppTutorial spotlight OR NewTutorialPrompt
- * 5. membership    — MembershipExpiryNotice
- * 6. notifications — NotificationPrompt
- * 7. install       — InstallAppPrompt
+ * 1. update         — UpdateCenter (always first; others wait until settled)
+ * 2. username       — UsernameSetupModal
+ * 3. welcome        — WelcomeIntroModal
+ * 4. qysi           — QySiIntroPresentation
+ * 5. tutorial       — AppTutorial spotlight
+ * 6. tutorialNotice — NewTutorialPrompt
+ * 7. membership     — MembershipExpiryNotice
+ * 8. notifications  — NotificationPrompt
+ * 9. install        — InstallAppPrompt
+ *
+ * Components declare *intent* (they want to show). The gate picks at most
+ * one active layer. canShowPrompt(layer) is true only for that active layer.
  */
 
 const listeners = new Set()
@@ -17,45 +22,23 @@ const PRIORITY = Object.freeze([
   'update',
   'username',
   'welcome',
+  'qysi',
   'tutorial',
+  'tutorialNotice',
   'membership',
   'notifications',
   'install'
 ])
 
 /** Brief pause after a prompt closes so the next one does not stack visually. */
-const LAYER_COOLDOWN_MS = 420
+const LAYER_COOLDOWN_MS = 480
 let layerCooldownUntil = 0
+let cooldownTimer = null
 
-let updateBlocking = false
 let updateSettled = false
-let usernameBlocking = false
-let welcomeBlocking = false
-let tutorialBlocking = false
-let membershipBlocking = false
-let notificationsBlocking = false
-let installBlocking = false
+let activeLayer = null
 
-function claimsOf(layer) {
-  switch (layer) {
-    case 'update':
-      return updateBlocking
-    case 'username':
-      return usernameBlocking
-    case 'welcome':
-      return welcomeBlocking
-    case 'tutorial':
-      return tutorialBlocking
-    case 'membership':
-      return membershipBlocking
-    case 'notifications':
-      return notificationsBlocking
-    case 'install':
-      return installBlocking
-    default:
-      return false
-  }
-}
+const intent = Object.fromEntries(PRIORITY.map((k) => [k, false]))
 
 function emit() {
   const snap = getGateSnapshot()
@@ -73,71 +56,108 @@ function emit() {
   }
 }
 
-function scheduleCooldownEmit() {
-  const wait = Math.max(0, layerCooldownUntil - Date.now())
-  if (wait <= 0) {
-    emit()
-    return
+function pickActiveLayer() {
+  if (intent.update) return 'update'
+  if (!updateSettled) return null
+  if (Date.now() < layerCooldownUntil) return null
+  for (let i = 0; i < PRIORITY.length; i += 1) {
+    const layer = PRIORITY[i]
+    if (layer === 'update') continue
+    if (intent[layer]) return layer
   }
-  window.setTimeout(() => {
-    if (Date.now() >= layerCooldownUntil) emit()
+  return null
+}
+
+function reconcile() {
+  const next = pickActiveLayer()
+  if (activeLayer === next) return false
+  activeLayer = next
+  return true
+}
+
+function scheduleCooldownReconcile() {
+  if (cooldownTimer) {
+    window.clearTimeout(cooldownTimer)
+    cooldownTimer = null
+  }
+  const wait = Math.max(0, layerCooldownUntil - Date.now())
+  cooldownTimer = window.setTimeout(() => {
+    cooldownTimer = null
+    if (Date.now() < layerCooldownUntil) return
+    if (reconcile()) emit()
+    else emit()
   }, wait + 16)
 }
 
-function setLayerFlag(current, nextValue, assign) {
-  const next = Boolean(nextValue)
-  if (current === next) return false
-  // When a prompt releases, cool down before the next layer may open
-  if (current && !next) {
+/**
+ * Declare whether a layer wants to show. The gate promotes the highest
+ * intent that is currently eligible.
+ */
+export function setPromptIntent(layer, wants) {
+  if (!Object.prototype.hasOwnProperty.call(intent, layer)) return
+  const next = Boolean(wants)
+  if (intent[layer] === next) return
+
+  const releasingActive = intent[layer] && !next && activeLayer === layer
+  intent[layer] = next
+
+  if (releasingActive) {
     layerCooldownUntil = Date.now() + LAYER_COOLDOWN_MS
-    assign(next)
-    scheduleCooldownEmit()
-    return true
+    activeLayer = null
+    scheduleCooldownReconcile()
+    emit()
+    return
   }
-  assign(next)
+
+  reconcile()
   emit()
-  return true
 }
 
 export function getGateSnapshot() {
   return {
-    updateBlocking,
+    updateBlocking: Boolean(intent.update),
     updateSettled,
-    usernameBlocking,
-    welcomeBlocking,
-    tutorialBlocking,
-    membershipBlocking,
-    notificationsBlocking,
-    installBlocking,
+    usernameBlocking: Boolean(intent.username),
+    welcomeBlocking: Boolean(intent.welcome),
+    tutorialBlocking: Boolean(intent.tutorial || intent.tutorialNotice),
+    qysiBlocking: Boolean(intent.qysi),
+    membershipBlocking: Boolean(intent.membership),
+    notificationsBlocking: Boolean(intent.notifications),
+    installBlocking: Boolean(intent.install),
+    activeLayer,
     layerCooldownUntil,
     canStartTutorials: canShowPrompt('tutorial')
   }
 }
 
 /**
- * Returns true when no higher-priority prompt is active and (for layers
- * below update) the version check has settled.
+ * True only when this layer is the single active prompt.
+ * Use before rendering / opening UI.
  */
 export function canShowPrompt(layer) {
-  const idx = PRIORITY.indexOf(layer)
-  if (idx < 0) return false
-
+  if (!Object.prototype.hasOwnProperty.call(intent, layer)) return false
   if (layer !== 'update') {
     if (!updateSettled) return false
-    if (updateBlocking) return false
+    if (intent.update) return false
     if (Date.now() < layerCooldownUntil) return false
   }
+  return activeLayer === layer
+}
 
-  for (let i = 0; i < idx; i += 1) {
-    if (claimsOf(PRIORITY[i])) return false
-  }
-  return true
+/** True while any prompt (or inter-layer cooldown) owns the screen. */
+export function isAnyPromptActive() {
+  if (activeLayer) return true
+  if (Date.now() < layerCooldownUntil) return true
+  if (!updateSettled) return true
+  return false
+}
+
+export function getActivePrompt() {
+  return activeLayer
 }
 
 export function setUpdateBlocking(value) {
-  setLayerFlag(updateBlocking, value, (v) => {
-    updateBlocking = v
-  })
+  setPromptIntent('update', value)
 }
 
 /** Call when version check finished (update shown or confirmed up-to-date). */
@@ -145,43 +165,40 @@ export function setUpdateSettled(value) {
   const next = Boolean(value)
   if (updateSettled === next) return
   updateSettled = next
+  reconcile()
   emit()
 }
 
 export function setUsernameBlocking(value) {
-  setLayerFlag(usernameBlocking, value, (v) => {
-    usernameBlocking = v
-  })
+  setPromptIntent('username', value)
 }
 
 export function setWelcomeBlocking(value) {
-  setLayerFlag(welcomeBlocking, value, (v) => {
-    welcomeBlocking = v
-  })
+  setPromptIntent('welcome', value)
+}
+
+export function setQysiBlocking(value) {
+  setPromptIntent('qysi', value)
 }
 
 export function setTutorialBlocking(value) {
-  setLayerFlag(tutorialBlocking, value, (v) => {
-    tutorialBlocking = v
-  })
+  setPromptIntent('tutorial', value)
+}
+
+export function setTutorialNoticeBlocking(value) {
+  setPromptIntent('tutorialNotice', value)
 }
 
 export function setMembershipBlocking(value) {
-  setLayerFlag(membershipBlocking, value, (v) => {
-    membershipBlocking = v
-  })
+  setPromptIntent('membership', value)
 }
 
 export function setNotificationsBlocking(value) {
-  setLayerFlag(notificationsBlocking, value, (v) => {
-    notificationsBlocking = v
-  })
+  setPromptIntent('notifications', value)
 }
 
 export function setInstallBlocking(value) {
-  setLayerFlag(installBlocking, value, (v) => {
-    installBlocking = v
-  })
+  setPromptIntent('install', value)
 }
 
 export function canStartTutorials() {

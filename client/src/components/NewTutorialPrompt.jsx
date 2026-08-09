@@ -9,9 +9,8 @@ import {
   acknowledgeTutorialVersions
 } from '../tutorials/spotlight'
 import {
-  canStartTutorials,
   subscribeAppGate,
-  setTutorialBlocking,
+  setTutorialNoticeBlocking,
   canShowPrompt
 } from '../utils/appGate'
 import { openTutorialHub, TUTORIAL_CLOSED_EVENT } from './AppTutorial'
@@ -22,83 +21,95 @@ import { openTutorialHub, TUTORIAL_CLOSED_EVENT } from './AppTutorial'
  */
 export default function NewTutorialPrompt() {
   const user = useAuthStore((s) => s.user)
+  const initializing = useAuthStore((s) => s.initializing)
   const [payload, setPayload] = useState(null)
-  const offeredIdsRef = useRef('')
-  const timerRef = useRef(null)
+  const dismissedKeysRef = useRef(new Set())
+  const pendingRef = useRef(null)
 
   const dismiss = (openHub) => {
     if (!payload?.ids?.length) {
       setPayload(null)
-      setTutorialBlocking(false)
+      pendingRef.current = null
+      setTutorialNoticeBlocking(false)
       return
     }
     const ids = payload.ids
+    if (payload.key) dismissedKeysRef.current.add(payload.key)
     acknowledgeTutorialVersions(user, ids)
     setPayload(null)
-    setTutorialBlocking(false)
+    pendingRef.current = null
+    setTutorialNoticeBlocking(false)
     if (openHub) {
       window.setTimeout(() => openTutorialHub({ highlightIds: ids }), 180)
     }
   }
 
   useEffect(() => {
-    offeredIdsRef.current = ''
+    dismissedKeysRef.current = new Set()
+    pendingRef.current = null
   }, [user?.id, user?._id])
 
   useEffect(() => {
-    const clearTimer = () => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current)
-        timerRef.current = null
-      }
-    }
-
-    const tryOffer = () => {
-      clearTimer()
+    const sync = () => {
       const u = useAuthStore.getState().user
-      if (!u?.username) return
-      if (!canStartTutorials() || !canShowPrompt('tutorial')) return
-      if (!hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) return
-      if (payload) return
-      if (document.body.dataset.qyntraTutorial === '1') return
+      if (initializing || !u?.username) {
+        setTutorialNoticeBlocking(false)
+        setPayload(null)
+        return
+      }
+      if (!hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) {
+        setTutorialNoticeBlocking(false)
+        setPayload(null)
+        return
+      }
+      if (document.body.dataset.qyntraTutorial === '1') {
+        setPayload(null)
+        return
+      }
 
       const fresh = getPendingTutorialNotices(u)
-      if (!fresh.length) return
+      if (!fresh.length) {
+        pendingRef.current = null
+        setTutorialNoticeBlocking(false)
+        setPayload(null)
+        return
+      }
 
       const key = fresh
         .map((t) => `${t.kind}:${t.id}`)
         .sort()
         .join('|')
-      if (offeredIdsRef.current === key) return
 
-      timerRef.current = window.setTimeout(() => {
-        if (document.body.dataset.qyntraTutorial === '1') return
-        if (!canStartTutorials() || !canShowPrompt('tutorial')) return
-        offeredIdsRef.current = key
-        setTutorialBlocking(true)
-        setPayload({
-          ids: fresh.map((t) => t.id),
-          items: fresh
-        })
-      }, 900)
+      if (dismissedKeysRef.current.has(key)) {
+        setTutorialNoticeBlocking(false)
+        setPayload(null)
+        return
+      }
+
+      pendingRef.current = {
+        key,
+        ids: fresh.map((t) => t.id),
+        items: fresh
+      }
+      setTutorialNoticeBlocking(true)
+
+      if (!canShowPrompt('tutorialNotice')) {
+        setPayload(null)
+        return
+      }
+
+      setPayload(pendingRef.current)
     }
 
-    tryOffer()
-    const unsub = subscribeAppGate(() => tryOffer())
-    const onClosed = () => window.setTimeout(tryOffer, 400)
+    sync()
+    const unsub = subscribeAppGate(sync)
+    const onClosed = () => window.setTimeout(sync, 420)
     window.addEventListener(TUTORIAL_CLOSED_EVENT, onClosed)
     return () => {
-      clearTimer()
       unsub()
       window.removeEventListener(TUTORIAL_CLOSED_EVENT, onClosed)
     }
-  }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, payload])
-
-  useEffect(() => {
-    if (!payload) return undefined
-    setTutorialBlocking(true)
-    return () => setTutorialBlocking(false)
-  }, [payload])
+  }, [user?.id, user?._id, user?.username, user?.settings?.tutorialCompleted, initializing])
 
   if (typeof document === 'undefined' || !payload) return null
 
@@ -178,69 +189,49 @@ export default function NewTutorialPrompt() {
                   <Icon size={22} />
                 </span>
                 <div className="min-w-0">
-                  <p
-                    className="text-[11px] font-semibold uppercase tracking-[0.22em]"
-                    style={{ color: allUpdates ? '#FACC15' : 'var(--color-primary)' }}
-                  >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
                     {eyebrow}
                   </p>
-                  <h2 className="mt-1 font-display text-2xl tracking-wide text-[color:var(--text-primary)]">
+                  <h3 className="mt-1 font-display text-xl text-[color:var(--text-primary)]">
                     {title}
-                  </h2>
+                  </h3>
                   <p className="mt-1.5 text-sm leading-relaxed text-[color:var(--text-secondary)]">
                     {description}
                   </p>
                 </div>
               </div>
-
-              <div className="mt-4 max-h-[40vh] space-y-2 overflow-y-auto overscroll-contain pr-0.5">
-                {payload.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-2.5 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/50 px-3.5 py-3"
-                  >
-                    <span className="text-2xl" aria-hidden>
-                      {item.icon || '📘'}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
-                          {item.title}
-                        </p>
-                        <span
-                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                            item.kind === 'update'
-                              ? 'bg-accent-yellow/15 text-accent-yellow'
-                              : 'bg-[rgba(var(--color-primary-rgb),0.14)] text-[color:var(--color-primary)]'
-                          }`}
-                        >
-                          {item.kind === 'update' ? 'Actualizado' : 'Nuevo'}
-                        </span>
-                      </div>
-                      <p className="truncate text-xs text-[color:var(--text-muted)]">
-                        {item.short || item.description}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">
-                <button
-                  type="button"
-                  onClick={() => dismiss(true)}
-                  className="btn-primary flex-1 py-3"
-                >
-                  {count === 1 ? 'Ver ahora' : 'Ver todos'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => dismiss(false)}
-                  className="btn-secondary flex-1 py-3"
-                >
-                  Ahora no
-                </button>
-              </div>
+              {count > 1 && (
+                <ul className="mt-4 max-h-36 space-y-1.5 overflow-y-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/60 p-2.5">
+                  {payload.items.map((item) => (
+                    <li
+                      key={item.id}
+                      className="truncate px-1.5 py-1 text-sm text-[color:var(--text-primary)]"
+                    >
+                      {item.kind === 'update' ? '↻ ' : '✦ '}
+                      {item.title}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div
+              className="flex gap-2 border-t border-[color:var(--border-subtle)] px-5 py-4"
+              style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            >
+              <button
+                type="button"
+                onClick={() => dismiss(false)}
+                className="btn-secondary flex-1 py-3 text-sm"
+              >
+                Después
+              </button>
+              <button
+                type="button"
+                onClick={() => dismiss(true)}
+                className="btn-primary flex-1 py-3 text-sm"
+              >
+                Ver ahora
+              </button>
             </div>
           </motion.div>
         </motion.div>

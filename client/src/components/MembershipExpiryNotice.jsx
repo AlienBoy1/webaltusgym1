@@ -53,6 +53,7 @@ export default function MembershipExpiryNotice() {
   const membershipNotice = useAuthStore((s) => s.membershipNotice)
   const authSessionTick = useAuthStore((s) => s.authSessionTick)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const initializing = useAuthStore((s) => s.initializing)
   const clearMembershipNotice = useAuthStore((s) => s.clearMembershipNotice)
   const [open, setOpen] = useState(false)
   const closedForTickRef = useRef(-1)
@@ -66,23 +67,38 @@ export default function MembershipExpiryNotice() {
 
   useEffect(() => {
     const tryOpen = () => {
-      if (!isAuthenticated) {
+      if (!isAuthenticated || initializing) {
         setMembershipBlocking(false)
         setOpen(false)
         return
       }
       const u = useAuthStore.getState().user
-      if (!u?.id && !u?._id) return
-      if (!u.username) return
+      if (!u?.id && !u?._id) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
+      if (!u.username) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
       if (isPaidEraLive()) {
         setMembershipBlocking(false)
         setOpen(false)
         return
       }
-      if (document.body.dataset.qyntraTutorial === '1') return
+      if (document.body.dataset.qyntraTutorial === '1') {
+        setOpen(false)
+        return
+      }
 
       const tick = useAuthStore.getState().authSessionTick || 0
-      if (closedForTickRef.current === tick && tick > 0) return
+      if (closedForTickRef.current === tick && tick > 0) {
+        setMembershipBlocking(false)
+        setOpen(false)
+        return
+      }
 
       const uid = u.id || u._id
       if (hasOptedOut(uid)) {
@@ -96,30 +112,22 @@ export default function MembershipExpiryNotice() {
         return
       }
 
-      // Reserve slot so notifications wait behind this notice
       setMembershipBlocking(true)
-      if (!canShowPrompt('membership')) {
-        setOpen(false)
-        return
-      }
-
-      setOpen(true)
+      setOpen(canShowPrompt('membership'))
     }
 
     tryOpen()
-    const t1 = window.setTimeout(tryOpen, 600)
-    const t2 = window.setTimeout(tryOpen, 1800)
     const unsub = subscribeAppGate(() => tryOpen())
-    const onTutorialClosed = () => window.setTimeout(tryOpen, 350)
+    const onTutorialClosed = () => window.setTimeout(tryOpen, 420)
     window.addEventListener(TUTORIAL_CLOSED_EVENT, onTutorialClosed)
     return () => {
-      window.clearTimeout(t1)
-      window.clearTimeout(t2)
       unsub()
       window.removeEventListener(TUTORIAL_CLOSED_EVENT, onTutorialClosed)
+      setMembershipBlocking(false)
     }
   }, [
     isAuthenticated,
+    initializing,
     user?.id,
     user?._id,
     user?.username,

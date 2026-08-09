@@ -16,6 +16,7 @@ import PostImageViewer from './PostImageViewer'
 import ProtectedMedia from './ProtectedMedia'
 import SharedPostAttachment from './SharedPostAttachment'
 import ChallengePostCard from './ChallengePostCard'
+import QySiShareCard, { isQySiShareData } from './QySiShareCard'
 import { countComments, normalizeCommentTree } from '../utils/commentTree'
 import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
 import toast from 'react-hot-toast'
@@ -165,12 +166,18 @@ export default function PostDetailSheet({
   const isChallenge =
     workout &&
     (post?.postType === 'challenge' || workout.shareKind === 'challenge')
+  const isQySiShare = workout && isQySiShareData(workout)
   const isRoutine =
     workout &&
     !isChallenge &&
+    !isQySiShare &&
     (post?.postType === 'routine' || workout.isRoutine || workout.shareKind === 'routine')
   const isCompletedWorkout =
-    workout && !isRoutine && !isChallenge && (post?.postType === 'workout' || Boolean(workout))
+    workout &&
+    !isRoutine &&
+    !isChallenge &&
+    !isQySiShare &&
+    (post?.postType === 'workout' || Boolean(workout))
 
   const contentText = post?.content
     ? String(post.content).includes('[workout]')
@@ -293,6 +300,13 @@ export default function PostDetailSheet({
                 {!post.sharedFrom && isChallenge && (
                   <div className="mx-4 mb-4">
                     <ChallengePostCard data={workout} />
+                  </div>
+                )}
+
+                {/* QySi profile share */}
+                {!post.sharedFrom && isQySiShare && (
+                  <div className="mx-4 mb-4">
+                    <QySiShareCard data={workout} variant="feed" />
                   </div>
                 )}
 

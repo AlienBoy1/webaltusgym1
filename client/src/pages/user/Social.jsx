@@ -16,6 +16,7 @@ import FeedPostImages from '../../components/FeedPostImages'
 import RoutineDetailModal from '../../components/RoutineDetailModal'
 import PostReactionButton from '../../components/PostReactionButton'
 import SharedPostAttachment from '../../components/SharedPostAttachment'
+import QySiShareCard from '../../components/QySiShareCard'
 import { useAppDialog } from '../../components/AppDialog'
 import PostReactorsModal from '../../components/PostReactorsModal'
 import PeopleYouMayKnow from '../../components/PeopleYouMayKnow'
@@ -975,10 +976,21 @@ export default function Social() {
                     </div>
                   )}
 
+                {/* QySi profile share */}
+                {!post.sharedFrom &&
+                  post.workoutData &&
+                  (post.workoutData.shareKind === 'qysi' || post.workoutData.kind === 'qysi_share') && (
+                    <div className="mb-4" data-no-post-open>
+                      <QySiShareCard data={post.workoutData} variant="feed" />
+                    </div>
+                  )}
+
                 {/* Routine share (template) vs completed workout — omit on reshares */}
                 {!post.sharedFrom &&
                   post.workoutData &&
                   post.workoutData.shareKind !== 'challenge' &&
+                  post.workoutData.shareKind !== 'qysi' &&
+                  post.workoutData.kind !== 'qysi_share' &&
                   post.postType !== 'challenge' &&
                   (post.postType === 'routine' ||
                     post.workoutData.isRoutine ||
@@ -1026,6 +1038,8 @@ export default function Social() {
                   !post.workoutData.isRoutine &&
                   post.workoutData.shareKind !== 'routine' &&
                   post.workoutData.shareKind !== 'challenge' &&
+                  post.workoutData.shareKind !== 'qysi' &&
+                  post.workoutData.kind !== 'qysi_share' &&
                   (post.postType === 'workout' || post.workoutData) && (
                   <button
                     type="button"
@@ -1041,6 +1055,14 @@ export default function Social() {
                       <span className="text-xs font-semibold uppercase tracking-[0.2em]">Entrenamiento realizado</span>
                     </div>
                     <h4 className="font-display text-xl text-app">{post.workoutData.name}</h4>
+                    {(post.workoutData.isQiSi ||
+                      post.workoutData.sourceKind === 'qisi' ||
+                      post.workoutData.QySiLabel) && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-primary-500">
+                        {post.workoutData.QySiLabel ||
+                          'Adoptada de QySi · Sistema inteligente Qyntra interno'}
+                      </p>
+                    )}
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                       <div className="rounded-xl bg-elevated border border-app p-2">
                         <p className="text-lg font-semibold text-app">

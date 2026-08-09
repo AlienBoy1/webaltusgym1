@@ -3,8 +3,23 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { mapWorkout, mapProfile } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
+import { isQiSiProfile, isQiSiRoutine, isQiSiUsername, qisiPublicBlockMessage } from '../utils/qisi.js'
 
 const router = express.Router()
+
+async function assertNotMakingQiSiPublic(existing, wantsPublic, creatorProfile = null) {
+  if (!wantsPublic) return null
+  const kind = existing?.source_kind || existing?.sourceKind
+  const fromKind = kind === 'qisi'
+  const fromCreator =
+    isQiSiProfile(creatorProfile) ||
+    isQiSiProfile(existing?.originalCreator) ||
+    isQiSiRoutine({ ...existing, sourceKind: kind })
+  if (fromKind || fromCreator) {
+    return qisiPublicBlockMessage()
+  }
+  return null
+}
 
 const defaultTemplates = [
   {
@@ -256,6 +271,8 @@ function mapRoutine(row, user = null, originalCreator = null) {
   const creator = originalCreator || (row.original_creator_id && user && row.original_creator_id === user.id
     ? user
     : null)
+  const sourceKind = row.source_kind || null
+  const isQiSi = sourceKind === 'qisi'
   return {
     _id: row.id,
     id: row.id,
@@ -289,6 +306,8 @@ function mapRoutine(row, user = null, originalCreator = null) {
     adoptCount: Number(row.adopt_count) || 0,
     isEditedFork: Boolean(row.is_edited_fork),
     collaboratorAt: row.collaborator_at || null,
+    sourceKind,
+    isQiSi,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -451,9 +470,12 @@ router.get('/routines/explore', authenticate, async (req, res) => {
 
     // Community members + own public routines always visible; others only if profilePublic
     const filtered = (data || []).filter((row) => {
+      if (row.source_kind === 'qisi') return false
+      const owner = profileMap[row.user_id]
+      if (isQiSiUsername(owner?.username)) return false
       if (row.user_id === req.user.id) return true
       if (communityIds.includes(row.user_id)) return true
-      return profileMap[row.user_id]?.settings?.privacy?.profilePublic === true
+      return owner?.settings?.privacy?.profilePublic === true
     })
 
     res.json(
@@ -479,6 +501,14 @@ router.post('/routines', authenticate, async (req, res) => {
     const { name, exercises, color, isPublic, localId, id, days, markCollaborator } = req.body
     if (!name?.trim()) return res.status(400).json({ message: 'Nombre requerido' })
 
+    const bodySourceKind = req.body?.sourceKind || req.body?.source_kind || null
+    if (Boolean(isPublic) && (bodySourceKind === 'qisi' || req.body?.isQiSi)) {
+      return res.status(400).json({
+        code: 'QISI_NOT_PUBLIC',
+        message: qisiPublicBlockMessage()
+      })
+    }
+
     const payload = {
       user_id: req.user.id,
       name: name.trim(),
@@ -488,6 +518,10 @@ router.post('/routines', authenticate, async (req, res) => {
       is_public: Boolean(isPublic),
       local_id: localId || null,
       updated_at: new Date().toISOString()
+    }
+    if (bodySourceKind === 'qisi' || req.body?.isQiSi) {
+      payload.is_public = false
+      payload.source_kind = 'qisi'
     }
     const forceCollab = markCollaborator === true || markCollaborator === 'true'
     const bodySourceId = req.body?.sourceRoutineId || req.body?.source_routine_id || null
@@ -547,6 +581,17 @@ router.post('/routines', authenticate, async (req, res) => {
         .eq('user_id', req.user.id)
         .maybeSingle()
       if (!existing) return res.status(404).json({ message: 'Rutina no encontrada' })
+      if (Boolean(isPublic)) {
+        let creator = null
+        if (existing.original_creator_id) {
+          const profiles = await loadProfilesMap([existing.original_creator_id])
+          creator = profiles[existing.original_creator_id] || null
+        }
+        const blocked = await assertNotMakingQiSiPublic(existing, true, creator)
+        if (blocked) {
+          return res.status(400).json({ code: 'QISI_NOT_PUBLIC', message: blocked })
+        }
+      }
       const updatePayload = await buildUpdatePayload(existing)
       const { data, error } = await supabaseAdmin
         .from('workout_routines')
@@ -581,6 +626,17 @@ router.post('/routines', authenticate, async (req, res) => {
         .maybeSingle()
 
       if (existing?.id) {
+        if (Boolean(isPublic)) {
+          let creator = null
+          if (existing.original_creator_id) {
+            const profiles = await loadProfilesMap([existing.original_creator_id])
+            creator = profiles[existing.original_creator_id] || null
+          }
+          const blocked = await assertNotMakingQiSiPublic(existing, true, creator)
+          if (blocked) {
+            return res.status(400).json({ code: 'QISI_NOT_PUBLIC', message: blocked })
+          }
+        }
         const updatePayload = await buildUpdatePayload(existing)
         const { data, error } = await supabaseAdmin
           .from('workout_routines')
@@ -679,6 +735,18 @@ router.put('/routines/:id', authenticate, async (req, res) => {
       .eq('user_id', req.user.id)
       .maybeSingle()
     if (!existing) return res.status(404).json({ message: 'Rutina no encontrada' })
+
+    if (isPublic !== undefined && Boolean(isPublic)) {
+      let creator = null
+      if (existing.original_creator_id) {
+        const profiles = await loadProfilesMap([existing.original_creator_id])
+        creator = profiles[existing.original_creator_id] || null
+      }
+      const blocked = await assertNotMakingQiSiPublic(existing, true, creator)
+      if (blocked) {
+        return res.status(400).json({ code: 'QISI_NOT_PUBLIC', message: blocked })
+      }
+    }
 
     const updateData = { updated_at: new Date().toISOString() }
     if (name !== undefined) updateData.name = name

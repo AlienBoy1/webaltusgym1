@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiBookOpen, FiCheck, FiPlay, FiX } from 'react-icons/fi'
 import { useAuthStore } from '../store/authStore'
-import { TUTORIAL_CATALOG, hasCompletedTutorial } from '../tutorials/registry'
+import { TUTORIAL_CATALOG, hasCompletedTutorial, TUTORIAL_IDS } from '../tutorials/registry'
 import { getTutorialBadge } from '../tutorials/spotlight'
 import { openAppTutorial, TUTORIAL_HUB_EVENT } from './AppTutorial'
+import { openQySiIntro } from './QySiIntroPresentation'
 
 /**
  * Native premium sheet listing every structured app tutorial (per-user "Visto").
@@ -116,7 +117,16 @@ export default function TutorialHub() {
                     onClick={() => {
                       setOpen(false)
                       setHighlightIds([])
-                      window.setTimeout(() => openAppTutorial(item.id), 200)
+                      window.setTimeout(() => {
+                        if (
+                          item.id === TUTORIAL_IDS.QYSI_WELCOME ||
+                          item.launcher === 'qysi_intro'
+                        ) {
+                          openQySiIntro()
+                          return
+                        }
+                        openAppTutorial(item.id)
+                      }, 200)
                     }}
                     className={`group relative flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3.5 text-left transition ${
                       highlighted
@@ -139,15 +149,17 @@ export default function TutorialHub() {
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-[color:var(--text-primary)]">{item.title}</span>
-                        {badge === 'seen' ? (
+                        {hasCompletedTutorial(user, item.id) && (
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-green-500">
                             <FiCheck size={10} /> Visto
                           </span>
-                        ) : badge === 'updated' ? (
+                        )}
+                        {badge === 'updated' && (
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-accent-yellow/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-yellow">
                             Actualizado
                           </span>
-                        ) : (
+                        )}
+                        {badge === 'new' && !hasCompletedTutorial(user, item.id) && (
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-[rgba(var(--color-primary-rgb),0.14)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--color-primary)]">
                             Nuevo
                           </span>

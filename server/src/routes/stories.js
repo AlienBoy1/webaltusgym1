@@ -4,6 +4,7 @@ import { mapStory } from '../lib/mappers.js'
 import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
 import { resolveMentions, notifyStoryMentions } from '../utils/mentions.js'
+import { isQiSiUsername, isQiSiProfile, QISI_MESSAGING_CODE, QISI_MESSAGING_COPY } from '../utils/qisi.js'
 
 const router = express.Router()
 
@@ -85,7 +86,8 @@ async function enrichStories(rows, viewerId) {
             id: author.id,
             name: author.name,
             username: author.username || null,
-            avatar: author.avatar
+            avatar: author.avatar,
+            isQiSi: isQiSiUsername(author.username)
           }
         : row.user_id,
       reactions: storyReactions,
@@ -390,6 +392,17 @@ router.get('/feed', authenticate, async (req, res) => {
     let userIds = [...new Set([req.user.id, ...followingIds])]
     const now = new Date().toISOString()
 
+    // Always include QiSi system stories when available
+    let qisiId = null
+    try {
+      const { ensureQiSiSystem } = await import('../services/qisiService.js')
+      const qisi = await ensureQiSiSystem()
+      qisiId = qisi?.id || null
+      if (qisiId) userIds = [...new Set([...userIds, qisiId])]
+    } catch {
+      /* ignore */
+    }
+
     // Community page: also include active stories from public profiles (and followed privates).
     if (communityScope) {
       const { data: activeAuthors } = await supabaseAdmin
@@ -445,13 +458,30 @@ router.get('/feed', authenticate, async (req, res) => {
     }
 
     const groups = [...byUser.values()].sort((a, b) => {
-      const aMine = (a.user?._id || a.user) === req.user.id
-      const bMine = (b.user?._id || b.user) === req.user.id
+      const aId = a.user?._id || a.user
+      const bId = b.user?._id || b.user
+      const aMine = aId === req.user.id
+      const bMine = bId === req.user.id
       if (aMine && !bMine) return -1
       if (!aMine && bMine) return 1
+      const aQi = qisiId && aId === qisiId
+      const bQi = qisiId && bId === qisiId
+      if (aQi && !bQi) return -1
+      if (!aQi && bQi) return 1
       if (a.hasUnseen !== b.hasUnseen) return a.hasUnseen ? -1 : 1
       return 0
     })
+
+    // Mark QiSi groups for client styling
+    if (qisiId) {
+      for (const g of groups) {
+        const uid = g.user?._id || g.user
+        if (uid === qisiId) {
+          g.isQiSi = true
+          if (g.user && typeof g.user === 'object') g.user.isQiSi = true
+        }
+      }
+    }
 
     res.setHeader('Cache-Control', 'private, max-age=15')
     res.json({ groups, reactions: STORY_REACTIONS })
@@ -701,6 +731,19 @@ router.post('/:id/react', authenticate, async (req, res) => {
       .maybeSingle()
 
     if (!story) return res.status(404).json({ message: 'Historia no encontrada o expirada' })
+
+    const { data: owner } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, settings, profile')
+      .eq('id', story.user_id)
+      .maybeSingle()
+
+    if (owner && isQiSiProfile(owner)) {
+      return res.status(403).json({
+        message: QISI_MESSAGING_COPY,
+        code: QISI_MESSAGING_CODE
+      })
+    }
 
     const { error } = await supabaseAdmin.from('story_reactions').upsert(
       {

@@ -52,6 +52,39 @@ function persistCachedUser(user) {
   }
 }
 
+/** One-shot onboarding flags — once true, never wipe with stale server false/missing. */
+const STICKY_TRUE_SETTINGS = [
+  'qyntraWelcomeSeen',
+  'qysiIntroSeenV2',
+  'tutorialCompleted'
+]
+
+function mergeUsersPreservingSettings(prev, incoming) {
+  const next = withIdAlias({ ...(prev || {}), ...(incoming || {}) })
+  if (incoming?.profile || prev?.profile) {
+    next.profile = { ...(prev?.profile || {}), ...(incoming?.profile || {}) }
+  }
+  const prevSettings = prev?.settings || {}
+  const incomingSettings = incoming?.settings || {}
+  next.settings = { ...prevSettings, ...incomingSettings }
+  for (const key of STICKY_TRUE_SETTINGS) {
+    if (prevSettings[key] === true || incomingSettings[key] === true) {
+      next.settings[key] = true
+    }
+  }
+  // Sticky one-shot tutorial / intro style flags (…Seen / …Completed)
+  for (const [key, value] of Object.entries(prevSettings)) {
+    if (value !== true) continue
+    if (!/(Seen|Completed)$/.test(key)) continue
+    next.settings[key] = true
+  }
+  if (!next.avatar && prev?.avatar) next.avatar = prev.avatar
+  if (prev?.profile?.coverUrl && !next.profile?.coverUrl) {
+    next.profile = { ...(next.profile || {}), coverUrl: prev.profile.coverUrl }
+  }
+  return next
+}
+
 /** Sync JWT into Supabase client so Realtime/RLS see auth.uid() */
 async function syncSupabaseSession(accessToken, refreshToken) {
   if (!accessToken || !refreshToken) return
@@ -310,12 +343,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const { data } = await api.get('/auth/me')
       const prev = get().user
-      const next = withIdAlias(data.user)
-      // Keep local media if /me stripped huge base64 avatars
-      if (!next.avatar && prev?.avatar) next.avatar = prev.avatar
-      if (prev?.profile?.coverUrl && !next.profile?.coverUrl) {
-        next.profile = { ...(next.profile || {}), coverUrl: prev.profile.coverUrl }
-      }
+      const next = mergeUsersPreservingSettings(prev, data.user)
       persistCachedUser(next)
       set({
         user: next,
@@ -415,11 +443,7 @@ export const useAuthStore = create((set, get) => ({
       await syncSupabaseSession(token, refreshToken)
       const { data } = await api.get('/auth/me', { timeout: 15000 })
       const prev = get().user
-      const user = withIdAlias(data.user)
-      if (!user.avatar && prev?.avatar) user.avatar = prev.avatar
-      if (prev?.profile?.coverUrl && !user.profile?.coverUrl) {
-        user.profile = { ...(user.profile || {}), coverUrl: prev.profile.coverUrl }
-      }
+      const user = mergeUsersPreservingSettings(prev, data.user)
       persistCachedUser(user)
       set({
         user,

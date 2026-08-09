@@ -81,3 +81,15 @@ export function buildChallengeInviteShareText({
     `Entra a Retos aquí:\n${link}`
   )
 }
+
+/** Deep link to a user profile */
+export function getProfilePath(usernameOrId) {
+  if (!usernameOrId) return '/social'
+  return `/user/${encodeURIComponent(String(usernameOrId))}`
+}
+
+export function getProfileUrl(usernameOrId) {
+  const origin = getAppOrigin()
+  const path = getProfilePath(usernameOrId)
+  return origin ? `${origin}${path}` : path
+}

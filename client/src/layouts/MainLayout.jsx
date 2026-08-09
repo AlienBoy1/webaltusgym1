@@ -12,6 +12,7 @@ import TutorialHub from '../components/TutorialHub'
 import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
 import WelcomeIntroModal from '../components/WelcomeIntroModal'
+import QySiIntroPresentation from '../components/QySiIntroPresentation'
 import BadgeUnlockCelebration from '../components/BadgeUnlockCelebration'
 import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification, sendReceipt } from '../utils/socket'
 import api from '../utils/api'
@@ -19,8 +20,7 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import QyntraLogo from '../components/QyntraLogo'
 import { Avatar } from '../utils/avatarUtils'
-import {
-  applyAppearanceSettings,
+import { applyAppearanceSettings,
   cacheAppearance,
   loadCachedSettings,
   bindSystemThemeListener,
@@ -33,6 +33,7 @@ import { installMediaProtection } from '../components/ProtectedMedia'
 import { prefetchRoute } from '../utils/routePrefetch'
 import { getStoredToken, getStoredRefreshToken } from '../utils/tokenStorage'
 import { supabase } from '../lib/supabase'
+import { useMainNavSwipe } from '../hooks/useMainNavSwipe'
 
 const navItems = [
   { path: '/dashboard', icon: FiHome, label: 'Inicio', tour: 'nav-dashboard' },
@@ -74,7 +75,10 @@ export default function MainLayout() {
   })
   const avatarMenuRef = useRef(null)
   const avatarMenuPanelRef = useRef(null)
-  
+
+  // Facebook-like swipe between bottom-nav screens (mobile primary nav)
+  useMainNavSwipe(!chatThreadOpen)
+
   const isDashboard = location.pathname === '/dashboard'
   const canGoBack = !isDashboard && location.pathname !== '/'
 
@@ -875,6 +879,7 @@ export default function MainLayout() {
       
       {/* Bottom Navigation (Mobile) — hide while a chat thread is open */}
       <nav
+        data-no-swipe
         className={`glass fixed bottom-0 left-0 right-0 z-50 px-2 py-2 md:hidden ${
           chatThreadOpen ? 'pointer-events-none invisible translate-y-full' : ''
         }`}
@@ -914,6 +919,7 @@ export default function MainLayout() {
       <TutorialHub />
       <NewTutorialPrompt />
       <WelcomeIntroModal />
+      <QySiIntroPresentation />
       <BadgeUnlockCelebration />
       <MembershipExpiryNotice />
     </div>

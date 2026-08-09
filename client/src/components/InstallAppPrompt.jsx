@@ -32,6 +32,7 @@ const SHOW_DELAY_MS = 2200
 export default function InstallAppPrompt() {
   const user = useAuthStore((s) => s.user)
   const isLoggedIn = Boolean(user?._id || user?.id)
+  const initializing = useAuthStore((s) => s.initializing)
   const [open, setOpen] = useState(false)
   const [hasNativePrompt, setHasNativePrompt] = useState(Boolean(getDeferredInstallPrompt()))
   const [installing, setInstalling] = useState(false)
@@ -60,22 +61,30 @@ export default function InstallAppPrompt() {
       }
     }
 
+    let delayPassed = false
     const tryShow = () => {
+      if (initializing) {
+        setOpen(false)
+        return
+      }
       if (isInstalledApp() || !shouldOfferInstall({ isLoggedIn: true })) {
         setInstallBlocking(false)
         setOpen(false)
         return
       }
-      if (document.body.dataset.qyntraTutorial === '1') return
-      if (!canShowPrompt('install')) {
+      if (!delayPassed) return
+      if (document.body.dataset.qyntraTutorial === '1') {
         setOpen(false)
         return
       }
       setInstallBlocking(true)
-      setOpen(true)
+      setOpen(canShowPrompt('install'))
     }
 
-    const t = window.setTimeout(tryShow, SHOW_DELAY_MS)
+    const t = window.setTimeout(() => {
+      delayPassed = true
+      tryShow()
+    }, SHOW_DELAY_MS)
     const unsub = subscribeAppGate(tryShow)
     const onInstalled = () => {
       setInstallBlocking(false)
@@ -88,7 +97,7 @@ export default function InstallAppPrompt() {
       window.removeEventListener('appinstalled', onInstalled)
       setInstallBlocking(false)
     }
-  }, [isLoggedIn, user?._id, user?.id])
+  }, [isLoggedIn, user?._id, user?.id, initializing])
 
   const closeSession = () => {
     setOpen(false)

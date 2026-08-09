@@ -36,7 +36,7 @@ export default function UsernameSetupModal({ open }) {
     const sync = () => setGateOk(canShowPrompt('username'))
     sync()
     return subscribeAppGate(sync)
-  }, [])
+  }, [open])
 
   useEffect(() => {
     if (!open || !gateOk) return

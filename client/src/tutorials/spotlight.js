@@ -224,6 +224,8 @@ export function getTutorialBadge(user, tutorialId) {
   const completed = hasCompletedTutorial(user, tutorialId)
 
   if (completed && doneVer >= ver) return 'seen'
+  // Completed before version tracking existed — treat as seen for current v1 catalogs
+  if (completed && doneVer === 0 && ver <= 1) return 'seen'
   if (doneVer > 0 && doneVer < ver) return 'updated'
   if (completed && doneVer < ver) return 'updated'
   if (!completed) return 'new'

@@ -38,11 +38,12 @@ function writeWelcomeSeenLocal(uid) {
 
 /**
  * One-time product intro for every authenticated user (new + existing).
- * Persisted in profiles.settings.qyntraWelcomeSeen — blocks tutorials until dismissed.
+ * Persisted in profiles.settings.qyntraWelcomeSeen — blocks later prompts until dismissed.
  */
 export default function WelcomeIntroModal() {
   const user = useAuthStore((s) => s.user)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const initializing = useAuthStore((s) => s.initializing)
   const updateUser = useAuthStore((s) => s.updateUser)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -62,59 +63,56 @@ export default function WelcomeIntroModal() {
     healTriedRef.current.add(String(uid))
     markSeenLocally(uid, settingsBase)
     api.put('/users/profile', { settings: { [SETTING_KEY]: true } }).catch(() => {
-      /* local already true — retry next session */
       healTriedRef.current.delete(String(uid))
     })
   }
 
   useEffect(() => {
-    const tryOpen = () => {
-      if (!isAuthenticated) {
+    const sync = () => {
+      if (!isAuthenticated || initializing) {
         setWelcomeBlocking(false)
         setOpen(false)
         return
       }
       const u = useAuthStore.getState().user
       const uid = u?.id || u?._id
-      if (!uid) return
+      if (!uid) {
+        setWelcomeBlocking(false)
+        setOpen(false)
+        return
+      }
       if (!u.username) {
         setWelcomeBlocking(false)
         setOpen(false)
         return
       }
-      if (document.body.dataset.qyntraTutorial === '1') return
 
       const seenInSettings = u.settings?.[SETTING_KEY] === true
       const seenLocal = readWelcomeSeenLocal(uid)
 
-      // Already dismissed — never flash open. Heal DB if only local survived a failed PUT.
+      // Already dismissed — never flash. Heal DB if only local survived a failed PUT.
       if (seenInSettings || seenLocal) {
+        if (seenInSettings) writeWelcomeSeenLocal(uid)
         if (seenLocal && !seenInSettings) healDbIfNeeded(uid, u.settings)
         setWelcomeBlocking(false)
         setOpen(false)
         return
       }
 
-      // Need to show welcome — reserve slot so tutorials/membership wait
+      // Need welcome — declare intent; render only when this layer is active.
       setWelcomeBlocking(true)
-      if (!canShowPrompt('welcome')) {
-        setOpen(false)
-        return
-      }
-      setOpen(true)
+      setOpen(canShowPrompt('welcome'))
     }
 
-    tryOpen()
-    const t1 = window.setTimeout(tryOpen, 400)
-    const t2 = window.setTimeout(tryOpen, 1400)
-    const unsub = subscribeAppGate(() => tryOpen())
+    sync()
+    const unsub = subscribeAppGate(sync)
     return () => {
-      window.clearTimeout(t1)
-      window.clearTimeout(t2)
       unsub()
+      setWelcomeBlocking(false)
     }
   }, [
     isAuthenticated,
+    initializing,
     user?.id,
     user?._id,
     user?.username,
@@ -152,13 +150,12 @@ export default function WelcomeIntroModal() {
   // Retroactive tutorial / milestone badges for existing accounts
   useEffect(() => {
     const uid = user?.id || user?._id
-    if (!uid || !isAuthenticated) return undefined
+    if (!uid || !isAuthenticated || initializing) return undefined
     let cancelled = false
     ;(async () => {
       try {
         const { data } = await api.post('/users/badges/sync')
         if (cancelled || !data?.user) return
-        // Preserve welcome-seen if badge sync returns stale settings from DB
         const prevSettings = useAuthStore.getState().user?.settings || {}
         const incoming = data.user
         const mergedSettings = {
@@ -175,7 +172,7 @@ export default function WelcomeIntroModal() {
     return () => {
       cancelled = true
     }
-  }, [user?.id, user?._id, isAuthenticated, updateUser])
+  }, [user?.id, user?._id, isAuthenticated, initializing, updateUser])
 
   if (typeof document === 'undefined') return null
 

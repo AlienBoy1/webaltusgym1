@@ -16,46 +16,67 @@ import {
   presenceDisplayName,
   subscribePresenceMap
 } from '../utils/presence'
+import { displayQiSiHandle, isQiSiProfile, QISI_HANDLE, QISI_NAME } from '../utils/qisi'
+import { QYSI_AVATAR_SRC } from './QySiAvatar'
 
 function sortRailPeople(people) {
-  const following = people.filter((p) => p.source === 'following')
-  const suggestions = people.filter((p) => p.source !== 'following')
+  const qysi = people.filter((p) => p.isQiSi || isQiSiProfile(p))
+  const rest = people.filter((p) => !(p.isQiSi || isQiSiProfile(p)))
+  const following = rest.filter((p) => p.source === 'following')
+  const suggestions = rest.filter((p) => p.source !== 'following')
   const getUpdatedAt = (id) => getUserPresenceEntry(id)?.updatedAt || 0
   const sorter = (a, b) =>
     comparePresencePeople(a, b, getUserStatus, (id) => getUserLastSeen(id), getUpdatedAt)
-  return [...following.sort(sorter), ...suggestions.sort(sorter)]
+  return [...qysi, ...following.sort(sorter), ...suggestions.sort(sorter)]
 }
 
 function BubbleItem({ person, now }) {
   const id = person._id || person.id
-  const status = getUserStatus(id)
+  const isQiSi = Boolean(person.isQiSi || isQiSiProfile(person))
+  const status = isQiSi ? 'online' : getUserStatus(id)
   const lastSeen = getUserLastSeen(id) || person.lastSeenAt
-  const label = formatActivePresenceLabel(status, lastSeen, now)
+  const label = isQiSi ? 'En línea' : formatActivePresenceLabel(status, lastSeen, now)
   const meta = getPresenceMeta(status)
-  const online = isPresenceOnline(status)
-  const display = presenceDisplayName(person)
+  const online = isQiSi || isPresenceOnline(status)
+  const display = isQiSi ? QISI_NAME : presenceDisplayName(person)
+  const handle = isQiSi ? QISI_HANDLE : displayQiSiHandle(person.username)
 
   return (
     <Link
-      to={`/user/${id}`}
+      to={`/user/${isQiSi && person.username ? person.username : id}`}
       className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 text-center outline-none"
     >
       <div className="relative">
         <div
           className={`rounded-full p-[2px] ${
-            online ? 'bg-gradient-to-br from-accent-green/90 to-primary-500/70' : 'bg-transparent'
+            isQiSi
+              ? 'bg-gradient-to-br from-primary-400 to-primary-700'
+              : online
+                ? 'bg-gradient-to-br from-accent-green/90 to-primary-500/70'
+                : 'bg-transparent'
           }`}
         >
           <div className="rounded-full bg-[color:var(--bg-elevated)] p-[2px]">
-            <Avatar avatar={person.avatar} name={person.name} size="story" />
+            <Avatar
+              avatar={isQiSi ? QYSI_AVATAR_SRC : person.avatar}
+              name={person.name || QISI_NAME}
+              size="story"
+            />
           </div>
         </div>
-        <PresenceDot
-          userId={id}
-          size="md"
-          showOffline={false}
-          borderClass="border-[color:var(--bg-elevated)]"
-        />
+        {!isQiSi && (
+          <PresenceDot
+            userId={id}
+            size="md"
+            showOffline={false}
+            borderClass="border-[color:var(--bg-elevated)]"
+          />
+        )}
+        {isQiSi && (
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-[8px] font-bold text-white ring-2 ring-[color:var(--bg-elevated)]">
+            Qy
+          </span>
+        )}
       </div>
       <div className="w-full min-w-0 px-0.5">
         <p className="truncate text-[11px] font-semibold leading-tight text-[color:var(--text-primary)]">
@@ -63,11 +84,11 @@ function BubbleItem({ person, now }) {
         </p>
         <p
           className={`mt-0.5 truncate text-[10px] font-medium leading-tight ${
-            online ? meta.textClass : 'text-[color:var(--text-muted)]'
+            online || isQiSi ? meta.textClass : 'text-[color:var(--text-muted)]'
           }`}
-          title={label}
+          title={isQiSi ? `@${handle}` : label}
         >
-          {label}
+          {isQiSi ? `@${handle}` : label}
         </p>
       </div>
     </Link>

@@ -13,7 +13,9 @@ import classRoutes from './routes/classes.js'
 import challengeRoutes from './routes/challenges.js'
 import storyRoutes from './routes/stories.js'
 import noteRoutes from './routes/notes.js'
+import qisiRoutes from './routes/qisi.js'
 import { isSupabaseConfigured } from './lib/supabase.js'
+import { ensureQiSiSystem } from './services/qisiService.js'
 
 dotenv.config()
 
@@ -70,6 +72,16 @@ app.use('/api/classes', classRoutes)
 app.use('/api/challenges', challengeRoutes)
 app.use('/api/stories', storyRoutes)
 app.use('/api/notes', noteRoutes)
+app.use('/api/qisi', qisiRoutes)
+
+// Warm QiSi system user + launch story (non-blocking)
+if (isSupabaseConfigured()) {
+  setTimeout(() => {
+    ensureQiSiSystem().catch((err) => {
+      console.warn('QiSi warm-up:', err?.message || err)
+    })
+  }, 1500)
+}
 
 app.get('/api/health', (req, res) => {
   res.json({

@@ -1,6 +1,6 @@
 /**
  * Builds a 9:16 share image that mirrors ANY Social post type
- * (text, mood, poll, images, badge, workout, routine, challenge, reshare).
+ * (text, mood, poll, images, badge, workout, routine, challenge, qysi, reshare).
  * Uses the live app theme (light/dark + brand colors).
  */
 
@@ -134,16 +134,26 @@ async function drawAvatar(ctx, user, x, y, size) {
 function classifyPayload(p) {
   const wd = p?.workoutData || p?.workout_data || null
   const badge = p?.badgeData || p?.badge_data || null
+  const isQySi =
+    Boolean(wd) && (wd.shareKind === 'qysi' || wd.kind === 'qysi_share')
   const isRoutine =
     Boolean(wd) &&
+    !isQySi &&
     (p?.postType === 'routine' || wd.isRoutine || wd.shareKind === 'routine')
   const isChallenge =
-    Boolean(wd) && (p?.postType === 'challenge' || wd.shareKind === 'challenge')
+    Boolean(wd) &&
+    !isQySi &&
+    (p?.postType === 'challenge' || wd.shareKind === 'challenge')
   const isWorkout =
-    Boolean(wd) && !isRoutine && !isChallenge && (p?.postType === 'workout' || Boolean(wd.name))
+    Boolean(wd) &&
+    !isRoutine &&
+    !isChallenge &&
+    !isQySi &&
+    (p?.postType === 'workout' || Boolean(wd.name))
   return {
     wd,
     badge,
+    isQySi,
     isRoutine,
     isChallenge,
     isWorkout,
@@ -186,6 +196,7 @@ function estimateBlockHeight(kind, data) {
     const chips = data?.shareMode !== 'completed' ? 0 : 78
     return 70 + 90 + descH + exH + 150 + chips + 72
   }
+  if (kind === 'qysi') return 340
   if (kind === 'embed') return 80 + estimatePayloadHeight(data)
   return 40
 }
@@ -194,7 +205,8 @@ function estimatePayloadHeight(p) {
   const c = classifyPayload(p)
   let h = 0
   if (c.mood) h += estimateBlockHeight('mood')
-  if (c.isWorkout) h += estimateBlockHeight('workout', c.wd)
+  if (c.isQySi) h += estimateBlockHeight('qysi', c.wd)
+  else if (c.isWorkout) h += estimateBlockHeight('workout', c.wd)
   else if (c.isRoutine) h += estimateBlockHeight('routine', c.wd)
   else if (c.isChallenge) h += estimateBlockHeight('challenge', c.wd)
   if (c.badge && (c.badge.badgeName || c.badge.name)) h += estimateBlockHeight('badge')
@@ -548,6 +560,136 @@ async function drawImages(ctx, images, x, y, maxW, maxBottom) {
   return y + rows * cellH + (rows - 1) * gap + 16
 }
 
+async function drawQySiFeatureCard(ctx, { x, y, w, wd }) {
+  const h = 320
+  const accent = P.primary
+  ctx.fillStyle = P.surface
+  roundRect(ctx, x, y, w, h, 28)
+  ctx.fill()
+  ctx.strokeStyle = withAlpha(accent, 0.45)
+  ctx.lineWidth = 3
+  roundRect(ctx, x, y, w, h, 28)
+  ctx.stroke()
+
+  // Soft wash
+  const g = ctx.createLinearGradient(x, y, x + w, y + h)
+  g.addColorStop(0, withAlpha(accent, 0.18))
+  g.addColorStop(0.55, withAlpha(P.accent, 0.06))
+  g.addColorStop(1, 'transparent')
+  ctx.fillStyle = g
+  roundRect(ctx, x, y, w, h, 28)
+  ctx.fill()
+
+  const name = String(wd?.name || 'QySi')
+  const handle = String(wd?.handle || 'Qyntra-inner')
+  const meaning = String(wd?.meaning || 'Sistema inteligente Qyntra interno')
+  const avatarSrc = wd?.avatar || '/qysi-avatar.png'
+  const chips = Array.isArray(wd?.chips) && wd.chips.length
+    ? wd.chips.slice(0, 3)
+    : ['5 variantes', 'Tu nivel', 'Entrenamientos']
+
+  const ax = x + 36
+  const ay = y + 36
+  const ar = 52
+  // Ring
+  const ring = ctx.createLinearGradient(ax, ay, ax + ar * 2, ay + ar * 2)
+  ring.addColorStop(0, accent)
+  ring.addColorStop(1, P.accent)
+  ctx.beginPath()
+  ctx.arc(ax + ar, ay + ar, ar + 5, 0, Math.PI * 2)
+  ctx.fillStyle = ring
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(ax + ar, ay + ar, ar + 1, 0, Math.PI * 2)
+  ctx.fillStyle = P.surface
+  ctx.fill()
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(ax + ar, ay + ar, ar - 2, 0, Math.PI * 2)
+  ctx.clip()
+  try {
+    const img = await loadImage(avatarSrc)
+    ctx.drawImage(img, ax + 2, ay + 2, (ar - 2) * 2, (ar - 2) * 2)
+  } catch {
+    ctx.fillStyle = withAlpha(accent, 0.35)
+    ctx.fillRect(ax, ay, ar * 2, ar * 2)
+    ctx.fillStyle = P.text
+    ctx.font = 'bold 42px Outfit, system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(name.charAt(0) || 'Q', ax + ar, ay + ar)
+  }
+  ctx.restore()
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+
+  const tx = ax + ar * 2 + 22
+  ctx.fillStyle = accent
+  ctx.font = '700 18px Outfit, system-ui, sans-serif'
+  ctx.fillText('SISTEMA INTELIGENTE', tx, ay + 28)
+  ctx.fillStyle = P.text
+  ctx.font = 'bold 44px Bebas Neue, Outfit, system-ui, sans-serif'
+  ctx.fillText(name.toUpperCase(), tx, ay + 72)
+  ctx.fillStyle = accent
+  ctx.font = '700 24px Outfit, system-ui, sans-serif'
+  ctx.fillText(`@${handle}`, tx, ay + 104)
+
+  ctx.fillStyle = P.textSecondary
+  ctx.font = '500 22px Outfit, system-ui, sans-serif'
+  wrapText(ctx, `${meaning}. Entrena con variantes listas según tu nivel.`, x + 36, y + 170, w - 72, 30, 2)
+
+  let chipX = x + 36
+  const chipY = y + 230
+  ctx.font = '600 18px Outfit, system-ui, sans-serif'
+  for (const label of chips) {
+    const tw = ctx.measureText(label).width
+    const pw = tw + 28
+    ctx.fillStyle = withAlpha(accent, 0.12)
+    roundRect(ctx, chipX, chipY, pw, 40, 20)
+    ctx.fill()
+    ctx.strokeStyle = withAlpha(accent, 0.35)
+    ctx.lineWidth = 2
+    roundRect(ctx, chipX, chipY, pw, 40, 20)
+    ctx.stroke()
+    ctx.fillStyle = P.text
+    ctx.fillText(label, chipX + 14, chipY + 27)
+    chipX += pw + 12
+  }
+
+  ctx.fillStyle = withAlpha(accent, 0.14)
+  roundRect(ctx, x + 36, y + 284, w - 72, 44, 14)
+  ctx.fill()
+  ctx.fillStyle = accent
+  ctx.font = '700 20px Outfit, system-ui, sans-serif'
+  ctx.fillText('Ver perfil →', x + 52, y + 313)
+
+  return y + h
+}
+
+function withAlpha(color, alpha) {
+  if (!color) return `rgba(0,0,0,${alpha})`
+  if (String(color).startsWith('#')) {
+    const hex = String(color).replace('#', '')
+    const full =
+      hex.length === 3
+        ? hex
+            .split('')
+            .map((c) => c + c)
+            .join('')
+        : hex
+    const n = parseInt(full.slice(0, 6), 16)
+    if (Number.isNaN(n)) return color
+    const r = (n >> 16) & 255
+    const g = (n >> 8) & 255
+    const b = n & 255
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+  if (String(color).startsWith('rgb(')) {
+    return String(color).replace('rgb(', 'rgba(').replace(')', `,${alpha})`)
+  }
+  return color
+}
+
 async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
   const c = classifyPayload(p)
   let cy = y
@@ -565,7 +707,9 @@ async function drawPayloadBody(ctx, p, x, y, maxW, maxBottom) {
     cy += 90
   }
 
-  if (c.isWorkout && cy < maxBottom - 80) {
+  if (c.isQySi && cy < maxBottom - 80) {
+    cy = (await drawQySiFeatureCard(ctx, { x, y: cy, w: maxW, wd: c.wd })) + 24
+  } else if (c.isWorkout && cy < maxBottom - 80) {
     cy = (await drawFeatureCard(ctx, { x, y: cy, w: maxW, kind: 'workout', wd: c.wd })) + 24
   } else if (c.isRoutine && cy < maxBottom - 80) {
     cy = (await drawFeatureCard(ctx, { x, y: cy, w: maxW, kind: 'routine', wd: c.wd })) + 24

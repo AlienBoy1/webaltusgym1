@@ -15,7 +15,8 @@ import {
   FiSearch,
   FiUser,
   FiUsers,
-  FiEye
+  FiEye,
+  FiZap
 } from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -39,6 +40,15 @@ import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { useAuthStore } from '../../store/authStore'
 import { useAppDialog } from '../../components/AppDialog'
 import RoutineDetailModal, { isAdoptedFromOther } from '../../components/RoutineDetailModal'
+import QySiAssistant from '../../components/QySiAssistant'
+import {
+  displayQiSiHandle,
+  isQiSiProfile,
+  isQiSiRoutine,
+  qisiPublicBlockMessage,
+  QISI_HANDLE,
+  QISI_NAME
+} from '../../utils/qisi'
 
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 const DEFAULT_REST_SECONDS = 60
@@ -46,10 +56,19 @@ const DEFAULT_REST_SECONDS = 60
 function gymratCreatorLabel(template, meId) {
   const creator = template?.originalCreator
   const creatorId = template?.originalCreatorId || creator?.id || creator?._id
-  if (!creatorId || String(creatorId) === String(meId || '')) return null
-  if (creator?.username) return `@${String(creator.username).replace(/^@+/, '')}`
+  if (!creatorId || String(creatorId) === String(meId || '')) {
+    if (isQiSiRoutine(template)) return `@${QISI_HANDLE}`
+    return null
+  }
+  if (isQiSiProfile(creator) || isQiSiRoutine(template)) return `@${QISI_HANDLE}`
+  if (creator?.username) return `@${displayQiSiHandle(creator.username)}`
   if (creator?.name) return creator.name
   return null
+}
+
+function QySiBadgeLabel(template) {
+  if (!isQiSiRoutine(template) && !isQiSiProfile(template?.originalCreator)) return null
+  return `Adoptada de ${QISI_NAME} · Sistema inteligente Qyntra interno`
 }
 
 function mergeServerRoutines(prev, data) {
@@ -89,7 +108,9 @@ function mergeServerRoutines(prev, data) {
       originalCreatorId: match.originalCreatorId || t.originalCreatorId || null,
       originalCreator: match.originalCreator || t.originalCreator || null,
       adoptCount: match.adoptCount ?? t.adoptCount ?? 0,
-      isEditedFork
+      isEditedFork,
+      isQiSi: Boolean(match.isQiSi || t.isQiSi || match.sourceKind === 'qisi' || t.sourceKind === 'qisi'),
+      sourceKind: match.sourceKind || t.sourceKind || null
     }
 
     if (sourceRoutineId && isEditedFork && serverId && (!serverEdited || contentDiverged)) {
@@ -118,7 +139,9 @@ function mergeServerRoutines(prev, data) {
       originalCreatorId: r.originalCreatorId || null,
       originalCreator: r.originalCreator || null,
       adoptCount: Number(r.adoptCount) || 0,
-      isEditedFork: Boolean(r.isEditedFork)
+      isEditedFork: Boolean(r.isEditedFork),
+      isQiSi: Boolean(r.isQiSi || r.sourceKind === 'qisi'),
+      sourceKind: r.sourceKind || null
     })
   }
 
@@ -415,11 +438,14 @@ export default function Workouts() {
         days: normalizeDays(routine.days),
         sourceRoutineId: routine.sourceRoutineId || undefined,
         originalCreatorId: routine.originalCreatorId || undefined,
-        markCollaborator: Boolean(routine.isEditedFork)
+        markCollaborator: Boolean(routine.isEditedFork),
+        sourceKind: routine.sourceKind || undefined,
+        isQiSi: Boolean(routine.isQiSi)
       }
       const { data } = await api.post('/workouts/routines', payload)
       return data
     } catch (error) {
+      if (error?.response?.data?.code === 'QISI_NOT_PUBLIC') throw error
       console.warn('Routine sync skipped:', error?.response?.data?.message || error.message)
       return null
     }
@@ -657,11 +683,16 @@ export default function Workouts() {
       })
       celebration()
       toast.success('¡Entrenamiento registrado!')
-      setLastSavedWorkout(data?.workout || {
+      const saved = data?.workout || {
         name: activeWorkout.name,
         exercises: exercisesPayload,
         duration: Math.max(1, Math.floor(workoutTime / 60)),
         metrics
+      }
+      setLastSavedWorkout({
+        ...saved,
+        isQiSi: Boolean(activeWorkout.isQiSi || activeWorkout.sourceKind === 'qisi'),
+        sourceKind: activeWorkout.sourceKind || (activeWorkout.isQiSi ? 'qisi' : undefined)
       })
       setShowSharePrompt(true)
     } catch (error) {
@@ -684,8 +715,11 @@ export default function Workouts() {
       const w = lastSavedWorkout
       const metrics = w.metrics || {}
       const completed = (w.exercises || []).filter((e) => e.completed !== false)
+      const fromQySi = Boolean(w.isQiSi || w.sourceKind === 'qisi')
       await api.post('/social', {
-        content: `Acabo de completar: ${w.name}`,
+        content: fromQySi
+          ? `Acabo de completar: ${w.name} · Adoptada de ${QISI_NAME} (@${QISI_HANDLE})`
+          : `Acabo de completar: ${w.name}`,
         postType: 'workout',
         workoutData: {
           workoutId: w._id || w.id,
@@ -695,6 +729,11 @@ export default function Workouts() {
           totalSets: completed.reduce((s, e) => s + (Number(e.setsCompleted ?? e.sets) || 0), 0),
           durationSeconds: metrics.durationSeconds || workoutTime,
           bestRestSeconds: metrics.bestRestSeconds || null,
+          isQiSi: fromQySi,
+          sourceKind: fromQySi ? 'qisi' : undefined,
+          QySiLabel: fromQySi
+            ? `Adoptada de ${QISI_NAME} · Sistema inteligente Qyntra interno`
+            : undefined,
           exercises: completed.map((e) => ({
             name: e.name,
             sets: e.setsCompleted ?? e.sets,
@@ -907,29 +946,61 @@ export default function Workouts() {
   }
 
   const togglePublic = async (template) => {
+    if (isQiSiRoutine(template) || isQiSiProfile(template?.originalCreator)) {
+      await dialog.alert(qisiPublicBlockMessage(), {
+        title: `Rutinas de ${QISI_NAME}`,
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     const next = !template.isPublic
     const updated = { ...template, isPublic: next }
     setTemplates((current) => current.map((t) => (t.id === template.id ? updated : t)))
-    const synced = await syncRoutineToServer(updated)
-    if (synced?.id || synced?._id) {
-      setTemplates((current) =>
-        current.map((t) =>
-          t.id === template.id
-            ? {
-                ...t,
-                serverId: synced.id || synced._id,
-                isPublic: synced.isPublic,
-                days: normalizeDays(synced.days ?? t.days)
-              }
-            : t
+    try {
+      const synced = await syncRoutineToServer(updated)
+      if (synced?.id || synced?._id) {
+        setTemplates((current) =>
+          current.map((t) =>
+            t.id === template.id
+              ? {
+                  ...t,
+                  serverId: synced.id || synced._id,
+                  isPublic: synced.isPublic,
+                  days: normalizeDays(synced.days ?? t.days)
+                }
+              : t
+          )
         )
-      )
+      }
+      toast.success(next ? 'Rutina marcada como pública' : 'Rutina ahora es privada')
+    } catch (error) {
+      setTemplates((current) => current.map((t) => (t.id === template.id ? template : t)))
+      const code = error?.response?.data?.code
+      const message = error?.response?.data?.message
+      if (code === 'QISI_NOT_PUBLIC') {
+        await dialog.alert(message || qisiPublicBlockMessage(), {
+          title: `Rutinas de ${QISI_NAME}`,
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        })
+      } else {
+        toast.error(message || 'No se pudo actualizar la visibilidad')
+      }
     }
-    toast.success(next ? 'Rutina marcada como pública' : 'Rutina ahora es privada')
   }
 
   const submitShareRoutine = async (payload) => {
     if (!shareTarget) return
+    if (isQiSiRoutine(shareTarget) || isQiSiProfile(shareTarget?.originalCreator)) {
+      await dialog.alert(qisiPublicBlockMessage(), {
+        title: `Rutinas de ${QISI_NAME}`,
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      setShareTarget(null)
+      return
+    }
     setSharing(true)
     const template = shareTarget
     try {
@@ -980,7 +1051,17 @@ export default function Workouts() {
       setShareTarget(null)
       navigate('/social')
     } catch (error) {
-      toast.error(error.response?.data?.message || 'No se pudo compartir')
+      const code = error?.response?.data?.code
+      const message = error?.response?.data?.message
+      if (code === 'QISI_NOT_PUBLIC') {
+        await dialog.alert(message || qisiPublicBlockMessage(), {
+          title: `Rutinas de ${QISI_NAME}`,
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        })
+      } else {
+        toast.error(message || 'No se pudo compartir')
+      }
     } finally {
       setSharing(false)
     }
@@ -1499,19 +1580,35 @@ export default function Workouts() {
                     <h2 className="mt-2 font-display text-2xl text-app">{template.name}</h2>
                     {(() => {
                       const creatorLabel = gymratCreatorLabel(template, meId)
-                      if (!creatorLabel) return null
+                      const QySiLabel = QySiBadgeLabel(template)
                       return (
-                        <span
-                          data-tour={i === 0 ? 'tour-workout-gymrat-creator' : undefined}
-                          className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]"
-                          title="Creador original de la rutina"
-                        >
-                          <FiUser size={12} className="shrink-0" />
-                          <span className="truncate">
-                            {template.isEditedFork ? 'Colaborador · ' : ''}
-                            GymRat de {creatorLabel}
-                          </span>
-                        </span>
+                        <>
+                          {QySiLabel && (
+                            <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary-500/40 bg-primary-500/12 px-2.5 py-1 text-[11px] font-semibold text-primary-500">
+                              <FiZap size={12} className="shrink-0" />
+                              <span className="truncate">{QySiLabel}</span>
+                            </span>
+                          )}
+                          {creatorLabel && !QySiLabel && (
+                            <span
+                              data-tour={i === 0 ? 'tour-workout-gymrat-creator' : undefined}
+                              className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--color-primary)]"
+                              title="Creador original de la rutina"
+                            >
+                              <FiUser size={12} className="shrink-0" />
+                              <span className="truncate">
+                                {template.isEditedFork ? 'Colaborador · ' : ''}
+                                GymRat de {creatorLabel}
+                              </span>
+                            </span>
+                          )}
+                          {creatorLabel && QySiLabel && (
+                            <span className="mt-1.5 inline-flex max-w-full items-center gap-1 text-[11px] font-medium text-app-secondary">
+                              <FiUser size={11} />
+                              Crédito · {creatorLabel}
+                            </span>
+                          )}
+                        </>
                       )
                     })()}
                     {template.isPublic && Number(template.adoptCount) > 0 && (
@@ -1579,13 +1676,29 @@ export default function Workouts() {
                     type="button"
                     onClick={() => togglePublic(template)}
                     className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
-                    title={template.isPublic ? 'Hacer privada' : 'Hacer pública'}
+                    title={
+                      isQiSiRoutine(template)
+                        ? `Las rutinas de ${QISI_NAME} no pueden ser públicas`
+                        : template.isPublic
+                          ? 'Hacer privada'
+                          : 'Hacer pública'
+                    }
                   >
                     <FiGlobe size={13} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShareTarget(template)}
+                    onClick={async () => {
+                      if (isQiSiRoutine(template) || isQiSiProfile(template?.originalCreator)) {
+                        await dialog.alert(qisiPublicBlockMessage(), {
+                          title: `Rutinas de ${QISI_NAME}`,
+                          confirmLabel: 'Entendido',
+                          tone: 'info'
+                        })
+                        return
+                      }
+                      setShareTarget(template)
+                    }}
                     className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--bg-muted)] px-2 py-1.5 text-xs text-app hover:opacity-80"
                     title="Compartir"
                   >
@@ -1774,6 +1887,19 @@ export default function Workouts() {
         author={previewRoutine?.originalCreator || null}
         canAdopt={false}
         subtitle="Vista previa"
+      />
+
+      <QySiAssistant
+        templates={templates}
+        onAdopted={(local) => {
+          setTemplates((current) => {
+            const sourceId = local?.sourceRoutineId
+            const filtered = sourceId
+              ? current.filter((t) => String(t?.sourceRoutineId || '') !== String(sourceId))
+              : current
+            return [...filtered, local]
+          })
+        }}
       />
     </div>
   )

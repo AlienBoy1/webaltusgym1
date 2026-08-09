@@ -9,8 +9,37 @@ import {
 } from '../services/membershipService.js'
 import { isPaidEraLive } from '../utils/membershipLifecycle.js'
 import { checkBadgeUnlocks } from '../services/xpService.js'
+import { ensureQiSiSystem } from '../services/qisiService.js'
+import { QISI_USERNAME } from '../utils/qisi.js'
 
 const router = express.Router()
+
+async function loadQiSiRailPerson({ source = 'system', hasStory = false, hasUnseen = false } = {}) {
+  try {
+    const qisi = await ensureQiSiSystem()
+    if (!qisi?.id) return null
+    return {
+      _id: qisi.id,
+      id: qisi.id,
+      name: qisi.name,
+      username: qisi.username || QISI_USERNAME,
+      avatar: qisi.avatar,
+      lastSeenAt: new Date().toISOString(),
+      source,
+      isQiSi: true,
+      hasStory,
+      hasUnseen
+    }
+  } catch {
+    return null
+  }
+}
+
+function pinQiSiFirst(people, qisiPerson) {
+  if (!qisiPerson) return people
+  const rest = (people || []).filter((p) => String(p.id || p._id) !== String(qisiPerson.id))
+  return [qisiPerson, ...rest]
+}
 
 async function assertUsernameAvailable(username, excludeUserId = null) {
   const check = validateUsernameFormat(username)
@@ -138,7 +167,8 @@ router.get('/presence-rail', authenticate, async (req, res) => {
       .slice(0, 20)
 
     const people = [...following, ...suggestions].slice(0, limit)
-    res.json({ people })
+    const qisiPerson = await loadQiSiRailPerson({ source: 'system' })
+    res.json({ people: pinQiSiFirst(people, qisiPerson).slice(0, limit) })
   } catch (error) {
     console.error('presence-rail error:', error)
     res.status(500).json({ message: 'Error al cargar personas', error: error.message })
@@ -248,7 +278,30 @@ router.get('/community-rail', authenticate, async (req, res) => {
       .slice(0, limit)
 
     res.setHeader('Cache-Control', 'private, max-age=20')
-    res.json({ people })
+    let qisiPerson = null
+    try {
+      const qisi = await ensureQiSiSystem()
+      if (qisi?.id) {
+        const storyIds = storyIdsByUser.get(qisi.id) || []
+        const hasStory = storyIds.length > 0
+        const hasUnseen = hasStory && storyIds.some((id) => !viewedSet.has(id))
+        qisiPerson = {
+          _id: qisi.id,
+          id: qisi.id,
+          name: qisi.name,
+          username: qisi.username || QISI_USERNAME,
+          avatar: qisi.avatar,
+          lastSeenAt: new Date().toISOString(),
+          hasStory,
+          hasUnseen,
+          source: 'system',
+          isQiSi: true
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    res.json({ people: pinQiSiFirst(people, qisiPerson).slice(0, limit) })
   } catch (error) {
     console.error('community-rail error:', error)
     res.status(500).json({ message: 'Error al cargar la comunidad', error: error.message })

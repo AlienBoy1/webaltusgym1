@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiX, FiShare2, FiBarChart2, FiSmile } from 'react-icons/fi'
 import MentionInput from './MentionInput'
+import QySiShareCard from './QySiShareCard'
 
 const DEFAULT_MOODS = [
   { id: 'motivated', label: 'Motivado', emoji: '🔥' },
@@ -62,7 +63,7 @@ export default function ShareComposerModal({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="app-overlay-sheet fixed inset-0 z-[90] flex items-end justify-center sm:items-center sm:p-4"
+            className="app-overlay-sheet fixed inset-0 z-[130] flex items-end justify-center sm:items-center sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -99,7 +100,21 @@ export default function ShareComposerModal({
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
-              {attachmentPreview && (
+              {attachmentPreview?.kind === 'qysi' ? (
+                <div>
+                  <p
+                    className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em]"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Se adjuntará · toca en el feed para abrir
+                  </p>
+                  <QySiShareCard
+                    data={attachmentPreview.data}
+                    variant="compact"
+                    interactive={false}
+                  />
+                </div>
+              ) : attachmentPreview ? (
                 <div
                   className="rounded-2xl border p-3"
                   style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-muted)' }}
@@ -116,7 +131,7 @@ export default function ShareComposerModal({
                     </p>
                   )}
                 </div>
-              )}
+              ) : null}
 
               <div>
                 <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>

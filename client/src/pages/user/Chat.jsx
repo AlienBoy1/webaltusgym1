@@ -34,6 +34,7 @@ import { formatActivePresenceLabel, getPresenceMeta, getUserLastSeen, PRESENCE_S
 import { useAppDialog } from '../../components/AppDialog'
 import ChatEmojiPicker from '../../components/ChatEmojiPicker'
 import ProtectedMedia from '../../components/ProtectedMedia'
+import QySiShareCard, { isQySiShareData } from '../../components/QySiShareCard'
 import ChatWallpaper, {
   CHAT_WALLPAPER_NONE,
   CHAT_WALLPAPER_STYLES,
@@ -56,6 +57,12 @@ import { addChatShortcut } from '../../utils/chatShortcuts'
 import { compressImageFile } from '../../utils/compressImage'
 import ChatMessageActionOverlay from '../../components/ChatMessageActionOverlay'
 import { useHistoryBackLayer } from '../../hooks/useHistoryBackLayer'
+import {
+  isQiSiProfile,
+  QISI_MESSAGING_CODE,
+  QISI_MESSAGING_COPY,
+  QISI_MESSAGING_TITLE
+} from '../../utils/qisi'
 
 const MESSAGING_DISABLED_COPY =
   'Este usuario tiene la mensajería desactivada por ahora. Podrás escribirle cuando la active; inténtalo de nuevo más tarde.'
@@ -65,6 +72,15 @@ function isMessagingDisabledUser(u) {
   if (u.allowMessages === false) return true
   if (u.settings?.privacy?.allowMessages === false) return true
   return false
+}
+
+async function alertQySiMessagingUnavailable(dialog) {
+  if (!dialog?.alert) return
+  await dialog.alert(QISI_MESSAGING_COPY, {
+    title: QISI_MESSAGING_TITLE,
+    confirmLabel: 'Entendido',
+    tone: 'info'
+  })
 }
 
 function isRenderableAvatar(avatar) {
@@ -103,7 +119,12 @@ function attachmentPreviewLabel(attachment) {
   if (attachment.type === 'image') return '📷 Imagen'
   if (attachment.type === 'file') return attachment.name ? `📎 ${attachment.name}` : '📎 Archivo'
   if (attachment.type === 'audio') return '🎤 Audio'
-  return ''
+  if (attachment.type === 'post') return '📝 Publicación'
+  if (attachment.type === 'story') return '📖 Estado'
+  if (isQySiShareData(attachment) || attachment.type === 'profile') {
+    return `🤖 ${attachment.name || 'QySi'}`
+  }
+  return '📎 Adjunto'
 }
 
 function ReplyQuote({ reply, isMe, compact = false, onClick }) {
@@ -215,6 +236,18 @@ function MessageTicks({ status, isMe, muted = false }) {
 
 function PostAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
   if (!attachment || attachment.type !== 'post') return null
+  if (isQySiShareData(attachment.workoutData) || attachment.shareKind === 'qysi') {
+    return (
+      <div className={hasText ? 'mb-2' : ''}>
+        <QySiShareCard
+          data={attachment.workoutData || attachment}
+          variant="chat"
+          ctaLabel="Ver publicación"
+          onOpen={() => onOpen?.(attachment)}
+        />
+      </div>
+    )
+  }
   const image = attachment.image
   const label = isMe ? 'Publicación' : 'Publicación'
   return (
@@ -268,6 +301,15 @@ function PostAttachmentBubble({ attachment, isMe, hasText, onOpen }) {
         <span aria-hidden>→</span>
       </div>
     </button>
+  )
+}
+
+function ProfileAttachmentBubble({ attachment, hasText, onOpen }) {
+  if (!attachment || !isQySiShareData(attachment)) return null
+  return (
+    <div className={hasText ? 'mb-2' : ''}>
+      <QySiShareCard data={attachment} variant="chat" onOpen={onOpen} />
+    </div>
   )
 }
 
@@ -1001,7 +1043,11 @@ export default function Chat() {
     }
   }
 
-  const handleSelectChat = (conv) => {
+  const handleSelectChat = async (conv) => {
+    if (isQiSiProfile(conv)) {
+      await alertQySiMessagingUnavailable(dialog)
+      return
+    }
     setShowEmoji(false)
     setPeerTyping(false)
     const next = { ...conv, otherId: conv.otherId || conv.oderId }
@@ -1134,18 +1180,23 @@ export default function Chat() {
         replyToRef.current = activeReply
       }
       const apiMsg = error.response?.data?.message || ''
-      const messagingBlocked =
-        error.response?.status === 403 ||
-        /no acepta mensajes/i.test(apiMsg) ||
-        /allowMessages/i.test(apiMsg)
-      if (messagingBlocked) {
-        await dialog.alert(MESSAGING_DISABLED_COPY, {
-          title: 'Mensajería no disponible',
-          confirmLabel: 'Entendido',
-          tone: 'info'
-        })
+      const code = error.response?.data?.code
+      if (code === QISI_MESSAGING_CODE || /sistema inteligente de mensajer/i.test(apiMsg)) {
+        await alertQySiMessagingUnavailable(dialog)
       } else {
-        toast.error(apiMsg || 'Error al enviar mensaje')
+        const messagingBlocked =
+          error.response?.status === 403 ||
+          /no acepta mensajes/i.test(apiMsg) ||
+          /allowMessages/i.test(apiMsg)
+        if (messagingBlocked) {
+          await dialog.alert(MESSAGING_DISABLED_COPY, {
+            title: 'Mensajería no disponible',
+            confirmLabel: 'Entendido',
+            tone: 'info'
+          })
+        } else {
+          toast.error(apiMsg || 'Error al enviar mensaje')
+        }
       }
       return false
     } finally {
@@ -1798,6 +1849,10 @@ export default function Chat() {
   }, [userFilter, showNewChat])
 
   const startConversation = async (selectedUser) => {
+    if (isQiSiProfile(selectedUser)) {
+      await alertQySiMessagingUnavailable(dialog)
+      return
+    }
     if (isMessagingDisabledUser(selectedUser)) {
       await dialog.alert(MESSAGING_DISABLED_COPY, {
         title: 'Mensajería no disponible',
@@ -1869,6 +1924,12 @@ export default function Chat() {
     const prefill = location.state?.prefill
     const storyReply = location.state?.storyReply
     if (!startWith?._id && !startWith?.id) return
+
+    if (isQiSiProfile(startWith)) {
+      alertQySiMessagingUnavailable(dialog)
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
 
     if (isMessagingDisabledUser(startWith)) {
       dialog.alert(MESSAGING_DISABLED_COPY, {
@@ -2300,7 +2361,9 @@ export default function Chat() {
                   const viewOnce = Boolean(msg.attachment?.viewOnce)
                   const hideBodyText = viewOnce // caption only inside viewer, not in bubble
                   const shareCard =
-                    msg.attachment?.type === 'story' || msg.attachment?.type === 'post'
+                    msg.attachment?.type === 'story' ||
+                    msg.attachment?.type === 'post' ||
+                    isQySiShareData(msg.attachment)
                   const emojiOnly =
                     !msg.attachment &&
                     !msg.reply &&
@@ -2384,6 +2447,18 @@ export default function Chat() {
                               return
                             }
                             navigate(`/social?post=${encodeURIComponent(id)}`)
+                          }}
+                        />
+                        <ProfileAttachmentBubble
+                          attachment={msg.attachment}
+                          hasText={Boolean(msg.text?.trim()) && !hideBodyText}
+                          onOpen={(att) => {
+                            const path = att?.path || (att?.username ? `/user/${att.username}` : null)
+                            if (!path) {
+                              toast.error('No se pudo abrir el perfil')
+                              return
+                            }
+                            navigate(path)
                           }}
                         />
                         <ViewOnceAttachmentBubble

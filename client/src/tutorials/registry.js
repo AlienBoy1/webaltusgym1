@@ -22,7 +22,8 @@ export const TUTORIAL_IDS = {
   INVITES: 'invites',
   PROGRESS: 'progress',
   REST_TIMES: 'rest_times',
-  PRIVACY_PERMISSIONS: 'privacy_permissions'
+  PRIVACY_PERMISSIONS: 'privacy_permissions',
+  QYSI_WELCOME: 'qysi_welcome'
 }
 
 /**
@@ -38,7 +39,8 @@ export const PRE_SPOTLIGHT_TUTORIAL_IDS = [
   TUTORIAL_IDS.CLASSES,
   TUTORIAL_IDS.INVITES,
   TUTORIAL_IDS.PROGRESS,
-  TUTORIAL_IDS.REST_TIMES
+  TUTORIAL_IDS.REST_TIMES,
+  TUTORIAL_IDS.QYSI_WELCOME
 ]
 
 export const TUTORIAL_CATALOG = [
@@ -55,6 +57,17 @@ export const TUTORIAL_CATALOG = [
     completionKey: 'qyntra_tutorial_done',
     settingsKey: 'tutorialCompleted',
     isDefaultOnboarding: true
+  },
+  {
+    id: TUTORIAL_IDS.QYSI_WELCOME,
+    title: 'Bienvenida de QySi',
+    short: 'Presentación del trainer inteligente',
+    icon: '🤖',
+    description:
+      'Vuelve a ver la presentación cinematográfica de QySi: quién es, qué ofrece y dónde encontrarlo en Entrenamientos.',
+    completionKey: 'qyntra_qysi_intro_seen',
+    settingsKey: 'qysiIntroSeenV2',
+    launcher: 'qysi_intro'
   },
   {
     id: TUTORIAL_IDS.PROFILE_EDIT,
@@ -935,5 +948,14 @@ export function hasCompletedTutorial(user, tutorialId) {
 
   const uid = userIdOf(user)
   if (uid && readLocalCompletion(meta.completionKey, uid)) return true
+
+  // QySi welcome also uses a dedicated local key written by the intro overlay
+  if (tutorialId === TUTORIAL_IDS.QYSI_WELCOME && uid) {
+    try {
+      if (localStorage.getItem(`qyntra_qysi_intro_seen:${uid}`) === '1') return true
+    } catch {
+      /* ignore */
+    }
+  }
   return false
 }

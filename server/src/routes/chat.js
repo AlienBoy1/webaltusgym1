@@ -4,6 +4,11 @@ import { authenticate } from '../middleware/auth.js'
 import { notifyNewMessage } from '../services/notificationService.js'
 import { encodeChatContent, decodeChatContent, formatChatMessage, scrubViewOnceAttachment, DELETE_FOR_EVERYONE_MS } from '../utils/chatMessage.js'
 import { broadcastChatReceipt } from '../utils/broadcastReceipt.js'
+import {
+  isQiSiProfile,
+  QISI_MESSAGING_CODE,
+  QISI_MESSAGING_COPY
+} from '../utils/qisi.js'
 
 /** Mark peer→me messages as delivered/read. Falls back if `delivered` column missing. */
 async function markInboundReceipts({ fromId, myId, mode }) {
@@ -183,6 +188,20 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
     const otherId = req.params.userId
+
+    const { data: peer } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, settings, profile')
+      .eq('id', otherId)
+      .maybeSingle()
+
+    if (peer && isQiSiProfile(peer)) {
+      return res.status(403).json({
+        message: QISI_MESSAGING_COPY,
+        code: QISI_MESSAGING_CODE
+      })
+    }
+
     const shouldMarkRead = !['0', 'false', 'no'].includes(
       String(req.query.markRead || '1').toLowerCase()
     )
@@ -490,12 +509,19 @@ router.post('/send', authenticate, async (req, res) => {
 
     const { data: recipient, error: recipientError } = await supabaseAdmin
       .from('profiles')
-      .select('id, settings')
+      .select('id, username, settings, profile')
       .eq('id', to)
       .single()
 
     if (recipientError || !recipient) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+
+    if (isQiSiProfile(recipient)) {
+      return res.status(403).json({
+        message: QISI_MESSAGING_COPY,
+        code: QISI_MESSAGING_CODE
+      })
     }
 
     const allowMessages = recipient.settings?.privacy?.allowMessages

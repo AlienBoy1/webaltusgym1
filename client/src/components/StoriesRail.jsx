@@ -49,6 +49,9 @@ import {
   presenceDisplayName,
   subscribePresenceMap
 } from '../utils/presence'
+import { displayQiSiHandle, isQiSiProfile, QISI_HANDLE, QISI_MESSAGING_COPY, QISI_MESSAGING_TITLE, QISI_NAME, QISI_USERNAME } from '../utils/qisi'
+import QySiAvatar, { QYSI_AVATAR_SRC } from './QySiAvatar'
+import QySiStorySurface from './QySiStorySurface'
 
 const MAX_VIDEO_SECONDS = 30
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024
@@ -221,7 +224,12 @@ export default function StoriesRail({
         setMediaType(draft.mediaType || 'image')
         setCaption(draft.caption || '')
         setComposeContain(
-          Boolean(draft.fromPostId || draft.fromWelcome || draft.fromChallengeId)
+          Boolean(
+            draft.fromPostId ||
+              draft.fromWelcome ||
+              draft.fromChallengeId ||
+              draft.fromQySi
+          )
         )
         setComposeOpen(true)
       } catch {
@@ -320,13 +328,17 @@ export default function StoriesRail({
         avatar: group.user?.avatar,
         lastSeenAt: null,
         hasStory: true,
-        hasUnseen: Boolean(group.hasUnseen)
+        hasUnseen: Boolean(group.hasUnseen),
+        isQiSi: Boolean(group.isQiSi || group.user?.isQiSi || isQiSiProfile(group.user))
       })
     }
 
     const getUpdatedAt = (id) => getUserPresenceEntry(id)?.updatedAt || 0
     const list = [...peopleMap.values()]
     list.sort((a, b) => {
+      const aQi = Boolean(a.isQiSi || isQiSiProfile(a))
+      const bQi = Boolean(b.isQiSi || isQiSiProfile(b))
+      if (aQi !== bQi) return aQi ? -1 : 1
       const aId = String(a._id || a.id)
       const bId = String(b._id || b.id)
       const aEntry = groupByUser.get(aId)
@@ -451,9 +463,19 @@ export default function StoriesRail({
       let fresh = groupsRef.current
       if (!fresh?.length) fresh = await load()
       if (cancelled) return
-      const gi = fresh.findIndex(
-        (g) => String(g.user?._id || g.user || '') === String(userId)
-      )
+      const gi = fresh.findIndex((g) => {
+        const gu = String(g.user?._id || g.user?.id || g.user || '')
+        if (gu && gu === String(userId)) return true
+        const uname = String(g.user?.username || '').toLowerCase()
+        if (uname && uname === String(userId).toLowerCase()) return true
+        if (
+          (g.isQiSi || isQiSiProfile(g.user)) &&
+          (isQiSiProfile({ username: userId }) || String(userId).toLowerCase() === 'qyntra_inner')
+        ) {
+          return true
+        }
+        return false
+      })
       if (gi >= 0) {
         setViewer({ groupIndex: gi, storyIndex: 0 })
         setReply('')
@@ -492,8 +514,16 @@ export default function StoriesRail({
   const currentGroup = viewer != null ? groups[viewer.groupIndex] : null
   const currentStory =
     currentGroup && viewer != null ? currentGroup.stories[viewer.storyIndex] : null
-  const waitingMedia = Boolean(currentStory?.mediaDeferred && !currentStory?.mediaUrl)
-  const storyBlocking = waitingMedia || !currentStory?.mediaUrl || !mediaReady
+  const viewingQiSi = Boolean(
+    currentGroup?.user &&
+      (currentGroup.isQiSi || currentGroup.user?.isQiSi || isQiSiProfile(currentGroup.user))
+  )
+  const waitingMedia = Boolean(
+    !viewingQiSi && currentStory?.mediaDeferred && !currentStory?.mediaUrl
+  )
+  const storyBlocking = viewingQiSi
+    ? !mediaReady
+    : waitingMedia || !currentStory?.mediaUrl || !mediaReady
   const isOwnStory =
     currentGroup &&
     (currentGroup.user?._id || currentGroup.user) === user?._id
@@ -552,6 +582,22 @@ export default function StoriesRail({
     () => closeViewerRef.current(),
     'story-viewer'
   )
+
+  const openStoryAuthorProfile = useCallback(() => {
+    const author = currentGroup?.user
+    if (!author && !viewingQiSi) return
+    let path = null
+    if (viewingQiSi || isQiSiProfile(author)) {
+      path = `/user/${encodeURIComponent(author?.username || QISI_USERNAME)}`
+    } else {
+      const key = author?.username || author?._id || author?.id
+      if (!key) return
+      path = `/user/${encodeURIComponent(key)}`
+    }
+    // Close without history.back() so navigate() is not cancelled
+    closeViewerRef.current()
+    navigate(path)
+  }, [currentGroup?.user, viewingQiSi, navigate])
 
   const requestCloseStoryMenu = useHistoryBackLayer(
     Boolean(viewer) && menuOpen && !shareOpen && !favoritesOpen && !viewersOpen,
@@ -698,14 +744,18 @@ export default function StoriesRail({
   useEffect(() => {
     if (!currentStory) return undefined
 
-    const fullDuration =
-      currentStory.mediaType === 'video' ? MAX_VIDEO_SECONDS * 1000 : 5500
+    const fullDuration = viewingQiSi
+      ? 7800
+      : currentStory.mediaType === 'video'
+        ? MAX_VIDEO_SECONDS * 1000
+        : 5500
 
-    // New story → reset clock; actual video duration applied in onLoadedMetadata
+    // New story → reset clock; video duration may refine in onLoadedMetadata
     durationMsRef.current = fullDuration
     remainingMsRef.current = fullDuration
     storyStartedAtRef.current = null
-    setMediaReady(false)
+    // QySi premium surface needs no remote media decode
+    setMediaReady(Boolean(viewingQiSi && currentStory.mediaType !== 'video'))
     setProgressPct(0)
     if (timerRef.current) {
       window.clearTimeout(timerRef.current)
@@ -713,12 +763,12 @@ export default function StoriesRail({
     }
 
     markViewed(currentStory)
-  }, [currentStory?._id, currentStory?.id])
+  }, [currentStory?._id, currentStory?.id, viewingQiSi])
 
   useEffect(() => {
     if (!currentStory) return undefined
 
-    if (paused || storyBlocking) {
+    const preserveElapsed = () => {
       if (timerRef.current) {
         window.clearTimeout(timerRef.current)
         timerRef.current = null
@@ -729,6 +779,10 @@ export default function StoriesRail({
         remainingMsRef.current = Math.max(0, base - elapsed)
         storyStartedAtRef.current = null
       }
+    }
+
+    if (paused || storyBlocking) {
+      preserveElapsed()
       return undefined
     }
 
@@ -746,10 +800,7 @@ export default function StoriesRail({
     }, wait)
 
     return () => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current)
-        timerRef.current = null
-      }
+      preserveElapsed()
     }
   }, [currentStory?._id, currentStory?.id, goNext, paused, storyBlocking])
 
@@ -775,6 +826,14 @@ export default function StoriesRail({
 
   const react = async (emoji) => {
     if (!currentStory) return
+    if (viewingQiSi) {
+      await dialog.alert(QISI_MESSAGING_COPY, {
+        title: QISI_MESSAGING_TITLE,
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     try {
       const { data } = await api.post(`/stories/${currentStory._id || currentStory.id}/react`, {
         emoji
@@ -789,13 +848,30 @@ export default function StoriesRail({
           )
         }))
       )
-    } catch {
-      toast.error('No se pudo reaccionar')
+    } catch (error) {
+      const code = error.response?.data?.code
+      if (code === 'QISI_MESSAGING_UNAVAILABLE') {
+        await dialog.alert(QISI_MESSAGING_COPY, {
+          title: QISI_MESSAGING_TITLE,
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        })
+      } else {
+        toast.error('No se pudo reaccionar')
+      }
     }
   }
 
   const sendReply = async () => {
     if (!currentStory || !reply.trim()) return
+    if (viewingQiSi || isQiSiProfile(currentGroup?.user) || isQiSiProfile(currentStory.user)) {
+      await dialog.alert(QISI_MESSAGING_COPY, {
+        title: QISI_MESSAGING_TITLE,
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     const story = await hydrateStoryMedia(currentStory)
     if (!story?.mediaUrl) {
       toast.error('Espera a que cargue la historia')
@@ -1140,17 +1216,20 @@ export default function StoriesRail({
 
           {railPeers.map(({ person, groupIndex, hasStory, hasUnseen }) => {
             const uid = person._id || person.id
-            const status = getUserStatus(uid)
+            const isQiSi = Boolean(person.isQiSi || isQiSiProfile(person))
+            const status = isQiSi ? 'online' : getUserStatus(uid)
             const lastSeen = getUserLastSeen(uid) || person.lastSeenAt
-            const label = formatActivePresenceLabel(status, lastSeen, presenceNow)
+            const label = isQiSi ? `@${QISI_HANDLE}` : formatActivePresenceLabel(status, lastSeen, presenceNow)
             const meta = getPresenceMeta(status)
-            const online = isPresenceOnline(status)
-            const display = presenceDisplayName(person)
+            const online = isQiSi || isPresenceOnline(status)
+            const display = isQiSi ? QISI_NAME : presenceDisplayName(person)
 
             if (hasStory && groupIndex >= 0) {
               const ring = hasUnseen
                 ? 'bg-gradient-to-tr from-primary-500 to-accent-cyan'
-                : 'bg-[color:var(--border-strong)]'
+                : isQiSi
+                  ? 'bg-gradient-to-tr from-primary-400 to-primary-700'
+                  : 'bg-[color:var(--border-strong)]'
               return (
                 <button
                   key={uid}
@@ -1160,20 +1239,26 @@ export default function StoriesRail({
                 >
                   <div className={`relative rounded-full p-[2px] ${ring}`}>
                     <div className="rounded-full bg-elevated p-[2px]">
-                      <Avatar avatar={person.avatar} name={person.name} size="story" />
+                      <Avatar
+                        avatar={isQiSi ? QYSI_AVATAR_SRC : person.avatar}
+                        name={person.name || QISI_NAME}
+                        size="story"
+                      />
                     </div>
-                    <PresenceDot
-                      userId={uid}
-                      size="md"
-                      showOffline={false}
-                      borderClass="border-[color:var(--bg-elevated)]"
-                    />
+                    {!isQiSi && (
+                      <PresenceDot
+                        userId={uid}
+                        size="md"
+                        showOffline={false}
+                        borderClass="border-[color:var(--bg-elevated)]"
+                      />
+                    )}
                     <UserNoteBadge userId={uid} maxChars={28} />
                   </div>
                   <div className="w-full min-w-0 px-0.5">
                     <p
                       className="truncate text-[11px] font-semibold leading-tight text-[color:var(--text-primary)]"
-                      title={display}
+                      title={isQiSi ? `@${displayQiSiHandle(person.username)}` : display}
                     >
                       {display}
                     </p>
@@ -1193,27 +1278,35 @@ export default function StoriesRail({
             return (
               <Link
                 key={uid}
-                to={`/user/${uid}`}
+                to={`/user/${isQiSi && person.username ? person.username : uid}`}
                 className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 text-center outline-none"
               >
                 <div className="relative">
                   <div
                     className={`rounded-full p-[2px] ${
-                      online
-                        ? 'bg-gradient-to-br from-accent-green/90 to-primary-500/70'
-                        : 'bg-transparent'
+                      isQiSi
+                        ? 'bg-gradient-to-br from-primary-400 to-primary-700'
+                        : online
+                          ? 'bg-gradient-to-br from-accent-green/90 to-primary-500/70'
+                          : 'bg-transparent'
                     }`}
                   >
                     <div className="rounded-full bg-[color:var(--bg-elevated)] p-[2px]">
-                      <Avatar avatar={person.avatar} name={person.name} size="story" />
+                      <Avatar
+                        avatar={isQiSi ? QYSI_AVATAR_SRC : person.avatar}
+                        name={person.name || QISI_NAME}
+                        size="story"
+                      />
                     </div>
                   </div>
-                  <PresenceDot
-                    userId={uid}
-                    size="md"
-                    showOffline={false}
-                    borderClass="border-[color:var(--bg-elevated)]"
-                  />
+                  {!isQiSi && (
+                    <PresenceDot
+                      userId={uid}
+                      size="md"
+                      showOffline={false}
+                      borderClass="border-[color:var(--bg-elevated)]"
+                    />
+                  )}
                   <UserNoteBadge userId={uid} maxChars={28} />
                 </div>
                 <div className="w-full min-w-0 px-0.5">
@@ -1396,17 +1489,36 @@ export default function StoriesRail({
       {/* Viewer — media stage dark; panels follow theme via story-adaptive-panel */}
       <AnimatePresence>
         {currentStory && currentGroup && (
-          <div className="story-viewer force-dark fixed inset-0 z-[200] flex items-center justify-center bg-black">
+          <div
+            className={`fixed inset-0 z-[200] flex items-center justify-center ${
+              viewingQiSi ? 'bg-[color:var(--bg-app)]' : 'story-viewer force-dark bg-black'
+            }`}
+          >
             <div className="relative flex h-full w-full max-w-lg flex-col">
               <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 {currentGroup.stories.map((s, i) => (
-                  <div key={s._id || s.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25">
+                  <div
+                    key={s._id || s.id}
+                    className={`h-0.5 flex-1 overflow-hidden rounded-full ${
+                      viewingQiSi
+                        ? 'bg-[color-mix(in_srgb,var(--text-primary)_22%,transparent)]'
+                        : 'bg-white/25'
+                    }`}
+                  >
                     <div
-                      className="h-full bg-white transition-[width] duration-75 linear"
+                      className={`h-full transition-[width] duration-75 linear ${
+                        viewingQiSi ? '' : 'bg-white'
+                      }`}
                       style={{
-                        width: i < viewer.storyIndex ? '100%'
-                             : i === viewer.storyIndex ? `${progressPct}%`
-                             : '0%'
+                        width:
+                          i < viewer.storyIndex
+                            ? '100%'
+                            : i === viewer.storyIndex
+                              ? `${progressPct}%`
+                              : '0%',
+                        ...(viewingQiSi
+                          ? { background: 'var(--color-primary)' }
+                          : null)
                       }}
                     />
                   </div>
@@ -1418,22 +1530,61 @@ export default function StoriesRail({
                   <button
                     type="button"
                     onClick={requestCloseViewer}
-                    className="shrink-0 rounded-full p-2 text-white drop-shadow"
+                    className={`shrink-0 rounded-full p-2 drop-shadow ${
+                      viewingQiSi ? 'text-[color:var(--text-primary)]' : 'text-white'
+                    }`}
                     aria-label="Volver"
                   >
                     <FiChevronLeft size={24} />
                   </button>
-                  <Avatar avatar={currentGroup.user?.avatar} name={currentGroup.user?.name} size="sm" />
-                  <div className="min-w-0">
-                    <span className="block truncate text-sm font-semibold drop-shadow" style={{ color: '#fff' }}>
-                      {isOwnStory ? 'Mi estado' : currentGroup.user?.name}
-                    </span>
-                    {currentStory.createdAt && (
-                      <span className="text-[11px] drop-shadow" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                        {formatStoryWhen(currentStory.createdAt)}
-                      </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openStoryAuthorProfile()
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xl py-1 pr-2 text-left transition hover:opacity-95 active:scale-[0.99]"
+                    aria-label={
+                      viewingQiSi
+                        ? `Ver perfil de ${QISI_NAME}`
+                        : isOwnStory
+                          ? 'Ver mi perfil'
+                          : `Ver perfil de ${currentGroup?.user?.name || 'usuario'}`
+                    }
+                  >
+                    {viewingQiSi ? (
+                      <QySiAvatar size={36} ring={false} className="shrink-0" />
+                    ) : (
+                      <Avatar
+                        avatar={currentGroup.user?.avatar}
+                        name={currentGroup.user?.name}
+                        size="sm"
+                      />
                     )}
-                  </div>
+                    <div className="min-w-0">
+                      <span
+                        className="block truncate text-sm font-semibold drop-shadow"
+                        style={{ color: viewingQiSi ? 'var(--text-primary)' : '#fff' }}
+                      >
+                        {isOwnStory ? 'Mi estado' : viewingQiSi ? QISI_NAME : currentGroup.user?.name}
+                      </span>
+                      {viewingQiSi ? (
+                        <span
+                          className="text-[11px] font-medium drop-shadow"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          @{QISI_HANDLE}
+                        </span>
+                      ) : currentStory.createdAt ? (
+                        <span
+                          className="text-[11px] drop-shadow"
+                          style={{ color: 'rgba(255,255,255,0.7)' }}
+                        >
+                          {formatStoryWhen(currentStory.createdAt)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <TutorialHelpButton
@@ -1544,13 +1695,15 @@ export default function StoriesRail({
                   onClick={goNext}
                   aria-label="Siguiente"
                 />
-                {(waitingMedia || !currentStory.mediaUrl) ? (
+                {(waitingMedia || !currentStory.mediaUrl) && !viewingQiSi ? (
                   <div className="flex h-full w-full items-center justify-center bg-black/40">
                     <div
                       className="h-9 w-9 animate-spin rounded-full border-2 border-white/20"
                       style={{ borderTopColor: '#fff' }}
                     />
                   </div>
+                ) : viewingQiSi && currentStory.mediaType !== 'video' ? (
+                  <QySiStorySurface />
                 ) : (
                   <>
                     {!mediaReady && (
@@ -1616,7 +1769,7 @@ export default function StoriesRail({
                 )}
               </div>
 
-              {currentStory.caption && (
+              {currentStory.caption && !viewingQiSi && (
                 <p
                   className="pointer-events-none absolute bottom-28 left-4 right-4 z-20 text-center text-[15px] font-medium leading-relaxed sm:bottom-32"
                   style={{
@@ -1664,6 +1817,20 @@ export default function StoriesRail({
                       </button>
                     </div>
                   </div>
+                ) : viewingQiSi ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      dialog.alert(QISI_MESSAGING_COPY, {
+                        title: QISI_MESSAGING_TITLE,
+                        confirmLabel: 'Entendido',
+                        tone: 'info'
+                      })
+                    }
+                    className="mx-auto block w-full rounded-2xl border border-[rgba(var(--color-primary-rgb),0.35)] bg-[rgba(var(--color-primary-rgb),0.12)] px-4 py-3 text-center text-sm font-medium text-[color:var(--color-primary)]"
+                  >
+                    QySi aún no recibe respuestas · pronto
+                  </button>
                 ) : (
                   <>
                     <div className="mb-2 flex justify-center gap-2">

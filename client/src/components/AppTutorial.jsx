@@ -22,6 +22,13 @@ export const TUTORIAL_HUB_EVENT = 'qyntra:open-tutorial-hub'
 export const TUTORIAL_CLOSED_EVENT = 'qyntra:tutorial-closed'
 
 export function openAppTutorial(tutorialId = TUTORIAL_IDS.QUICK_START) {
+  if (tutorialId === TUTORIAL_IDS.QYSI_WELCOME) {
+    // Lazy import avoided: event matches QySiIntroPresentation.QYSI_INTRO_EVENT
+    window.dispatchEvent(
+      new CustomEvent('qyntra:open-qysi-intro', { detail: { force: true } })
+    )
+    return
+  }
   window.dispatchEvent(
     new CustomEvent(TUTORIAL_START_EVENT, { detail: { tutorialId } })
   )
@@ -326,6 +333,7 @@ export default function AppTutorial() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, updateUser } = useAuthStore()
+  const initializing = useAuthStore((s) => s.initializing)
   const [open, setOpen] = useState(false)
   const [tutorialId, setTutorialId] = useState(TUTORIAL_IDS.QUICK_START)
   const [stepIndex, setStepIndex] = useState(0)
@@ -489,8 +497,12 @@ export default function AppTutorial() {
 
   const start = useCallback(
     (id = TUTORIAL_IDS.QUICK_START, { force = false } = {}) => {
-      // Never fight a blocking update prompt
-      if (!force && !canStartTutorials()) return
+      setTutorialBlocking(true)
+      if (!canStartTutorials()) {
+        // Higher-priority prompt owns the screen — drop claim for manual starts
+        if (force) setTutorialBlocking(false)
+        return
+      }
       completingRef.current = false
       const nextId = id || TUTORIAL_IDS.QUICK_START
       const nextSteps = getTutorialSteps(nextId)
@@ -509,8 +521,12 @@ export default function AppTutorial() {
   useEffect(() => {
     const onStart = (e) => {
       const id = e?.detail?.tutorialId || TUTORIAL_IDS.QUICK_START
-      // Hub / manual start: only if gates allow (update must be done)
-      if (!canStartTutorials()) return
+      if (id === TUTORIAL_IDS.QYSI_WELCOME) {
+        window.dispatchEvent(
+          new CustomEvent('qyntra:open-qysi-intro', { detail: { force: true } })
+        )
+        return
+      }
       start(id, { force: true })
     }
     window.addEventListener(TUTORIAL_START_EVENT, onStart)
@@ -530,15 +546,23 @@ export default function AppTutorial() {
     })
   }, [open])
 
-  // Quick-start only after username + update gates clear
+  // Quick-start: declare intent, open only when this layer is active
   useEffect(() => {
-    if (!user || open) return
-    if (!user.username) return
-    if (!canStartTutorials()) return
-    if (hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return
-    const t = window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START, { force: true }), 500)
+    if (initializing || !user || open) return undefined
+    if (!user.username) {
+      setTutorialBlocking(false)
+      return undefined
+    }
+    if (hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) {
+      setTutorialBlocking(false)
+      return undefined
+    }
+    setTutorialBlocking(true)
+    if (!canStartTutorials()) return undefined
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START), 420)
     return () => window.clearTimeout(t)
   }, [
+    initializing,
     user?.id,
     user?._id,
     user?.username,
@@ -552,23 +576,25 @@ export default function AppTutorial() {
   useEffect(() => {
     return subscribeAppGate((gate) => {
       if (!gate.canStartTutorials) return
+      if (useAuthStore.getState().initializing) return
       const u = useAuthStore.getState().user
       if (!u?.username || open) return
       if (hasCompletedTutorial(u, TUTORIAL_IDS.QUICK_START)) return
-      window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START, { force: true }), 400)
+      window.setTimeout(() => start(TUTORIAL_IDS.QUICK_START), 400)
     })
   }, [open, start])
 
   useEffect(() => {
-    if (!user || open) return
-    if (!user.username) return
-    if (!canStartTutorials()) return
-    if (location.pathname !== '/profile') return
-    if (hasCompletedTutorial(user, TUTORIAL_IDS.PROFILE_EDIT)) return
-    if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return
-    const t = window.setTimeout(() => start(TUTORIAL_IDS.PROFILE_EDIT, { force: true }), 750)
+    if (initializing || !user || open) return undefined
+    if (!user.username) return undefined
+    if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return undefined
+    if (location.pathname !== '/profile') return undefined
+    if (hasCompletedTutorial(user, TUTORIAL_IDS.PROFILE_EDIT)) return undefined
+    setTutorialBlocking(true)
+    if (!canStartTutorials()) return undefined
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.PROFILE_EDIT), 750)
     return () => window.clearTimeout(t)
-  }, [user, open, start, location.pathname])
+  }, [user, open, start, location.pathname, initializing])
 
   useEffect(() => {
     if (!open) return undefined

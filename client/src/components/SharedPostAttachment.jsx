@@ -3,6 +3,7 @@ import { FiActivity, FiAward, FiClock } from 'react-icons/fi'
 import { Avatar } from '../utils/avatarUtils'
 import ProtectedMedia from './ProtectedMedia'
 import ChallengePostCard from './ChallengePostCard'
+import QySiShareCard, { isQySiShareData } from './QySiShareCard'
 
 /**
  * Facebook-style embedded original post shown inside a reshare.
@@ -15,8 +16,10 @@ export default function SharedPostAttachment({ shared, onOpenRoutine }) {
   const workout = shared.workoutData
   const isChallenge =
     shared.postType === 'challenge' || workout?.shareKind === 'challenge'
+  const isQySi = isQySiShareData(workout)
   const isRoutine =
     !isChallenge &&
+    !isQySi &&
     (shared.postType === 'routine' || workout?.isRoutine || workout?.shareKind === 'routine')
 
   return (
@@ -68,6 +71,8 @@ export default function SharedPostAttachment({ shared, onOpenRoutine }) {
 
         {workout && isChallenge && <ChallengePostCard data={workout} />}
 
+        {workout && isQySi && <QySiShareCard data={workout} variant="feed" />}
+
         {workout && isRoutine && (
           <button
             type="button"
@@ -85,7 +90,7 @@ export default function SharedPostAttachment({ shared, onOpenRoutine }) {
           </button>
         )}
 
-        {workout && !isRoutine && !isChallenge && (
+        {workout && !isRoutine && !isChallenge && !isQySi && (
           <button
             type="button"
             onClick={() => onOpenRoutine?.(workout, author)}

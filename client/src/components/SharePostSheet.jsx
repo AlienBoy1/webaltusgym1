@@ -19,11 +19,16 @@ import ShareComposerModal from './ShareComposerModal'
 import { buildNativePostShareImage } from '../utils/buildNativePostShareImage'
 import { buildPostShareText, getInviteUrl, getPostPath, getPostUrl } from '../utils/appLinks'
 import { useAuthStore } from '../store/authStore'
+import { isQySiShareData } from './QySiShareCard'
 
 function postSnippet(post) {
   if (!post) return 'Publicación de Qyntra Gym'
-  if (post.workoutData?.name) return post.workoutData.name
-  if (post.workoutData?.challengeTitle) return post.workoutData.challengeTitle
+  const wd = post.workoutData || post.workout_data
+  if (wd?.shareKind === 'qysi' || wd?.kind === 'qysi_share') {
+    return `${wd.name || 'QySi'} · @${wd.handle || 'Qyntra-inner'}`
+  }
+  if (wd?.name) return wd.name
+  if (wd?.challengeTitle) return wd.challengeTitle
   if (post.badgeData?.name) return `Insignia: ${post.badgeData.name}`
   if (post.content) {
     return String(post.content)
@@ -41,6 +46,8 @@ function postAuthorName(post) {
 
 function postAttachment(post) {
   const postId = post._id || post.id
+  const wd = post.workoutData || post.workout_data || null
+  const isQySi = wd && (wd.shareKind === 'qysi' || wd.kind === 'qysi_share')
   return {
     type: 'post',
     kind: 'share',
@@ -50,7 +57,13 @@ function postAttachment(post) {
     image: post.images?.[0] || null,
     postType: post.postType || 'text',
     path: getPostPath(postId),
-    url: getPostUrl(postId)
+    url: getPostUrl(postId),
+    ...(isQySi
+      ? {
+          shareKind: 'qysi',
+          workoutData: wd
+        }
+      : {})
   }
 }
 
@@ -296,10 +309,17 @@ export default function SharePostSheet({
         loading={sharingCommunity}
         attachmentPreview={
           post
-            ? {
-                authorName: postAuthorName(post),
-                snippet: postSnippet(post)
-              }
+            ? isQySiShareData(post.workoutData || post.workout_data)
+              ? {
+                  kind: 'qysi',
+                  authorName: postAuthorName(post),
+                  snippet: postSnippet(post),
+                  data: post.workoutData || post.workout_data
+                }
+              : {
+                  authorName: postAuthorName(post),
+                  snippet: postSnippet(post)
+                }
             : null
         }
       />

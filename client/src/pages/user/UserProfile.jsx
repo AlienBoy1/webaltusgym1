@@ -13,7 +13,9 @@ import {
   FiX,
   FiMessageCircle,
   FiClock,
-  FiLock
+  FiLock,
+  FiShare2,
+  FiZap
 } from 'react-icons/fi'
 import api from '../../utils/api'
 import { useAuthStore } from '../../store/authStore'
@@ -23,6 +25,8 @@ import ProfileAvatar from '../../components/ProfileAvatar'
 import ProfileNotes from '../../components/ProfileNotes'
 import RoutineDetailModal from '../../components/RoutineDetailModal'
 import SharePostSheet from '../../components/SharePostSheet'
+import ShareQySiSheet from '../../components/ShareQySiSheet'
+import { openQySiAssistant } from '../../components/QySiAssistant'
 import PostReactorsModal from '../../components/PostReactorsModal'
 import PostDetailSheet from '../../components/PostDetailSheet'
 import PostImageViewer from '../../components/PostImageViewer'
@@ -34,6 +38,9 @@ import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { adoptRoutineToWorkouts } from '../../utils/adoptRoutine'
+import { isQiSiProfile, QISI_NAME, QISI_HANDLE, QISI_MESSAGING_COPY, QISI_MESSAGING_TITLE } from '../../utils/qisi'
+import { QYSI_AVATAR_SRC } from '../../components/QySiAvatar'
+import QySiCover from '../../components/QySiCover'
 
 export default function UserProfile() {
   const { id } = useParams()
@@ -63,6 +70,7 @@ export default function UserProfile() {
   const [selectedRoutine, setSelectedRoutine] = useState(null)
   const [adoptingRoutine, setAdoptingRoutine] = useState(false)
   const [sharePostTarget, setSharePostTarget] = useState(null)
+  const [shareQySiOpen, setShareQySiOpen] = useState(false)
   const [sharingPost, setSharingPost] = useState(false)
   const [reactorsPost, setReactorsPost] = useState(null)
   const [detailPost, setDetailPost] = useState(null)
@@ -99,7 +107,6 @@ export default function UserProfile() {
       privateAlertFor.current = null
       fetchUser()
       checkFollowStatus()
-      checkStories()
       if (currentUser?._id === id) {
         fetchFollowRequests()
         loadUserPosts()
@@ -113,17 +120,27 @@ export default function UserProfile() {
   useEffect(() => {
     if (!user?._id && !user?.id) return
     const uid = user._id || user.id
+    checkStories(user)
     if (uid === id) return
     checkFollowStatus(uid)
     if (!isOwnProfile) loadUserPosts(uid)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?._id, user?.id])
+  }, [user?._id, user?.id, user?.username])
 
-  const checkStories = async () => {
+  const checkStories = async (target = user) => {
+    const uid = target?._id || target?.id || id
+    const uname = String(target?.username || '').toLowerCase()
+    const qi = isQiSiProfile(target) || isQiSiProfile({ username: uname || id })
     try {
       const { data } = await api.get('/stories/feed')
       const groups = data?.groups || []
-      const group = groups.find((g) => (g.user?._id || g.user) === id)
+      const group = groups.find((g) => {
+        const gu = String(g.user?._id || g.user?.id || g.user || '')
+        if (uid && gu === String(uid)) return true
+        if (uname && String(g.user?.username || '').toLowerCase() === uname) return true
+        if (qi && (g.isQiSi || isQiSiProfile(g.user))) return true
+        return false
+      })
       setHasStories(Boolean(group?.stories?.length))
     } catch {
       setHasStories(false)
@@ -131,7 +148,7 @@ export default function UserProfile() {
   }
 
   const openStory = () => {
-    openUserStory(id)
+    openUserStory(user?._id || user?.id || id)
   }
 
   const adoptRoutineFromPost = async (workout) => {
@@ -192,6 +209,18 @@ export default function UserProfile() {
 
   const checkFollowStatus = async (targetId = id) => {
     if (!currentUser?._id || !targetId) {
+      setFollowStatusReady(true)
+      return
+    }
+
+    // System account: no follow graph — avoid username→UUID 404 noise
+    if (isQiSiProfile({ username: targetId }) || isQiSiProfile(user)) {
+      setFollowStatus({
+        isFollowing: false,
+        hasPendingRequest: false,
+        followersCount: 0,
+        followingCount: 0
+      })
       setFollowStatusReady(true)
       return
     }
@@ -257,6 +286,17 @@ export default function UserProfile() {
   }
 
   const handleFollow = async () => {
+    if (isQiSiProfile(user) || isQiSiProfile({ username: id })) {
+      await dialog.alert(
+        'QySi es una cuenta de sistema y no se puede seguir. Encuéntralo en Entrenamientos.',
+        {
+          title: 'Cuenta de sistema',
+          confirmLabel: 'Entendido',
+          tone: 'info'
+        }
+      )
+      return
+    }
     const targetId = resolvedId || id
     try {
       const { data } = await api.post(`/social/${targetId}/follow`)
@@ -281,6 +321,7 @@ export default function UserProfile() {
   // Private profile alert (native) — once per visited profile, after follow status is known
   useEffect(() => {
     if (!user || loading || isOwnProfile || !followStatusReady) return
+    if (isQiSiProfile(user)) return
     if (followStatus.isFollowing || isProfilePublic) return
     const uid = user._id || user.id
     if (!uid || privateAlertFor.current === uid) return
@@ -362,6 +403,14 @@ export default function UserProfile() {
   }
 
   const handleMessage = async () => {
+    if (isQiSiProfile(user)) {
+      await dialog.alert(QISI_MESSAGING_COPY, {
+        title: QISI_MESSAGING_TITLE,
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     const allowMessages = user?.settings?.privacy?.allowMessages !== false
     if (!allowMessages) {
       await dialog.alert(
@@ -421,7 +470,9 @@ export default function UserProfile() {
         className="card text-center overflow-hidden p-0"
       >
         <div data-protected-media="1" className="relative h-[150px] sm:h-[236px] overflow-hidden">
-          {user.profile?.coverUrl ? (
+          {isQiSiProfile(user) ? (
+            <QySiCover />
+          ) : user.profile?.coverUrl ? (
             <ProtectedMedia
               src={user.profile.coverUrl}
               alt=""
@@ -478,8 +529,8 @@ export default function UserProfile() {
           <div className="absolute -inset-1 rounded-full bg-[color:var(--bg-card)]/80 blur-[1px]" aria-hidden />
           <div className="relative">
           <ProfileAvatar
-            avatar={user.avatar}
-            name={user.name}
+            avatar={isQiSiProfile(user) ? QYSI_AVATAR_SRC : user.avatar}
+            name={user.name || QISI_NAME}
             size="xl"
             hasStories={hasStories}
             onViewStory={openStory}
@@ -488,14 +539,18 @@ export default function UserProfile() {
           <ProfileNotes
             profileUserId={user._id || user.id}
             isOwner={isOwnProfile}
-            avatar={user.avatar}
-            name={user.name}
+            avatar={isQiSiProfile(user) ? QYSI_AVATAR_SRC : user.avatar}
+            name={user.name || QISI_NAME}
           />
         </div>
 
         <h1 className="font-display text-2xl mb-1">{user.name}</h1>
         <p className="text-gray-400 mb-4 break-all text-sm sm:text-base">
-          {user.username ? `@${user.username}` : 'Sin username'}
+          {isQiSiProfile(user)
+            ? `@${QISI_HANDLE}`
+            : user.username
+              ? `@${user.username}`
+              : 'Sin username'}
         </p>
 
         <div className="flex items-center justify-center gap-6 mb-4">
@@ -523,30 +578,32 @@ export default function UserProfile() {
 
         {!isOwnProfile && (
           <div className="flex flex-wrap gap-2 justify-center">
-            {followStatus.isFollowing ? (
-              <button
-                onClick={handleUnfollow}
-                className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
-              >
-                <FiUserX size={18} />
-                Dejar de seguir
-              </button>
-            ) : followStatus.hasPendingRequest ? (
-              <button
-                onClick={handleCancelRequest}
-                className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
-              >
-                <FiClock size={18} />
-                Cancelar solicitud
-              </button>
-            ) : (
-              <button
-                onClick={handleFollow}
-                className="btn-primary py-2 px-4 sm:px-6 flex items-center gap-2"
-              >
-                <FiUserPlus size={18} />
-                Seguir
-              </button>
+            {!isQiSiProfile(user) && (
+              followStatus.isFollowing ? (
+                <button
+                  onClick={handleUnfollow}
+                  className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
+                >
+                  <FiUserX size={18} />
+                  Dejar de seguir
+                </button>
+              ) : followStatus.hasPendingRequest ? (
+                <button
+                  onClick={handleCancelRequest}
+                  className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
+                >
+                  <FiClock size={18} />
+                  Cancelar solicitud
+                </button>
+              ) : (
+                <button
+                  onClick={handleFollow}
+                  className="btn-primary py-2 px-4 sm:px-6 flex items-center gap-2"
+                >
+                  <FiUserPlus size={18} />
+                  Seguir
+                </button>
+              )
             )}
             <button
               onClick={handleMessage}
@@ -555,6 +612,31 @@ export default function UserProfile() {
               <FiMessageCircle size={18} />
               Mensaje
             </button>
+            {isQiSiProfile(user) && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openQySiAssistant()
+                    navigate('/workouts?qysi=1')
+                  }}
+                  className="btn-primary py-2 px-4 sm:px-6 flex items-center gap-2 shadow-[0_0_20px_rgba(var(--color-primary-rgb),0.28)]"
+                  aria-label={`Entrenar con ${QISI_NAME}`}
+                >
+                  <FiZap size={18} />
+                  Entrenar con {QISI_NAME}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShareQySiOpen(true)}
+                  className="btn-secondary py-2 px-4 sm:px-6 flex items-center gap-2"
+                  aria-label={`Compartir ${QISI_NAME}`}
+                >
+                  <FiShare2 size={18} />
+                  Compartir
+                </button>
+              </>
+            )}
           </div>
         )}
         </div>
@@ -717,7 +799,7 @@ export default function UserProfile() {
           <div className="grid grid-cols-4 gap-2 sm:gap-3">
             {user.badges.slice(0, 8).map((badge, index) => (
               <div
-                key={badge.id || badge._id || index}
+                key={String(badge.id || badge._id || `owned-${index}`)}
                 className="text-center p-2 sm:p-3 bg-dark-200 rounded-xl hover:bg-dark-100 transition-colors cursor-pointer"
                 onClick={() => setShowBadges(true)}
               >
@@ -962,6 +1044,12 @@ export default function UserProfile() {
             setSharingPost(false)
           }
         }}
+      />
+
+      <ShareQySiSheet
+        open={shareQySiOpen && isQiSiProfile(user)}
+        onClose={() => setShareQySiOpen(false)}
+        qysiUser={user}
       />
 
       <PostReactorsModal
