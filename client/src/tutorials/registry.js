@@ -71,7 +71,7 @@ export const TUTORIAL_CATALOG = [
     settingsKey: 'tutorialMainNavCompleted',
     /** Spotlight auto-starts after quick_start; hide from «Nuevo» stack. */
     autoStartAfterQuickStart: true,
-    contentVersion: 3
+    contentVersion: 4
   },
   {
     id: TUTORIAL_IDS.QYSI_WELCOME,
@@ -215,8 +215,8 @@ const MAIN_NAV_STEPS = [
   {
     id: 'mn-social',
     path: '/social',
-    target: 'tour-main-content',
-    title: 'Siguiente →',
+    target: 'nav-social',
+    title: 'Social',
     body: 'Deslizas a la izquierda y avanzas a Social.',
     autoAdvanceMs: 1500,
     liveSwipe: true,
@@ -225,8 +225,8 @@ const MAIN_NAV_STEPS = [
   {
     id: 'mn-workouts',
     path: '/workouts',
-    target: 'tour-main-content',
-    title: 'Siguiente →',
+    target: 'nav-workouts',
+    title: 'Entrenos',
     body: 'Otro desliz a la izquierda: Entrenos.',
     autoAdvanceMs: 1500,
     liveSwipe: true,
@@ -235,8 +235,8 @@ const MAIN_NAV_STEPS = [
   {
     id: 'mn-progress',
     path: '/progress',
-    target: 'tour-main-content',
-    title: 'Siguiente →',
+    target: 'nav-progress',
+    title: 'Progreso',
     body: 'Sigues deslizando hacia Progreso.',
     autoAdvanceMs: 1500,
     liveSwipe: true,
@@ -245,8 +245,8 @@ const MAIN_NAV_STEPS = [
   {
     id: 'mn-profile',
     path: '/profile',
-    target: 'tour-main-content',
-    title: 'Siguiente →',
+    target: 'nav-profile',
+    title: 'Perfil',
     body: 'Última pestaña hacia adelante: Perfil.',
     autoAdvanceMs: 1600,
     liveSwipe: true,
@@ -255,7 +255,7 @@ const MAIN_NAV_STEPS = [
   {
     id: 'mn-back',
     path: '/progress',
-    target: 'tour-main-content',
+    target: 'nav-progress',
     title: '← Anterior',
     body: 'Ahora al revés: deslizas a la derecha y vuelves a Progreso.',
     autoAdvanceMs: 1700,

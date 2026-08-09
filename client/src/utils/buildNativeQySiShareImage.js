@@ -133,7 +133,7 @@ export async function buildNativeQySiShareImage(opts = {}) {
   ctx.stroke()
 
   // Avatar ring
-  const avatarSrc = opts.avatarSrc || '/qysi-avatar.png'
+  const avatarSrc = opts.avatarSrc || '/qysi-avatar.png?v=7'
   const img = await loadAvatar(avatarSrc)
   const ax = W / 2
   const ay = cardY + 210

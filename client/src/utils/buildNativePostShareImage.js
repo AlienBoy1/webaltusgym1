@@ -583,7 +583,7 @@ async function drawQySiFeatureCard(ctx, { x, y, w, wd }) {
   const name = String(wd?.name || 'QySi')
   const handle = String(wd?.handle || 'Qyntra-inner')
   const meaning = String(wd?.meaning || 'Sistema inteligente Qyntra interno')
-  const avatarSrc = wd?.avatar || '/qysi-avatar.png'
+  const avatarSrc = wd?.avatar || '/qysi-avatar.png?v=7'
   const chips = Array.isArray(wd?.chips) && wd.chips.length
     ? wd.chips.slice(0, 3)
     : ['5 variantes', 'Tu nivel', 'Entrenamientos']

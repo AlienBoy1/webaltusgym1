@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { QISI_NAME } from '../utils/qisi'
 
-/** Canonical public avatar asset for QySi (robot gymrat). */
-export const QYSI_AVATAR_SRC = '/qysi-avatar.png'
+/** Canonical public avatar asset for QySi (GymRat mascot). */
+export const QYSI_AVATAR_SRC = '/qysi-avatar.png?v=7'
 
 /**
  * Premium QySi avatar ring — used in intro, FAB and assistant chrome.

@@ -52,7 +52,7 @@ let ensurePromise = null
 function buildQiSiAvatarSvg() {
   // Prefer the public brand asset when serving client-relative avatars.
   // Kept as function name for call-site compatibility.
-  return '/qysi-avatar.png'
+  return '/qysi-avatar.png?v=7'
 }
 
 function buildLaunchStorySvg() {
@@ -327,7 +327,9 @@ export async function ensureQiSiSystem() {
       if (
         !profile.avatar ||
         String(profile.avatar).startsWith('data:image/svg') ||
-        String(profile.avatar).includes('QySi')
+        String(profile.avatar).includes('QySi') ||
+        (String(profile.avatar).includes('qysi-avatar') &&
+          !String(profile.avatar).includes('v=7'))
       ) {
         patch.avatar = buildQiSiAvatarSvg()
       }
