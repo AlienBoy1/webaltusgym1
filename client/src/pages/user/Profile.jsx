@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiEdit2, FiCamera, FiBell, FiShield, FiHelpCircle, FiLogOut, FiChevronRight, FiSettings, FiMessageCircle, FiCalendar, FiTarget, FiAward, FiZap, FiDollarSign, FiClock, FiCheck, FiX, FiGift, FiActivity, FiShare2, FiEye, FiTrash2 } from 'react-icons/fi'
 import { useAuthStore } from '../../store/authStore'
@@ -192,130 +193,154 @@ function MembershipSection({ user }) {
         </div>
       </motion.div>
 
-      <AnimatePresence>
-        {showAllMemberships && (
-          <div className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center bg-black/70 sm:items-center sm:p-4">
-            <motion.div
-              initial={{ opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="app-bottom-sheet-panel max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-5 sm:rounded-3xl"
-            >
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-2xl tracking-wide">Planes Qyntra</h2>
-                  <p className="text-xs text-[color:var(--text-muted)]">
-                    Gratuitos hasta {freeEraEndLabel()} · Pago desde {paidEraStartLabel()}
-                  </p>
-                </div>
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {showAllMemberships && (
+              <div className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center bg-black/70 sm:items-center sm:p-4">
                 <button
                   type="button"
+                  className="absolute inset-0"
+                  aria-label="Cerrar planes"
                   onClick={() => setShowAllMemberships(false)}
-                  className="rounded-lg p-2 transition-colors hover:bg-[color:var(--bg-muted)]"
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 28 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="app-bottom-sheet-panel relative z-10 max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-5 sm:rounded-3xl"
                 >
-                  <FiX size={22} />
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {memberships.map((membership) => {
-                  const isCurrent = membership.plan === user?.membership?.plan
-                  const features = displayFeatures(membership.features)
-                  return (
-                    <div
-                      key={membership._id || membership.plan}
-                      className={`rounded-2xl border-2 p-4 ${
-                        isCurrent
-                          ? 'border-primary-500 bg-primary-500/10'
-                          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/50'
-                      }`}
-                    >
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <h3 className="font-semibold text-lg">{membership.name}</h3>
-                            {isCurrent && (
-                              <span className="rounded-full bg-primary-500/20 px-2 py-0.5 text-xs text-primary-500">
-                                Actual
-                              </span>
-                            )}
-                            {membership.comingSoon && (
-                              <span className="rounded-full bg-accent-cyan/15 px-2 py-0.5 text-xs font-semibold text-accent-cyan">
-                                Desde 1 ene 2027
-                              </span>
-                            )}
-                            {membership.isLegacyFree && (
-                              <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-semibold text-yellow-500">
-                                Transición gratuita
-                              </span>
-                            )}
-                          </div>
-                          {membership.description && (
-                            <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                              {membership.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="shrink-0 text-right">
-                          {Number(membership.price) > 0 ? (
-                            <>
-                              <div className="text-2xl font-bold text-primary-500">${membership.price}</div>
-                              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                / {membership.duration} días
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-sm font-semibold text-accent-green">Gratis</div>
-                          )}
-                        </div>
-                      </div>
-
-                      {membership.benefits?.length > 0 && (
-                        <div className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                          {membership.benefits.map((benefit, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-2 text-sm"
-                              style={{ color: 'var(--text-secondary)' }}
-                            >
-                              <FiCheck size={12} className="flex-shrink-0 text-accent-green" />
-                              <span>{benefit}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {Object.keys(features).length > 0 && (
-                        <div className="grid grid-cols-2 gap-2 border-t border-[color:var(--border-subtle)] pt-3 text-xs">
-                          {Object.entries(features).map(([key, value]) => (
-                            <div key={key} className="flex items-center gap-2">
-                              {value ? (
-                                <FiCheck size={12} className="text-accent-green" />
-                              ) : (
-                                <FiX size={12} style={{ color: 'var(--text-muted)' }} />
-                              )}
-                              <span style={{ color: value ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
-                                {FEATURE_LABELS[key] || key}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  <div className="mb-5 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-2xl tracking-wide">Planes Qyntra</h2>
+                      <p className="text-xs text-[color:var(--text-muted)]">
+                        Gratuitos hasta {freeEraEndLabel()} · Pago desde {paidEraStartLabel()}
+                      </p>
                     </div>
-                  )
-                })}
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllMemberships(false)}
+                      className="rounded-lg p-2 transition-colors hover:bg-[color:var(--bg-muted)]"
+                    >
+                      <FiX size={22} />
+                    </button>
+                  </div>
 
-              <div
-                className="mt-6 border-t border-[color:var(--border-subtle)] pt-5 text-center text-sm"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                <p>Los pagos se gestionarán en la app a partir de 2027. Mientras tanto, tu acceso gratuito sigue activo hasta la fecha indicada.</p>
+                  <div className="space-y-3">
+                    {memberships.map((membership) => {
+                      const isCurrent = membership.plan === user?.membership?.plan
+                      const features = displayFeatures(membership.features)
+                      const benefitLabels = new Set(
+                        (Array.isArray(membership.benefits) ? membership.benefits : []).map((b) =>
+                          String(b).trim().toLowerCase()
+                        )
+                      )
+                      const featureEntries = Object.entries(features).filter(([key]) => {
+                        const label = String(FEATURE_LABELS[key] || key)
+                          .trim()
+                          .toLowerCase()
+                        return !benefitLabels.has(label)
+                      })
+                      return (
+                        <div
+                          key={membership._id || membership.plan}
+                          className={`rounded-2xl border-2 p-4 ${
+                            isCurrent
+                              ? 'border-primary-500 bg-primary-500/10'
+                              : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/50'
+                          }`}
+                        >
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-1 flex flex-wrap items-center gap-2">
+                                <h3 className="font-semibold text-lg">{membership.name}</h3>
+                                {isCurrent && (
+                                  <span className="rounded-full bg-primary-500/20 px-2 py-0.5 text-xs text-primary-500">
+                                    Actual
+                                  </span>
+                                )}
+                                {membership.comingSoon && (
+                                  <span className="rounded-full bg-accent-cyan/15 px-2 py-0.5 text-xs font-semibold text-accent-cyan">
+                                    Desde 1 ene 2027
+                                  </span>
+                                )}
+                                {membership.isLegacyFree && (
+                                  <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-semibold text-yellow-500">
+                                    Transición gratuita
+                                  </span>
+                                )}
+                              </div>
+                              {membership.description && (
+                                <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                  {membership.description}
+                                </p>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-right">
+                              {Number(membership.price) > 0 ? (
+                                <>
+                                  <div className="text-2xl font-bold text-primary-500">${membership.price}</div>
+                                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                    / {membership.duration} días
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="text-sm font-semibold text-accent-green">Gratis</div>
+                              )}
+                            </div>
+                          </div>
+
+                          {Array.isArray(membership.benefits) && membership.benefits.length > 0 && (
+                            <div className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                              {membership.benefits.map((benefit, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 text-sm"
+                                  style={{ color: 'var(--text-secondary)' }}
+                                >
+                                  <FiCheck size={12} className="flex-shrink-0 text-accent-green" />
+                                  <span>{benefit}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {featureEntries.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2 border-t border-[color:var(--border-subtle)] pt-3 text-xs">
+                              {featureEntries.map(([key, value]) => (
+                                <div key={key} className="flex items-center gap-2">
+                                  {value ? (
+                                    <FiCheck size={12} className="text-accent-green" />
+                                  ) : (
+                                    <FiX size={12} style={{ color: 'var(--text-muted)' }} />
+                                  )}
+                                  <span style={{ color: value ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+                                    {FEATURE_LABELS[key] || key}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div
+                    className="mt-6 border-t border-[color:var(--border-subtle)] pt-5 text-center text-sm"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <p>
+                      Los pagos se gestionarán en la app a partir de 2027. Mientras tanto, tu acceso gratuito sigue
+                      activo hasta la fecha indicada.
+                    </p>
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </>
   )
 }

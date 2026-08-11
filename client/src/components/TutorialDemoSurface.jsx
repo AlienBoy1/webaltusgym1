@@ -1,4 +1,4 @@
-import { FiCheck, FiLock, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye, FiUser, FiCompass } from 'react-icons/fi'
+import { FiCheck, FiLock, FiMessageCircle, FiPlay, FiShare2, FiSkipForward, FiTarget, FiUsers, FiHardDrive, FiBell, FiEye, FiUser, FiCompass, FiMoon, FiSun, FiSmartphone, FiSettings } from 'react-icons/fi'
 import QySiAvatar from './QySiAvatar'
 
 /**
@@ -822,6 +822,92 @@ export default function TutorialDemoSurface({ demoId }) {
         </div>
         <div className="h-6 w-11 rounded-full bg-[color:var(--color-primary)] p-0.5">
           <div className="ml-auto h-5 w-5 rounded-full bg-white" />
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'menu-settings') {
+    return (
+      <div data-tour="menu-settings" className={`${shell} overflow-hidden p-2`}>
+        <p className="px-2 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-primary)]">
+          Menú del perfil
+        </p>
+        <div className="flex items-center gap-3 rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] px-3 py-3 text-[color:var(--color-primary)]">
+          <FiSettings size={18} />
+          <span className="flex-1 text-sm font-semibold">Configuración</span>
+          <span className="text-xs opacity-70">›</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-appearance-nav') {
+    return (
+      <div data-tour="tour-settings-appearance-section" className={`${shell} p-3`}>
+        <div className="flex items-center gap-3 rounded-xl bg-[rgba(var(--color-primary-rgb),0.12)] px-3 py-3 text-[color:var(--color-primary)]">
+          <FiMoon size={18} />
+          <span className="flex-1 text-sm font-semibold">Apariencia</span>
+          <span className="text-xs opacity-70">›</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-theme') {
+    return (
+      <div data-tour="tour-settings-theme" className={`${shell} p-4`}>
+        <p className="mb-3 text-sm font-medium text-[color:var(--text-primary)]">Tema</p>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Oscuro', Icon: FiMoon, active: true },
+            { label: 'Claro', Icon: FiSun, active: false },
+            { label: 'Sistema', Icon: FiSmartphone, active: false }
+          ].map(({ label, Icon, active }) => (
+            <div
+              key={label}
+              className={`rounded-xl border-2 p-3 text-center ${
+                active
+                  ? 'border-[color:var(--color-primary)] bg-[rgba(var(--color-primary-rgb),0.12)]'
+                  : 'border-[color:var(--border-subtle)]'
+              }`}
+            >
+              <Icon size={20} className="mx-auto mb-1 text-[color:var(--text-primary)]" />
+              <p className="text-[11px] text-[color:var(--text-secondary)]">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (demoId === 'settings-color-theme') {
+    const swatches = [
+      ['#FF6B35', '#00F5FF'],
+      ['#3B82F6', '#22D3EE'],
+      ['#A855F7', '#F472B6'],
+      ['#14B8A6', '#F97316'],
+      ['#F43F5E', '#38BDF8'],
+      ['#EAB308', '#14B8A6']
+    ]
+    return (
+      <div data-tour="tour-settings-color-theme" className={`${shell} p-4`}>
+        <p className="mb-1 text-sm font-medium text-[color:var(--text-primary)]">Color Principal</p>
+        <p className="mb-3 text-[11px] text-[color:var(--text-muted)]">Combinaciones de marca Qyntra</p>
+        <div className="grid grid-cols-3 gap-2">
+          {swatches.map(([a, b], i) => (
+            <div
+              key={i}
+              className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-2 ${
+                i === 0 ? 'border-white' : 'border-[color:var(--border-subtle)]'
+              }`}
+            >
+              <div
+                className="h-8 w-8 rounded-full"
+                style={{ background: `linear-gradient(135deg, ${a} 50%, ${b} 50%)` }}
+              />
+            </div>
+          ))}
         </div>
       </div>
     )

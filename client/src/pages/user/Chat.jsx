@@ -48,7 +48,7 @@ import ChatVoiceComposer from '../../components/ChatVoiceComposer'
 import ChatImageComposer from '../../components/ChatImageComposer'
 import { ViewOnceAttachmentBubble } from '../../components/ViewOnceMedia'
 import SwipeToReply from '../../components/SwipeToReply'
-import { buildReplyPayload } from '../../utils/chatMessage'
+import { buildReplyPayload, formatChatBubbleTime, messageBubbleTime } from '../../utils/chatMessage'
 import { isEmojiOnlyText, emojiOnlySizeClass, summarizeMessageReactions } from '../../utils/chatEmoji'
 import { useChatStore } from '../../store/chatStore'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
@@ -650,10 +650,8 @@ export default function Chat() {
               text: data.text ?? data.message ?? '',
               attachment: data.attachment || null,
               reply: data.reply || null,
-              time: new Date(data.timestamp || Date.now()).toLocaleTimeString('es', {
-                hour: '2-digit',
-                minute: '2-digit'
-              })
+              createdAt: data.timestamp || new Date().toISOString(),
+              time: formatChatBubbleTime(data.timestamp || Date.now())
             }
           ]
         })
@@ -1145,7 +1143,8 @@ export default function Chat() {
       attachment: attachment || null,
       reply: activeReply || null,
       status: 'sent',
-      time: new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+      createdAt: new Date().toISOString(),
+      time: formatChatBubbleTime(Date.now())
     }
     setMessages((prev) => [...prev, tempMsg])
 
@@ -2522,7 +2521,7 @@ export default function Chat() {
                                 : 'text-[color:var(--text-muted)]'
                           }`}
                         >
-                          {msg.time}
+                          {messageBubbleTime(msg)}
                           {isMe && !msg.deleted && (
                             <MessageTicks
                               isMe

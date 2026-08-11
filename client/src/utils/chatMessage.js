@@ -119,3 +119,24 @@ export function buildReplyPayload(msg, { myName = 'Tú', otherName = 'Usuario' }
     attachmentType: msg.attachment?.type || null
   }
 }
+
+/** Prefer ISO `createdAt`; fall back to preformatted `time` (optimistic UI). */
+export function formatChatBubbleTime(value) {
+  if (value == null || value === '') return ''
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+export function messageBubbleTime(msg) {
+  if (!msg) return ''
+  if (msg.createdAt) return formatChatBubbleTime(msg.createdAt)
+  if (msg.time) {
+    const fromIso = formatChatBubbleTime(msg.time)
+    return fromIso || String(msg.time)
+  }
+  return ''
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiStar, FiX, FiEdit2 } from 'react-icons/fi'
 import api from '../utils/api'
@@ -383,90 +384,211 @@ export default function StoryHighlights({ userId, isOwner = false }) {
         </div>
       </motion.div>
 
-      <AnimatePresence>
-        {menuAlbum && (
-          <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/50 sm:items-center">
-            <button
-              type="button"
-              className="absolute inset-0"
-              aria-label="Cerrar"
-              onClick={requestCloseAlbumMenu}
-            />
-            <motion.div
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 40, opacity: 0 }}
-              className="relative z-10 w-full max-w-md overflow-hidden rounded-t-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl sm:rounded-2xl"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-            >
-              <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
-                {editingName ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      value={renameDraft}
-                      onChange={(e) => setRenameDraft(e.target.value.slice(0, 40))}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          saveRename()
-                        }
-                        if (e.key === 'Escape') {
-                          setEditingName(false)
-                          setRenameDraft(menuAlbum.name || '')
-                        }
-                      }}
-                      maxLength={40}
-                      className="input-field min-w-0 flex-1 py-2 text-sm"
-                      placeholder="Nombre del álbum"
-                      aria-label="Nombre del álbum"
-                    />
+      {/* Portaled: MainNavSlideOutlet transform breaks position:fixed */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            <AnimatePresence>
+              {menuAlbum && (
+                <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/50 sm:items-center">
+                  <button
+                    type="button"
+                    className="absolute inset-0"
+                    aria-label="Cerrar"
+                    onClick={requestCloseAlbumMenu}
+                  />
+                  <motion.div
+                    initial={{ y: 40, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: 40, opacity: 0 }}
+                    className="relative z-10 w-full max-w-md overflow-hidden rounded-t-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl sm:rounded-2xl"
+                    style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+                  >
+                    <div className="border-b border-[color:var(--border-subtle)] px-4 py-3">
+                      {editingName ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value.slice(0, 40))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                saveRename()
+                              }
+                              if (e.key === 'Escape') {
+                                setEditingName(false)
+                                setRenameDraft(menuAlbum.name || '')
+                              }
+                            }}
+                            maxLength={40}
+                            className="input-field min-w-0 flex-1 py-2 text-sm"
+                            placeholder="Nombre del álbum"
+                            aria-label="Nombre del álbum"
+                          />
+                          <button
+                            type="button"
+                            onClick={saveRename}
+                            disabled={renaming}
+                            className="btn-primary shrink-0 rounded-xl px-3 py-2 text-xs disabled:opacity-60"
+                          >
+                            {renaming ? '…' : 'Guardar'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate font-semibold text-[color:var(--text-primary)]">
+                            {menuAlbum.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setEditingName(true)}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--bg-muted)] text-[color:var(--color-primary)]"
+                            aria-label="Renombrar álbum"
+                            title="Renombrar"
+                          >
+                            <FiEdit2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                      <p className="mt-1 text-xs text-[color:var(--text-muted)]">Opciones del álbum</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={saveRename}
-                      disabled={renaming}
-                      className="btn-primary shrink-0 rounded-xl px-3 py-2 text-xs disabled:opacity-60"
+                      onClick={openCoverEditor}
+                      className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-[color:var(--text-primary)] transition-colors hover:bg-[color:var(--bg-muted)]"
                     >
-                      {renaming ? '…' : 'Guardar'}
+                      <FiEdit2 size={18} className="text-primary-500" />
+                      Editar portada
                     </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate font-semibold text-[color:var(--text-primary)]">
-                      {menuAlbum.name}
-                    </p>
                     <button
                       type="button"
-                      onClick={() => setEditingName(true)}
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--bg-muted)] text-[color:var(--color-primary)]"
-                      aria-label="Renombrar álbum"
-                      title="Renombrar"
+                      onClick={requestCloseAlbumMenu}
+                      className="w-full border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-center text-sm text-[color:var(--text-secondary)]"
                     >
-                      <FiEdit2 size={14} />
+                      Cancelar
                     </button>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {active && item && (
+                <div className="story-viewer force-dark fixed inset-0 z-[200] flex items-center justify-center bg-black">
+                  <div className="relative flex h-full w-full max-w-lg flex-col">
+                    <div className="absolute left-0 right-0 top-0 z-20 space-y-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+                      <div className="flex gap-1">
+                        {items.map((it, i) => (
+                          <div
+                            key={it.id || it._id || i}
+                            className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25"
+                          >
+                            <div
+                              className="h-full bg-white transition-[width] duration-75 ease-linear"
+                              style={{
+                                width:
+                                  i < active.index
+                                    ? '100%'
+                                    : i === active.index
+                                      ? `${progressPct}%`
+                                      : '0%'
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white drop-shadow">
+                            {active.album.name}
+                          </p>
+                          <p className="text-xs text-white/60">
+                            {active.index + 1}/{items.length}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={requestCloseHighlight}
+                          className="rounded-full bg-black/40 p-2 text-white"
+                        >
+                          <FiX size={18} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative flex flex-1 items-center justify-center">
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 left-0 z-10 w-1/3"
+                        aria-label="Anterior"
+                        onClick={goPrev}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 z-10 w-1/3"
+                        aria-label="Siguiente"
+                        onClick={goNext}
+                      />
+
+                      {(transitioning || !mediaReady) && (
+                        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-black/40">
+                          <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                        </div>
+                      )}
+
+                      {item.mediaType === 'video' ? (
+                        <ProtectedMedia
+                          as="video"
+                          key={item.id || item._id}
+                          src={item.mediaUrl}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="max-h-full max-w-full object-contain"
+                          onLoadedMetadata={(e) => {
+                            const d = e.currentTarget?.duration
+                            if (Number.isFinite(d) && d > 0.2) {
+                              const ms = Math.min(30, d) * 1000
+                              durationRef.current = ms
+                              remainingRef.current = ms
+                            }
+                            setMediaReady(true)
+                          }}
+                          onCanPlay={() => setMediaReady(true)}
+                          onEnded={goNext}
+                        />
+                      ) : (
+                        <ProtectedMedia
+                          key={item.id || item._id}
+                          src={item.mediaUrl}
+                          alt=""
+                          className="max-h-full max-w-full object-contain"
+                          onLoad={() => {
+                            durationRef.current = IMAGE_MS
+                            remainingRef.current = IMAGE_MS
+                            setMediaReady(true)
+                          }}
+                          onError={() => setMediaReady(true)}
+                        />
+                      )}
+                    </div>
+
+                    {(item.caption || item.authorName) && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/70 to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 text-center">
+                        {item.authorName && (
+                          <p className="text-xs text-white/50">{item.authorName}</p>
+                        )}
+                        {item.caption && <p className="mt-1 text-sm text-white">{item.caption}</p>}
+                      </div>
+                    )}
                   </div>
-                )}
-                <p className="mt-1 text-xs text-[color:var(--text-muted)]">Opciones del álbum</p>
-              </div>
-              <button
-                type="button"
-                onClick={openCoverEditor}
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-[color:var(--text-primary)] transition-colors hover:bg-[color:var(--bg-muted)]"
-              >
-                <FiEdit2 size={18} className="text-primary-500" />
-                Editar portada
-              </button>
-              <button
-                type="button"
-                onClick={requestCloseAlbumMenu}
-                className="w-full border-t border-[color:var(--border-subtle)] px-4 py-3.5 text-center text-sm text-[color:var(--text-secondary)]"
-              >
-                Cancelar
-              </button>
-            </motion.div>
-          </div>
+                </div>
+              )}
+            </AnimatePresence>
+          </>,
+          document.body
         )}
-      </AnimatePresence>
 
       <AlbumCoverPicker
         isOpen={Boolean(coverEditor)}
@@ -478,120 +600,6 @@ export default function StoryHighlights({ userId, isOwner = false }) {
           setCoverEditor(null)
         }}
       />
-
-      <AnimatePresence>
-        {active && item && (
-          <div className="story-viewer force-dark fixed inset-0 z-[200] flex items-center justify-center bg-black">
-            <div className="relative flex h-full w-full max-w-lg flex-col">
-              <div className="absolute left-0 right-0 top-0 z-20 space-y-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-                <div className="flex gap-1">
-                  {items.map((it, i) => (
-                    <div
-                      key={it.id || it._id || i}
-                      className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25"
-                    >
-                      <div
-                        className="h-full bg-white transition-[width] duration-75 ease-linear"
-                        style={{
-                          width:
-                            i < active.index
-                              ? '100%'
-                              : i === active.index
-                                ? `${progressPct}%`
-                                : '0%'
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white drop-shadow">
-                      {active.album.name}
-                    </p>
-                    <p className="text-xs text-white/60">
-                      {active.index + 1}/{items.length}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={requestCloseHighlight}
-                    className="rounded-full bg-black/40 p-2 text-white"
-                  >
-                    <FiX size={18} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative flex flex-1 items-center justify-center">
-                <button
-                  type="button"
-                  className="absolute inset-y-0 left-0 z-10 w-1/3"
-                  aria-label="Anterior"
-                  onClick={goPrev}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 z-10 w-1/3"
-                  aria-label="Siguiente"
-                  onClick={goNext}
-                />
-
-                {(transitioning || !mediaReady) && (
-                  <div className="absolute inset-0 z-[5] flex items-center justify-center bg-black/40">
-                    <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                  </div>
-                )}
-
-                {item.mediaType === 'video' ? (
-                  <ProtectedMedia
-                    as="video"
-                    key={item.id || item._id}
-                    src={item.mediaUrl}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="max-h-full max-w-full object-contain"
-                    onLoadedMetadata={(e) => {
-                      const d = e.currentTarget?.duration
-                      if (Number.isFinite(d) && d > 0.2) {
-                        const ms = Math.min(30, d) * 1000
-                        durationRef.current = ms
-                        remainingRef.current = ms
-                      }
-                      setMediaReady(true)
-                    }}
-                    onCanPlay={() => setMediaReady(true)}
-                    onEnded={goNext}
-                  />
-                ) : (
-                  <ProtectedMedia
-                    key={item.id || item._id}
-                    src={item.mediaUrl}
-                    alt=""
-                    className="max-h-full max-w-full object-contain"
-                    onLoad={() => {
-                      durationRef.current = IMAGE_MS
-                      remainingRef.current = IMAGE_MS
-                      setMediaReady(true)
-                    }}
-                    onError={() => setMediaReady(true)}
-                  />
-                )}
-              </div>
-
-              {(item.caption || item.authorName) && (
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/70 to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 text-center">
-                  {item.authorName && (
-                    <p className="text-xs text-white/50">{item.authorName}</p>
-                  )}
-                  {item.caption && <p className="mt-1 text-sm text-white">{item.caption}</p>}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
     </>
   )
 }

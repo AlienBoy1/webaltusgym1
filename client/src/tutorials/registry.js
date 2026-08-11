@@ -25,7 +25,8 @@ export const TUTORIAL_IDS = {
   REST_TIMES: 'rest_times',
   PRIVACY_PERMISSIONS: 'privacy_permissions',
   QYSI_WELCOME: 'qysi_welcome',
-  QYSI_TRAINING: 'qysi_training'
+  QYSI_TRAINING: 'qysi_training',
+  ESTILOS_QYNTRA: 'estilos_qyntra'
 }
 
 /**
@@ -199,6 +200,17 @@ export const TUTORIAL_CATALOG = [
     description: 'Activa el almacenamiento, controla notificaciones y decide si tu perfil es público o privado.',
     completionKey: 'qyntra_tutorial_privacy_permissions_done',
     settingsKey: 'tutorialPrivacyPermissionsCompleted'
+  },
+  {
+    id: TUTORIAL_IDS.ESTILOS_QYNTRA,
+    title: 'Estilos Qyntra',
+    short: 'Tema claro/oscuro y colores de marca',
+    icon: '🎨',
+    description:
+      'Aprende a entrar a Configuración → Apariencia y personalizar tu app con tema claro u oscuro y las nuevas combinaciones de color de Qyntra.',
+    completionKey: 'qyntra_tutorial_estilos_qyntra_done',
+    settingsKey: 'tutorialEstilosQyntraCompleted',
+    contentVersion: 1
   }
 ]
 
@@ -1009,6 +1021,42 @@ const PRIVACY_PERMISSIONS_STEPS = [
   }
 ]
 
+const ESTILOS_QYNTRA_STEPS = [
+  {
+    id: 'eq-open-settings',
+    path: '/dashboard',
+    target: 'menu-settings',
+    demo: 'menu-settings',
+    title: 'Abrir Configuración',
+    body: 'Toca tu foto de perfil arriba a la derecha y elige Configuración. Ahí están todas las preferencias de la app, incluida la apariencia.',
+    openAvatarMenu: true
+  },
+  {
+    id: 'eq-appearance-nav',
+    path: '/settings?section=appearance',
+    target: 'tour-settings-appearance-section',
+    demo: 'settings-appearance-nav',
+    title: 'Apartado Apariencia',
+    body: 'Entra a Apariencia. Desde aquí personalizas el look de toda Qyntra: tema y colores de marca.'
+  },
+  {
+    id: 'eq-theme',
+    path: '/settings?section=appearance',
+    target: 'tour-settings-theme',
+    demo: 'settings-theme',
+    title: 'Tema claro u oscuro',
+    body: 'Elige Oscuro, Claro o Sistema. Sistema sigue el modo de tu teléfono. El cambio se aplica al instante en toda la app.'
+  },
+  {
+    id: 'eq-colors',
+    path: '/settings?section=appearance',
+    target: 'tour-settings-color-theme',
+    demo: 'settings-color-theme',
+    title: 'Colores Qyntra',
+    body: 'Prueba las combinaciones de color: botones, acentos y detalles se adaptan. Hay muchas opciones nuevas para que la app se sienta tuya.'
+  }
+]
+
 const STORIES_STEPS = [
   {
     id: 'st-rail',
@@ -1085,6 +1133,7 @@ export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.PROGRESS]: PROGRESS_STEPS,
   [TUTORIAL_IDS.REST_TIMES]: REST_TIMES_STEPS,
   [TUTORIAL_IDS.PRIVACY_PERMISSIONS]: PRIVACY_PERMISSIONS_STEPS,
+  [TUTORIAL_IDS.ESTILOS_QYNTRA]: ESTILOS_QYNTRA_STEPS,
   [TUTORIAL_IDS.QYSI_TRAINING]: QYSI_TRAINING_STEPS
 }
 

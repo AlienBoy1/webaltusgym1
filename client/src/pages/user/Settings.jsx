@@ -248,8 +248,8 @@ export default function UserSettings() {
       <div className="flex items-center gap-2.5">
         <h1 className="font-display text-3xl">Configuración</h1>
         <TutorialHelpButton
-          tutorialId={TUTORIAL_IDS.PRIVACY_PERMISSIONS}
-          message="La configuración tiene un tutorial para privacidad, permisos y ajustes de entrenamiento."
+          tutorialId={TUTORIAL_IDS.ESTILOS_QYNTRA}
+          message="Hay un tutorial de Estilos Qyntra para personalizar tema y colores. También puedes revisar permisos y privacidad desde el centro de tutoriales."
         />
       </div>
       
@@ -268,7 +268,9 @@ export default function UserSettings() {
                       ? 'tour-settings-notifications-section'
                       : section.id === 'privacy'
                         ? 'tour-settings-privacy-section'
-                        : undefined
+                        : section.id === 'appearance'
+                          ? 'tour-settings-appearance-section'
+                          : undefined
               }
               onClick={() => setActiveSection(section.id)}
               className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeSection === section.id ? 'bg-primary-500/10 text-primary-500' : 'text-gray-400 hover:bg-dark-200 hover:text-white'}`}
@@ -480,13 +482,21 @@ export default function UserSettings() {
             
             {activeSection === 'appearance' && (
               <div className="space-y-6">
-                <h2 className="font-display text-xl flex items-center gap-2"><FiMoon className="text-accent-purple" /> Apariencia</h2>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="font-display text-xl flex items-center gap-2">
+                    <FiMoon className="text-accent-purple" /> Apariencia
+                  </h2>
+                  <TutorialHelpButton
+                    tutorialId={TUTORIAL_IDS.ESTILOS_QYNTRA}
+                    message="Aprende a personalizar tema claro/oscuro y los colores de marca de Qyntra."
+                  />
+                </div>
                 <div className="space-y-4">
-                  <div className="py-3">
+                  <div className="py-3" data-tour="tour-settings-theme">
                     <div className="font-medium mb-3">Tema</div>
                     <div className="grid grid-cols-3 gap-3">
                       {[{ value: 'dark', label: 'Oscuro', icon: FiMoon }, { value: 'light', label: 'Claro', icon: FiSun }, { value: 'system', label: 'Sistema', icon: FiSmartphone }].map((theme) => (
-                        <button key={theme.value} onClick={() => setSettings(prev => ({ ...prev, theme: theme.value }))}
+                        <button key={theme.value} type="button" onClick={() => setSettings(prev => ({ ...prev, theme: theme.value }))}
                           className={`p-4 rounded-xl border-2 transition-all ${settings.theme === theme.value ? 'border-primary-500 bg-primary-500/10' : 'border-white/10 hover:border-white/20'}`}>
                           <theme.icon size={24} className="mx-auto mb-2" /><div className="text-sm">{theme.label}</div>
                         </button>
@@ -494,16 +504,19 @@ export default function UserSettings() {
                     </div>
                   </div>
                   
-                  <div className="py-3 border-t border-white/5">
-                    <div className="font-medium mb-3">Color Principal</div>
-                    <div className="grid grid-cols-4 gap-3">
+                  <div className="py-3 border-t border-white/5" data-tour="tour-settings-color-theme">
+                    <div className="font-medium mb-1">Color Principal</div>
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
+                      Elige la combinación de marca. Se aplica en botones, acentos y toda la app.
+                    </p>
+                    <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6">
                       {COLOR_THEMES.map((theme) => (
-                        <button key={theme.id} onClick={() => setSettings(prev => ({ ...prev, colorTheme: theme.id }))}
-                          className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${settings.colorTheme === theme.id ? 'border-white' : 'border-white/10 hover:border-white/20'}`}>
+                        <button key={theme.id} type="button" onClick={() => setSettings(prev => ({ ...prev, colorTheme: theme.id }))}
+                          className={`p-2.5 rounded-xl border-2 transition-all flex flex-col items-center gap-1.5 ${settings.colorTheme === theme.id ? 'border-white' : 'border-white/10 hover:border-white/20'}`}>
                           <div className="w-8 h-8 rounded-full relative" style={{ background: `linear-gradient(135deg, ${theme.primary} 50%, ${theme.accent} 50%)` }}>
-                            {settings.colorTheme === theme.id && <FiCheck className="absolute inset-0 m-auto text-white" size={16} />}
+                            {settings.colorTheme === theme.id && <FiCheck className="absolute inset-0 m-auto text-white drop-shadow" size={16} />}
                           </div>
-                          <span className="text-xs">{theme.name}</span>
+                          <span className="text-[10px] leading-tight text-center">{theme.name}</span>
                         </button>
                       ))}
                     </div>

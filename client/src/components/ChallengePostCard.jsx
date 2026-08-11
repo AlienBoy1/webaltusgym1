@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiTarget, FiUsers, FiClock, FiAward, FiX, FiTrendingUp, FiCheck } from 'react-icons/fi'
@@ -221,117 +222,122 @@ export default function ChallengePostCard({ data, className = '' }) {
         </div>
       </div>
 
-      <AnimatePresence>
-        {showParticipants && (
-          <div className="fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4">
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              aria-label="Cerrar"
-              onClick={() => setShowParticipants(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 24 }}
-              className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-app bg-elevated sm:rounded-2xl"
-              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
-            >
-              <div className="flex items-center justify-between border-b border-app px-4 py-3">
-                <div className="min-w-0">
-                  <h3 className="font-display text-xl flex items-center gap-2 truncate">
-                    <FiTrendingUp className="text-primary-500 shrink-0" />
-                    Participantes
-                  </h3>
-                  <p className="text-xs text-app-secondary truncate">
-                    {data.challengeTitle || challengeDetail?.title}
-                  </p>
-                </div>
+      {/* Portaled: MainNavSlideOutlet transform breaks position:fixed */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {showParticipants && (
+              <div className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4">
                 <button
                   type="button"
+                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                  aria-label="Cerrar"
                   onClick={() => setShowParticipants(false)}
-                  className="p-2 rounded-lg hover:bg-dark-200"
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 24 }}
+                  className="app-bottom-sheet-panel relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-app bg-elevated sm:rounded-2xl"
+                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
                 >
-                  <FiX size={20} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {loadingParts ? (
-                  <div className="flex justify-center py-10">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-dark-100 border-t-primary-500" />
+                  <div className="flex items-center justify-between border-b border-app px-4 py-3">
+                    <div className="min-w-0">
+                      <h3 className="font-display text-xl flex items-center gap-2 truncate">
+                        <FiTrendingUp className="text-primary-500 shrink-0" />
+                        Participantes
+                      </h3>
+                      <p className="text-xs text-app-secondary truncate">
+                        {data.challengeTitle || challengeDetail?.title}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowParticipants(false)}
+                      className="p-2 rounded-lg hover:bg-dark-200"
+                    >
+                      <FiX size={20} />
+                    </button>
                   </div>
-                ) : participants.length === 0 ? (
-                  <div className="py-10 text-center text-app-secondary">
-                    <FiUsers size={32} className="mx-auto mb-2 opacity-50" />
-                    <p>No hay participantes aún</p>
-                  </div>
-                ) : (
-                  [...participants]
-                    .filter((p) => p.user)
-                    .sort((a, b) => (b.progress || 0) - (a.progress || 0))
-                    .map((p, index) => {
-                      const participantUser = typeof p.user === 'object' ? p.user : null
-                      const userId = participantUser?._id || participantUser?.id || p.user
-                      const isCurrentUser = String(userId) === String(user?._id || user?.id)
-                      const st = statusLabel(p.status)
-                      const goal = challengeDetail?.goal ?? data.challengeGoal
 
-                      return (
-                        <div
-                          key={userId || index}
-                          className={`flex items-center gap-3 rounded-xl p-3 ${
-                            isCurrentUser
-                              ? 'bg-primary-500/10 ring-1 ring-primary-500'
-                              : 'bg-dark-200'
-                          }`}
-                        >
-                          <div
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                              index === 0
-                                ? 'bg-yellow-500 text-black'
-                                : index === 1
-                                  ? 'bg-gray-400 text-black'
-                                  : index === 2
-                                    ? 'bg-amber-700 text-white'
-                                    : 'bg-dark-300 text-gray-400'
-                            }`}
-                          >
-                            {index + 1}
-                          </div>
-                          <Avatar
-                            avatar={participantUser?.avatar}
-                            name={participantUser?.name || 'Usuario'}
-                            size="sm"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-medium">
-                              {participantUser?.name || 'Usuario'}
-                            </div>
-                            <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${st.color}`}>
-                              {st.text}
-                            </span>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <div className="font-semibold text-primary-500 text-sm">
-                              {p.progress || 0}
-                              {goal != null ? ` / ${goal}` : ''}
-                            </div>
-                            {p.resultValue != null && (
-                              <div className="text-[10px] text-app-secondary">
-                                {p.resultValue} {p.resultUnit || ''}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    {loadingParts ? (
+                      <div className="flex justify-center py-10">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-dark-100 border-t-primary-500" />
+                      </div>
+                    ) : participants.length === 0 ? (
+                      <div className="py-10 text-center text-app-secondary">
+                        <FiUsers size={32} className="mx-auto mb-2 opacity-50" />
+                        <p>No hay participantes aún</p>
+                      </div>
+                    ) : (
+                      [...participants]
+                        .filter((p) => p.user)
+                        .sort((a, b) => (b.progress || 0) - (a.progress || 0))
+                        .map((p, index) => {
+                          const participantUser = typeof p.user === 'object' ? p.user : null
+                          const userId = participantUser?._id || participantUser?.id || p.user
+                          const isCurrentUser = String(userId) === String(user?._id || user?.id)
+                          const st = statusLabel(p.status)
+                          const goal = challengeDetail?.goal ?? data.challengeGoal
+
+                          return (
+                            <div
+                              key={userId || index}
+                              className={`flex items-center gap-3 rounded-xl p-3 ${
+                                isCurrentUser
+                                  ? 'bg-primary-500/10 ring-1 ring-primary-500'
+                                  : 'bg-dark-200'
+                              }`}
+                            >
+                              <div
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                                  index === 0
+                                    ? 'bg-yellow-500 text-black'
+                                    : index === 1
+                                      ? 'bg-gray-400 text-black'
+                                      : index === 2
+                                        ? 'bg-amber-700 text-white'
+                                        : 'bg-dark-300 text-gray-400'
+                                }`}
+                              >
+                                {index + 1}
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })
-                )}
+                              <Avatar
+                                avatar={participantUser?.avatar}
+                                name={participantUser?.name || 'Usuario'}
+                                size="sm"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium">
+                                  {participantUser?.name || 'Usuario'}
+                                </div>
+                                <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${st.color}`}>
+                                  {st.text}
+                                </span>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <div className="font-semibold text-primary-500 text-sm">
+                                  {p.progress || 0}
+                                  {goal != null ? ` / ${goal}` : ''}
+                                </div>
+                                {p.resultValue != null && (
+                                  <div className="text-[10px] text-app-secondary">
+                                    {p.resultValue} {p.resultUnit || ''}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                    )}
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </>
   )
 }

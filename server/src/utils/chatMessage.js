@@ -161,10 +161,7 @@ export function formatChatMessage(row, myId) {
       read: Boolean(row.read),
       delivered: Boolean(row.delivered),
       createdAt: row.created_at,
-      time: new Date(row.created_at).toLocaleTimeString('es', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      time: formatChatBubbleTime(row.created_at)
     }
   }
 
@@ -183,11 +180,20 @@ export function formatChatMessage(row, myId) {
     read: Boolean(row.read),
     delivered: Boolean(row.delivered),
     createdAt: row.created_at,
-    time: new Date(row.created_at).toLocaleTimeString('es', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    time: formatChatBubbleTime(row.created_at)
   }
+}
+
+/** Clock label for bubbles — always Mexico City so UTC hosts don't show +6h. */
+export function formatChatBubbleTime(value) {
+  if (!value) return ''
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Mexico_City'
+  })
 }
 
 /** Compact snippet for reply quotes */

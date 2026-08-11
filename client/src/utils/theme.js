@@ -7,6 +7,22 @@ export const COLOR_THEMES = [
   { id: 'cyan', name: 'Cian', primary: '#06B6D4', accent: '#F97316' },
   { id: 'pink', name: 'Rosa', primary: '#EC4899', accent: '#8B5CF6' },
   { id: 'yellow', name: 'Dorado', primary: '#EAB308', accent: '#14B8A6' },
+  { id: 'teal', name: 'Turquesa', primary: '#14B8A6', accent: '#F97316' },
+  { id: 'indigo', name: 'Índigo', primary: '#6366F1', accent: '#22D3EE' },
+  { id: 'lime', name: 'Lima', primary: '#84CC16', accent: '#A855F7' },
+  { id: 'amber', name: 'Ámbar', primary: '#F59E0B', accent: '#06B6D4' },
+  { id: 'rose', name: 'Rosé', primary: '#F43F5E', accent: '#38BDF8' },
+  { id: 'sky', name: 'Cielo', primary: '#0EA5E9', accent: '#F472B6' },
+  { id: 'violet', name: 'Violeta', primary: '#7C3AED', accent: '#34D399' },
+  { id: 'emerald', name: 'Esmeralda', primary: '#10B981', accent: '#FBBF24' },
+  { id: 'fuchsia', name: 'Fucsia', primary: '#D946EF', accent: '#22D3EE' },
+  { id: 'coral', name: 'Coral', primary: '#FF7F50', accent: '#60A5FA' },
+  { id: 'mint', name: 'Menta', primary: '#2DD4BF', accent: '#FB7185' },
+  { id: 'sunset', name: 'Atardecer', primary: '#FB923C', accent: '#C084FC' },
+  { id: 'ocean', name: 'Océano', primary: '#0284C7', accent: '#4ADE80' },
+  { id: 'berry', name: 'Mora', primary: '#DB2777', accent: '#A3E635' },
+  { id: 'steel', name: 'Acero', primary: '#64748B', accent: '#38BDF8' },
+  { id: 'neon', name: 'Neón', primary: '#39FF14', accent: '#FF00FF' },
 ]
 
 const SETTINGS_KEY_PREFIX = 'settings_'
