@@ -6,11 +6,12 @@
  * 2. username       — UsernameSetupModal
  * 3. welcome        — WelcomeIntroModal
  * 4. qysi           — QySiIntroPresentation
- * 5. tutorial       — AppTutorial spotlight
- * 6. tutorialNotice — NewTutorialPrompt
- * 7. membership     — MembershipExpiryNotice
- * 8. notifications  — NotificationPrompt
- * 9. install        — InstallAppPrompt
+ * 5. qysiUpdate     — QySiBodyHubUpdate (legacy body-hub announcement)
+ * 6. tutorial       — AppTutorial spotlight
+ * 7. tutorialNotice — NewTutorialPrompt
+ * 8. membership     — MembershipExpiryNotice
+ * 9. notifications  — NotificationPrompt
+ * 10. install       — InstallAppPrompt
  *
  * Components declare *intent* (they want to show). The gate picks at most
  * one active layer. canShowPrompt(layer) is true only for that active layer.
@@ -23,6 +24,7 @@ const PRIORITY = Object.freeze([
   'username',
   'welcome',
   'qysi',
+  'qysiUpdate',
   'tutorial',
   'tutorialNotice',
   'membership',
@@ -131,6 +133,7 @@ export function getGateSnapshot() {
     welcomeBlocking: Boolean(intent.welcome),
     tutorialBlocking: Boolean(intent.tutorial || intent.tutorialNotice),
     qysiBlocking: Boolean(intent.qysi),
+    qysiUpdateBlocking: Boolean(intent.qysiUpdate),
     membershipBlocking: Boolean(intent.membership),
     notificationsBlocking: Boolean(intent.notifications),
     installBlocking: Boolean(intent.install),
@@ -189,6 +192,10 @@ export function setWelcomeBlocking(value) {
 
 export function setQysiBlocking(value) {
   setPromptIntent('qysi', value)
+}
+
+export function setQysiUpdateBlocking(value) {
+  setPromptIntent('qysiUpdate', value)
 }
 
 export function setTutorialBlocking(value) {

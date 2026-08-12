@@ -8,10 +8,14 @@ import {
   TUTORIAL_IDS,
   getTutorialMeta,
   getTutorialSteps,
-  hasCompletedTutorial
+  hasCompletedTutorial,
+  isLegacyUserForBodyHub,
+  shouldPlayProgressBodyIntro,
+  openBodyHubProgressIntro,
+  BODY_HUB_UPDATE_DONE_EVENT
 } from '../tutorials/registry'
 import { userIdOf, writeLocalCompletion } from '../tutorials/completion'
-import { markTutorialCompletedVersion } from '../tutorials/spotlight'
+import { markTutorialCompletedVersion, getTutorialDoneVersion } from '../tutorials/spotlight'
 import TutorialDemoSurface from './TutorialDemoSurface'
 import { canStartTutorials, subscribeAppGate, setTutorialBlocking } from '../utils/appGate'
 import { showBadgeUnlockCelebration } from './BadgeUnlockCelebration'
@@ -41,6 +45,21 @@ export function openTutorialHub(options = {}) {
 
 function setAvatarMenuOpen(open) {
   window.dispatchEvent(new CustomEvent('qyntra:avatar-menu', { detail: { open: Boolean(open) } }))
+}
+
+/** Legacy accounts: auto Progress hub tour once (or again if contentVersion bumped). */
+function shouldAutoStartProgressHub(user) {
+  if (!user?.username) return false
+  if (!isLegacyUserForBodyHub(user)) return false
+  if (!hasCompletedTutorial(user, TUTORIAL_IDS.QUICK_START)) return false
+  if (!hasCompletedTutorial(user, TUTORIAL_IDS.MAIN_NAV)) return false
+
+  const meta = getTutorialMeta(TUTORIAL_IDS.PROGRESS)
+  if (!meta?.autoStartForLegacyUsers) return false
+  const ver = Number(meta.contentVersion) || 1
+  if (!hasCompletedTutorial(user, TUTORIAL_IDS.PROGRESS)) return true
+  const done = getTutorialDoneVersion(user, TUTORIAL_IDS.PROGRESS)
+  return done < ver
 }
 
 const SPOTLIGHT_PAD = 6
@@ -503,14 +522,56 @@ export default function AppTutorial() {
   }, [step, navigate, measure])
 
   const start = useCallback(
-    (id = TUTORIAL_IDS.QUICK_START, { force = false } = {}) => {
+    (id = TUTORIAL_IDS.QUICK_START, { force = false, skipBodyIntro = false } = {}) => {
+      const nextId = id || TUTORIAL_IDS.QUICK_START
+      const u = useAuthStore.getState().user
+
+      // During 24h window: QySi cinematic is the real first beat of Progress tutorial
+      if (
+        nextId === TUTORIAL_IDS.PROGRESS &&
+        !skipBodyIntro &&
+        shouldPlayProgressBodyIntro(u)
+      ) {
+        setTutorialBlocking(false)
+        openBodyHubProgressIntro({ asProgressIntro: true })
+        try {
+          sessionStorage.setItem('qyntra:pendingProgressTutorial', force ? 'force' : '1')
+        } catch {
+          /* ignore */
+        }
+        return
+      }
+
       setTutorialBlocking(true)
       if (!canStartTutorials()) {
+        // After QySi Progress intro, keep claiming and retry briefly (gate cooldown)
+        if (force && skipBodyIntro && nextId === TUTORIAL_IDS.PROGRESS) {
+          let tries = 0
+          const retry = () => {
+            setTutorialBlocking(true)
+            if (canStartTutorials() || tries > 20) {
+              completingRef.current = false
+              const nextSteps = getTutorialSteps(TUTORIAL_IDS.PROGRESS)
+              setTutorialId(TUTORIAL_IDS.PROGRESS)
+              setStepIndex(0)
+              setOpen(true)
+              setReady(false)
+              setUseDemo(false)
+              document.body.dataset.qyntraTutorial = '1'
+              setAvatarMenuOpen(false)
+              navigate(nextSteps[0]?.path || '/progress')
+              return
+            }
+            tries += 1
+            window.setTimeout(retry, 120)
+          }
+          window.setTimeout(retry, 200)
+          return
+        }
         // Higher-priority prompt owns the screen — drop claim for manual starts
         if (force) setTutorialBlocking(false)
         return
       }
-      const nextId = id || TUTORIAL_IDS.QUICK_START
       if (nextId === TUTORIAL_IDS.MAIN_NAV && getWorkoutSession()?.activeWorkout && !force) {
         setTutorialBlocking(false)
         return
@@ -528,6 +589,28 @@ export default function AppTutorial() {
     },
     [navigate]
   )
+
+  useEffect(() => {
+    const onIntroDone = (e) => {
+      if (!e?.detail?.continueProgress) return
+      let pending = null
+      try {
+        pending = sessionStorage.getItem('qyntra:pendingProgressTutorial')
+        sessionStorage.removeItem('qyntra:pendingProgressTutorial')
+      } catch {
+        pending = '1'
+      }
+      if (!pending) return
+      window.setTimeout(() => {
+        start(TUTORIAL_IDS.PROGRESS, {
+          force: pending === 'force',
+          skipBodyIntro: true
+        })
+      }, 320)
+    }
+    window.addEventListener(BODY_HUB_UPDATE_DONE_EVENT, onIntroDone)
+    return () => window.removeEventListener(BODY_HUB_UPDATE_DONE_EVENT, onIntroDone)
+  }, [start])
 
   useEffect(() => {
     const onStart = (e) => {
@@ -620,6 +703,11 @@ export default function AppTutorial() {
       if (!hasCompletedTutorial(u, TUTORIAL_IDS.MAIN_NAV)) {
         if (getWorkoutSession()?.activeWorkout) return
         window.setTimeout(() => start(TUTORIAL_IDS.MAIN_NAV), 400)
+        return
+      }
+      if (shouldAutoStartProgressHub(u)) {
+        if (getWorkoutSession()?.activeWorkout) return
+        window.setTimeout(() => start(TUTORIAL_IDS.PROGRESS), 420)
       }
     })
   }, [open, start])
@@ -640,6 +728,28 @@ export default function AppTutorial() {
     window.addEventListener('qyntra:workout-session', maybeStartMainNav)
     return () => window.removeEventListener('qyntra:workout-session', maybeStartMainNav)
   }, [open, start])
+
+  // Progress body hub: auto only for legacy accounts (not brand-new registrations)
+  useEffect(() => {
+    if (initializing || !user || open) return undefined
+    if (!shouldAutoStartProgressHub(user)) return undefined
+    if (getWorkoutSession()?.activeWorkout) return undefined
+    setTutorialBlocking(true)
+    if (!canStartTutorials()) return undefined
+    const t = window.setTimeout(() => start(TUTORIAL_IDS.PROGRESS), 560)
+    return () => window.clearTimeout(t)
+  }, [
+    initializing,
+    user?.id,
+    user?._id,
+    user?.username,
+    user?.createdAt,
+    user?.settings?.tutorialProgressCompleted,
+    user?.settings?.qysiBodyHubUpdateSeen,
+    open,
+    start,
+    user
+  ])
 
   useEffect(() => {
     if (initializing || !user || open) return undefined

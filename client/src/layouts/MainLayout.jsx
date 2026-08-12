@@ -13,6 +13,7 @@ import NewTutorialPrompt from '../components/NewTutorialPrompt'
 import MembershipExpiryNotice from '../components/MembershipExpiryNotice'
 import WelcomeIntroModal from '../components/WelcomeIntroModal'
 import QySiIntroPresentation from '../components/QySiIntroPresentation'
+import QySiBodyHubUpdate from '../components/QySiBodyHubUpdate'
 import BadgeUnlockCelebration from '../components/BadgeUnlockCelebration'
 import { initSocket, disconnectSocket, ensureSocketAlive, onChatEvent, showNotification, sendReceipt } from '../utils/socket'
 import api from '../utils/api'
@@ -926,6 +927,7 @@ export default function MainLayout() {
       <NewTutorialPrompt />
       <WelcomeIntroModal />
       <QySiIntroPresentation />
+      <QySiBodyHubUpdate />
       <BadgeUnlockCelebration />
       <MembershipExpiryNotice />
     </div>

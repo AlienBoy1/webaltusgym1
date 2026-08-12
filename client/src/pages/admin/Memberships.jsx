@@ -35,7 +35,8 @@ export default function AdminMemberships() {
       accessToChat: true,
       accessToReports: false,
       personalTrainer: false,
-      nutritionPlan: false
+      nutritionPlan: false,
+      accessToBodyHealth: true
     }
   })
   const [newBenefit, setNewBenefit] = useState('')
@@ -111,7 +112,8 @@ export default function AdminMemberships() {
         accessToChat: true,
         accessToReports: false,
         personalTrainer: false,
-        nutritionPlan: false
+        nutritionPlan: false,
+        accessToBodyHealth: true
       }
     })
     setShowEditModal(true)
@@ -133,7 +135,8 @@ export default function AdminMemberships() {
         accessToChat: true,
         accessToReports: false,
         personalTrainer: false,
-        nutritionPlan: false
+        nutritionPlan: false,
+        accessToBodyHealth: true
       }
     })
     setShowAddModal(true)

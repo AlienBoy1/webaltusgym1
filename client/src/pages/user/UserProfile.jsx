@@ -86,6 +86,7 @@ export default function UserProfile() {
   )
 
   const isProfilePublic = user?.settings?.privacy?.profilePublic !== false
+  const showProgressPublic = user?.settings?.privacy?.showProgress !== false
   const canViewPrivateContent = useMemo(() => {
     if (!user) return false
     if (isOwnProfile) return true
@@ -93,6 +94,8 @@ export default function UserProfile() {
     if (!followStatusReady) return false
     return followStatus.isFollowing
   }, [user, isOwnProfile, followStatus.isFollowing, isProfilePublic, followStatusReady])
+
+  const canViewProgressStats = isOwnProfile || (canViewPrivateContent && showProgressPublic)
 
   const isLockedVisitor = Boolean(
     user && !isOwnProfile && !isProfilePublic && followStatusReady && !followStatus.isFollowing
@@ -717,6 +720,7 @@ export default function UserProfile() {
         </motion.div>
       )}
 
+      {canViewProgressStats && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -735,7 +739,9 @@ export default function UserProfile() {
           </div>
         ))}
       </motion.div>
+      )}
 
+      {canViewProgressStats && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -756,6 +762,7 @@ export default function UserProfile() {
           {100 - ((user.stats?.xp || 0) % 100)} XP hasta el siguiente nivel
         </div>
       </motion.div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

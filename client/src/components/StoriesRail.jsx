@@ -50,7 +50,7 @@ import {
   presenceDisplayName,
   subscribePresenceMap
 } from '../utils/presence'
-import { displayQiSiHandle, isQiSiProfile, QISI_HANDLE, QISI_MESSAGING_COPY, QISI_MESSAGING_TITLE, QISI_NAME, QISI_USERNAME } from '../utils/qisi'
+import { displayQiSiHandle, isQiSiProfile, QISI_BODY_HUB_STORY_KEY, QISI_HANDLE, QISI_MESSAGING_COPY, QISI_MESSAGING_TITLE, QISI_NAME, QISI_USERNAME } from '../utils/qisi'
 import QySiAvatar, { QYSI_AVATAR_SRC } from './QySiAvatar'
 import QySiStorySurface from './QySiStorySurface'
 
@@ -519,6 +519,17 @@ export default function StoriesRail({
     currentGroup?.user &&
       (currentGroup.isQiSi || currentGroup.user?.isQiSi || isQiSiProfile(currentGroup.user))
   )
+  const qisiStoryVariant = (() => {
+    const cap = String(currentStory?.caption || '')
+    if (
+      cap.includes(QISI_BODY_HUB_STORY_KEY) ||
+      cap.includes('qisi-body-hub') ||
+      /progreso|cuerpo|volumen/i.test(cap)
+    ) {
+      return 'body-hub'
+    }
+    return 'launch'
+  })()
   const waitingMedia = Boolean(
     !viewingQiSi && currentStory?.mediaDeferred && !currentStory?.mediaUrl
   )
@@ -746,7 +757,9 @@ export default function StoriesRail({
     if (!currentStory) return undefined
 
     const fullDuration = viewingQiSi
-      ? 7800
+      ? qisiStoryVariant === 'body-hub'
+        ? 12000
+        : 7800
       : currentStory.mediaType === 'video'
         ? MAX_VIDEO_SECONDS * 1000
         : 5500
@@ -764,7 +777,7 @@ export default function StoriesRail({
     }
 
     markViewed(currentStory)
-  }, [currentStory?._id, currentStory?.id, viewingQiSi])
+  }, [currentStory?._id, currentStory?.id, viewingQiSi, qisiStoryVariant])
 
   useEffect(() => {
     if (!currentStory) return undefined
@@ -1708,7 +1721,7 @@ export default function StoriesRail({
                     />
                   </div>
                 ) : viewingQiSi && currentStory.mediaType !== 'video' ? (
-                  <QySiStorySurface />
+                  <QySiStorySurface variant={qisiStoryVariant} />
                 ) : (
                   <>
                     {!mediaReady && (

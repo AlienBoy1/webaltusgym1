@@ -91,5 +91,6 @@ export const FEATURE_LABELS = {
   accessToChat: 'Chat',
   accessToReports: 'Reportes',
   personalTrainer: 'Entrenador personal',
-  nutritionPlan: 'Plan nutricional'
+  nutritionPlan: 'Plan nutricional',
+  accessToBodyHealth: 'Cuerpo y métricas'
 }

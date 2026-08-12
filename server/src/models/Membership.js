@@ -40,7 +40,8 @@ const membershipSchema = new mongoose.Schema({
     accessToChat: { type: Boolean, default: true },
     accessToReports: { type: Boolean, default: false },
     personalTrainer: { type: Boolean, default: false },
-    nutritionPlan: { type: Boolean, default: false }
+    nutritionPlan: { type: Boolean, default: false },
+    accessToBodyHealth: { type: Boolean, default: true }
   },
   active: {
     type: Boolean,

@@ -5,6 +5,7 @@ import {
   QISI_EMAIL,
   QISI_HANDLE,
   QISI_LAUNCH_STORY_KEY,
+  QISI_BODY_HUB_STORY_KEY,
   QISI_MEANING,
   QISI_NAME,
   QISI_SOURCE_KIND,
@@ -243,38 +244,111 @@ async function ensureCatalogRoutines(QySiUserId) {
   }
 }
 
+function buildBodyHubStorySvg() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1220"/>
+      <stop offset="50%" stop-color="#121A2A"/>
+      <stop offset="100%" stop-color="#1A1030"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="100%" stop-color="#00E5FF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="24%" r="48%">
+      <stop offset="0%" stop-color="#00E5FF" stop-opacity="0.28"/>
+      <stop offset="55%" stop-color="#FF6B35" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#FF6B35" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <rect width="1080" height="1920" fill="url(#glow)"/>
+  <rect x="300" y="160" width="480" height="64" rx="32" fill="rgba(0,229,255,0.14)" stroke="#00E5FF" stroke-width="3"/>
+  <text x="540" y="203" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="30" font-weight="700" fill="#00E5FF">ACTUALIZACIÓN</text>
+  <circle cx="540" cy="480" r="140" fill="url(#accent)"/>
+  <rect x="470" y="430" width="28" height="90" rx="8" fill="#fff"/>
+  <rect x="510" y="400" width="28" height="120" rx="8" fill="#fff"/>
+  <rect x="550" y="450" width="28" height="70" rx="8" fill="#fff"/>
+  <text x="540" y="700" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="92" font-weight="800" fill="#FFFFFF">QySi</text>
+  <text x="540" y="770" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="34" fill="#9BEBFF">@${QISI_HANDLE}</text>
+  <text x="540" y="900" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="48" font-weight="700" fill="#FFFFFF">Progreso a tu medida</text>
+  <text x="540" y="970" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="34" fill="#D8DDE6">Cuerpo · volumen · objetivos</text>
+  <rect x="120" y="1060" width="840" height="300" rx="40" fill="rgba(255,255,255,0.06)" stroke="rgba(0,229,255,0.4)" stroke-width="3"/>
+  <text x="540" y="1145" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="34" font-weight="700" fill="#FFFFFF">Qyntra rompe con lo genérico</text>
+  <text x="540" y="1210" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="28" fill="#AEB6C2">Rutinas más ajustables y medibles</text>
+  <text x="540" y="1275" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="28" fill="#AEB6C2">para ti y tus GymRats</text>
+  <text x="540" y="1480" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="30" fill="#FFB088">Ábrelo en Progreso</text>
+  <text x="540" y="1750" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="26" fill="#6B7280">#${QISI_BODY_HUB_STORY_KEY}</text>
+</svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+const STORY_TTL_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Force-replace QySi stories with the body-hub update (24h TTL).
+ * Deletes previous launch/stuck stories so the rail never keeps the old one.
+ */
 async function ensureLaunchStory(QySiUserId) {
   const now = new Date()
-  const marker = `#${QISI_LAUNCH_STORY_KEY}`
+  const marker = `#${QISI_BODY_HUB_STORY_KEY}`
+
+  try {
+    // Remove every QySi story that is not the current campaign marker
+    const { data: all } = await supabaseAdmin
+      .from('stories')
+      .select('id, caption, created_at, expires_at')
+      .eq('user_id', QySiUserId)
+
+    for (const row of all || []) {
+      const caption = String(row.caption || '')
+      const created = new Date(row.created_at).getTime()
+      const expired =
+        new Date(row.expires_at).getTime() <= now.getTime() ||
+        (Number.isFinite(created) && created < now.getTime() - STORY_TTL_MS)
+      const isCurrent = caption.includes(marker)
+      if (!isCurrent || expired) {
+        await supabaseAdmin.from('stories').delete().eq('id', row.id)
+      }
+    }
+  } catch (err) {
+    console.warn('QySi story purge:', err?.message || err)
+  }
 
   const { data: active } = await supabaseAdmin
     .from('stories')
-    .select('id, caption, expires_at')
+    .select('id, caption')
     .eq('user_id', QySiUserId)
     .gt('expires_at', now.toISOString())
-    .order('created_at', { ascending: false })
-    .limit(10)
+    .limit(5)
 
-  const hasLaunch = (active || []).some((s) => String(s.caption || '').includes(marker))
-  if (hasLaunch) return
+  const hasCurrent = (active || []).some((s) => String(s.caption || '').includes(marker))
+  if (hasCurrent) return
 
-  const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-  const caption =
-    `¡Hola! Soy ${QISI_NAME}, tu ${QISI_MEANING} (@${QISI_HANDLE}). ` +
-    `Pásate por Entrenamientos y tócalo en la burbuja inferior derecha. ` +
-    `5 variantes listas para ti. ${marker}`
+  const expires = new Date(now.getTime() + STORY_TTL_MS)
+  const caption = [
+    'ACTUALIZACIÓN Qyntra:',
+    'rompe con entrenamientos genéricos.',
+    'Progreso mide tu cuerpo y volumen.',
+    `${QISI_NAME} te acompaña.`,
+    `@${QISI_HANDLE}`,
+    marker
+  ].join(' ')
 
   const { error } = await supabaseAdmin.from('stories').insert({
     user_id: QySiUserId,
     media_type: 'image',
-    media_url: buildLaunchStorySvg(),
+    media_url: buildBodyHubStorySvg(),
     caption: caption.slice(0, 280),
     created_at: now.toISOString(),
     expires_at: expires.toISOString()
   })
 
   if (error) {
-    console.warn('QySi launch story failed:', error.message || error)
+    console.warn('QySi body-hub story failed:', error.message || error)
+  } else {
+    console.log('QySi body-hub story ready:', marker)
   }
 }
 
@@ -286,6 +360,11 @@ export async function ensureQiSiSystem() {
       .eq('id', cachedQySi.id)
       .then(() => {})
       .catch(() => {})
+    try {
+      await ensureLaunchStory(cachedQySi.id)
+    } catch (err) {
+      console.warn('QySi story ensure (cached):', err?.message || err)
+    }
     return cachedQySi
   }
 

@@ -70,6 +70,18 @@ export function withPlanMeta(features = {}, meta = {}) {
   return clean
 }
 
+/** Labels for plan feature flags (admin + profile cards). */
+export const FEATURE_LABELS = {
+  accessToClasses: 'Clases',
+  accessToChallenges: 'Retos',
+  accessToSocial: 'Social',
+  accessToChat: 'Chat',
+  accessToReports: 'Reportes',
+  personalTrainer: 'Entrenador personal',
+  nutritionPlan: 'Plan nutricional',
+  accessToBodyHealth: 'Cuerpo y métricas'
+}
+
 export function stripPlanMetaFromFeatures(features = {}) {
   if (!features || typeof features !== 'object') return {}
   const { __meta, ...rest } = features

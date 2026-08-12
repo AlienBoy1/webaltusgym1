@@ -35,18 +35,32 @@ const SETTINGS_KEY = 'tutorialQysiCompleted'
 const WORKOUT_TEMPLATES_KEY = 'qyntra:workout_templates'
 export const QYSI_ASSISTANT_OPEN_EVENT = 'qyntra:open-qysi-assistant'
 const OPEN_FLAG_KEY = 'qyntra:openQySiAssistant'
+const HINTS_KEY = 'qyntra:qysiHints'
 
 /** Navigate-friendly opener: set flag + emit event (Workouts mounts the panel). */
-export function openQySiAssistant() {
+export function openQySiAssistant(hints = null) {
   try {
     sessionStorage.setItem(OPEN_FLAG_KEY, '1')
+    if (hints) sessionStorage.setItem(HINTS_KEY, JSON.stringify(hints))
+    else sessionStorage.removeItem(HINTS_KEY)
   } catch {
     /* ignore */
   }
   try {
-    window.dispatchEvent(new CustomEvent(QYSI_ASSISTANT_OPEN_EVENT))
+    window.dispatchEvent(new CustomEvent(QYSI_ASSISTANT_OPEN_EVENT, { detail: hints || null }))
   } catch {
     /* ignore */
+  }
+}
+
+function readStoredHints() {
+  try {
+    const raw = sessionStorage.getItem(HINTS_KEY)
+    if (!raw) return null
+    sessionStorage.removeItem(HINTS_KEY)
+    return JSON.parse(raw)
+  } catch {
+    return null
   }
 }
 
@@ -141,8 +155,15 @@ export default function QySiAssistant({ onAdopted, templates = [] }) {
   const [adopting, setAdopting] = useState(false)
   /** Brief theme-colored glow on first paint of Entrenamientos (non-blocking). */
   const [attracting, setAttracting] = useState(true)
+  const [bodyHints, setBodyHints] = useState(null)
 
-  const suggestedLevel = useMemo(() => suggestLevelId(templates), [templates])
+  const suggestedLevel = useMemo(() => {
+    const fromBody = bodyHints?.suggestedLevelId
+    if (fromBody === 'beginner' || fromBody === 'intermediate' || fromBody === 'advanced') {
+      return fromBody
+    }
+    return suggestLevelId(templates)
+  }, [templates, bodyHints])
   const levelGuide = useMemo(() => getQiSiLevelGuide(), [])
 
   const variant = QISI_VARIANTS.find((v) => v.id === variantId) || null
@@ -202,33 +223,53 @@ export default function QySiAssistant({ onAdopted, templates = [] }) {
     setLevelId(suggestedLevel)
   }
 
-  const openAssistant = useCallback(() => {
-    const u = useAuthStore.getState().user
-    const done = hasCompletedQySiTutorial(u)
-    setOpen(true)
-    if (!done) {
-      setTutorialForced(true)
-      setTutorialStep(0)
-      setPhase('tutorial')
-    } else {
-      setTutorialForced(false)
-      setPhase('home')
-      setVariantId(null)
-      setProgramId(null)
-      setLevelId(suggestLevelId(templates))
-    }
-  }, [templates])
+  const openAssistant = useCallback(
+    (hints = null) => {
+      const applied = hints || readStoredHints()
+      if (applied) setBodyHints(applied)
+
+      const u = useAuthStore.getState().user
+      const done = hasCompletedQySiTutorial(u)
+      setOpen(true)
+      if (!done) {
+        setTutorialForced(true)
+        setTutorialStep(0)
+        setPhase('tutorial')
+      } else {
+        setTutorialForced(false)
+        setPhase(applied?.preferredVariants?.length ? 'path' : 'home')
+        const preferred = applied?.preferredVariants?.[0]
+        if (preferred && QISI_VARIANTS.some((v) => v.id === preferred)) {
+          setVariantId(preferred)
+          const variant = QISI_VARIANTS.find((v) => v.id === preferred)
+          const progId =
+            applied?.preferredProgramId &&
+            variant?.programs?.some((p) => p.id === applied.preferredProgramId)
+              ? applied.preferredProgramId
+              : variant?.programs?.[0]?.id || null
+          setProgramId(progId)
+          const lvl = applied?.suggestedLevelId || suggestLevelId(templates)
+          setLevelId(lvl)
+        } else {
+          setVariantId(null)
+          setProgramId(null)
+          setLevelId(applied?.suggestedLevelId || suggestLevelId(templates))
+        }
+      }
+    },
+    [templates]
+  )
 
   const openAssistantRef = useRef(openAssistant)
   openAssistantRef.current = openAssistant
 
   useEffect(() => {
-    const onExternalOpen = () => openAssistantRef.current()
+    const onExternalOpen = (ev) => openAssistantRef.current(ev?.detail || null)
     window.addEventListener(QYSI_ASSISTANT_OPEN_EVENT, onExternalOpen)
     return () => window.removeEventListener(QYSI_ASSISTANT_OPEN_EVENT, onExternalOpen)
   }, [])
 
-  // Deep-link from profile ("Entrenar con QySi") — runs once on mount of Entrenamientos
+  // Deep-link from profile / Progress ("Entrenar con QySi") — runs once on mount of Entrenamientos
   useEffect(() => {
     const q = searchParams.get('qysi')
     const fromQuery = q === '1' || q === 'open' || q === 'true'
@@ -247,7 +288,8 @@ export default function QySiAssistant({ onAdopted, templates = [] }) {
       setSearchParams(next, { replace: true })
     }
 
-    const t = window.setTimeout(() => openAssistantRef.current(), 280)
+    const hints = readStoredHints()
+    const t = window.setTimeout(() => openAssistantRef.current(hints), 280)
     return () => window.clearTimeout(t)
     // Intentionally once on mount when arriving from profile CTA
     // eslint-disable-next-line react-hooks/exhaustive-deps

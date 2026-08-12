@@ -177,11 +177,15 @@ export const TUTORIAL_CATALOG = [
   {
     id: TUTORIAL_IDS.PROGRESS,
     title: 'Progreso',
-    short: 'Objetivos y gráficas',
+    short: 'Cuerpo, volumen y objetivos',
     icon: '📈',
-    description: 'Mide avances, mira estadísticas y celebra logros.',
+    description:
+      'Ficha corporal, IMC/TMB, check-ins, volumen de entrenamientos con proyección educativa, objetivos y guía QySi.',
     completionKey: 'qyntra_tutorial_progress_done',
-    settingsKey: 'tutorialProgressCompleted'
+    settingsKey: 'tutorialProgressCompleted',
+    contentVersion: 2,
+    /** Auto-start only for accounts created before body-hub launch (see AppTutorial). */
+    autoStartForLegacyUsers: true
   },
   {
     id: TUTORIAL_IDS.REST_TIMES,
@@ -910,28 +914,49 @@ const PROGRESS_STEPS = [
     path: '/progress',
     target: 'nav-progress',
     title: 'Progreso',
-    body: 'Tu panel de avances: volumen, rachas, XP y tendencias.'
+    body: 'Tu hub personal: cuerpo, métricas educativas, volumen de entrenos y objetivos.'
+  },
+  {
+    id: 'pr-body',
+    path: '/progress',
+    target: 'tour-progress-body',
+    title: 'Mi cuerpo',
+    body: 'Completa altura, peso, sexo y edad. Toca el ícono de info en cada métrica para entender IMC, TMB y más.'
   },
   {
     id: 'pr-stats',
     path: '/progress',
     target: 'tour-progress-stats',
-    title: 'Medir avances',
-    body: 'Consulta métricas clave y compara tu consistencia semana a semana.'
+    title: 'Tus números',
+    body: 'Entrenamientos, rachas, nivel XP y logros — el pulso rápido de tu consistencia.'
   },
   {
     id: 'pr-charts',
     path: '/progress',
     target: 'tour-progress-charts',
-    title: 'Gráficas',
-    body: 'Las gráficas te ayudan a ver evolución real. Úsalas para ajustar tu plan.'
+    title: 'Peso y entrenamientos',
+    body: 'Peso corporal con check-ins. En “Entrenamientos” ves volumen real (sesiones, ejercicios, series y reps) y una proyección educativa.'
+  },
+  {
+    id: 'pr-coaching',
+    path: '/progress',
+    target: 'tour-progress-coaching',
+    title: 'Lectura estratégica',
+    body: 'Si los resultados no coinciden con la proyección, no te frustres: aquí hay consejos y atajos para ajustar objetivos o buscar un profesional.'
   },
   {
     id: 'pr-goals',
     path: '/progress',
     target: 'tour-progress-goals',
-    title: 'Objetivos',
-    body: 'Define o revisa metas para mantener el foco en lo que quieres lograr.'
+    title: 'Objetivos editables',
+    body: 'Define peso meta, frecuencia semanal y fecha. Edítalos cuando tu realidad cambie.'
+  },
+  {
+    id: 'pr-guide',
+    path: '/progress',
+    target: 'tour-progress-guide',
+    title: 'Guía + QySi',
+    body: 'Tips según tu ficha y un atajo a QySi con nivel y variantes sugeridas del catálogo.'
   }
 ]
 
@@ -1135,6 +1160,75 @@ export const TUTORIAL_STEPS = {
   [TUTORIAL_IDS.PRIVACY_PERMISSIONS]: PRIVACY_PERMISSIONS_STEPS,
   [TUTORIAL_IDS.ESTILOS_QYNTRA]: ESTILOS_QYNTRA_STEPS,
   [TUTORIAL_IDS.QYSI_TRAINING]: QYSI_TRAINING_STEPS
+}
+
+/**
+ * Accounts created before this moment get Progress tutorial auto-started on next login.
+ * New registrations after this date only see it in the tutorial hub.
+ * (Ship window: ~11 ago 2026 noche CST.)
+ */
+export const BODY_HUB_LEGACY_BEFORE_ISO = '2026-08-12T03:00:00.000Z'
+
+/** QySi cinematic intro to Progress tutorial — active only for 24h after ship. */
+export const BODY_HUB_ANNOUNCE_START_ISO = '2026-08-11T18:00:00.000Z'
+export const BODY_HUB_ANNOUNCE_UNTIL_ISO = '2026-08-13T12:00:00.000Z'
+
+export const BODY_HUB_UPDATE_SETTING = 'qysiBodyHubUpdateSeen'
+export const BODY_HUB_UPDATE_LOCAL = 'qyntra_qysi_body_hub_update_seen'
+export const BODY_HUB_UPDATE_EVENT = 'qyntra:open-qysi-body-hub-update'
+export const BODY_HUB_UPDATE_DONE_EVENT = 'qyntra:qysi-body-hub-update-done'
+
+export function isBodyHubAnnounceActive(at = Date.now()) {
+  const start = new Date(BODY_HUB_ANNOUNCE_START_ISO).getTime()
+  const until = new Date(BODY_HUB_ANNOUNCE_UNTIL_ISO).getTime()
+  return at >= start && at < until
+}
+
+export function isLegacyUserForBodyHub(user) {
+  const created = user?.createdAt || user?.created_at
+  // Missing date → treat as legacy (cached sessions); new signups always send createdAt.
+  if (!created) return true
+  const t = new Date(created).getTime()
+  if (Number.isNaN(t)) return true
+  return t < new Date(BODY_HUB_LEGACY_BEFORE_ISO).getTime()
+}
+
+export function hasSeenBodyHubAnnounce(user) {
+  if (user?.settings?.[BODY_HUB_UPDATE_SETTING] === true) return true
+  const uid = userIdOf(user)
+  if (!uid) return false
+  try {
+    return localStorage.getItem(`${BODY_HUB_UPDATE_LOCAL}:${uid}`) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Auto login prompt: legacy + 24h window. */
+export function shouldShowBodyHubAnnounce(user, at = Date.now()) {
+  if (!isBodyHubAnnounceActive(at)) return false
+  if (!isLegacyUserForBodyHub(user)) return false
+  return true
+}
+
+/** Intro when starting Progress tutorial during the 24h window (hub or auto). */
+export function shouldPlayProgressBodyIntro(user, at = Date.now()) {
+  if (!isBodyHubAnnounceActive(at)) return false
+  if (!user) return false
+  // Always play while the campaign window is open — permanent "seen" must not skip it
+  return true
+}
+
+export function openBodyHubProgressIntro(detail = {}) {
+  try {
+    window.dispatchEvent(
+      new CustomEvent(BODY_HUB_UPDATE_EVENT, {
+        detail: { asProgressIntro: true, force: true, forceReplay: true, ...detail }
+      })
+    )
+  } catch {
+    /* ignore */
+  }
 }
 
 export function getTutorialMeta(id) {

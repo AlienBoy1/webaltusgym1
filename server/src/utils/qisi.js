@@ -8,6 +8,7 @@ export const QISI_TAGLINE = 'Qyntra-inner · trainer inteligente'
 export const QISI_EMAIL = 'qisi@qyntra.internal'
 export const QISI_SOURCE_KIND = 'qisi'
 export const QISI_LAUNCH_STORY_KEY = 'qisi-launch-v1'
+export const QISI_BODY_HUB_STORY_KEY = 'qisi-body-hub-v3'
 
 export const QISI_MESSAGING_TITLE = 'QySi se está preparando'
 export const QISI_MESSAGING_COPY =

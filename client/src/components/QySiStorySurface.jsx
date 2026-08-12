@@ -1,20 +1,23 @@
 import { motion } from 'framer-motion'
-import { FiActivity, FiZap } from 'react-icons/fi'
+import { FiActivity, FiSliders, FiTarget, FiTrendingUp, FiZap } from 'react-icons/fi'
 import { QISI_HANDLE, QISI_MEANING, QISI_NAME, QISI_TAGLINE } from '../utils/qisi'
 import QySiAvatar from './QySiAvatar'
 
 /**
- * Premium in-viewer story surface for QySi — theme + appearance adaptive.
- * Replaces the static SVG media so the story feels native to the brand.
+ * Premium in-viewer story surface for QySi — theme adaptive.
+ * `variant`: 'launch' (catalog) | 'body-hub' (Progreso update)
  */
-export default function QySiStorySurface() {
+export default function QySiStorySurface({ variant = 'launch' }) {
+  const isBodyHub = variant === 'body-hub'
+
   return (
     <div className="absolute inset-0 overflow-hidden bg-[color:var(--bg-app)]">
       <div
         className="absolute inset-0"
         style={{
-          background:
-            'radial-gradient(ellipse 85% 55% at 50% 18%, rgba(var(--color-primary-rgb),0.28), transparent 58%), radial-gradient(ellipse 55% 40% at 85% 88%, rgba(var(--color-accent-rgb),0.14), transparent 55%), var(--bg-app)'
+          background: isBodyHub
+            ? 'radial-gradient(ellipse 85% 55% at 50% 18%, rgba(var(--color-accent-rgb),0.22), transparent 58%), radial-gradient(ellipse 55% 40% at 15% 88%, rgba(var(--color-primary-rgb),0.18), transparent 55%), var(--bg-app)'
+            : 'radial-gradient(ellipse 85% 55% at 50% 18%, rgba(var(--color-primary-rgb),0.28), transparent 58%), radial-gradient(ellipse 55% 40% at 85% 88%, rgba(var(--color-accent-rgb),0.14), transparent 55%), var(--bg-app)'
         }}
       />
       <motion.div
@@ -40,6 +43,16 @@ export default function QySiStorySurface() {
       />
 
       <div className="relative z-10 flex h-full flex-col items-center justify-center px-7 pb-36 pt-24 text-center">
+        {isBodyHub && (
+          <motion.span
+            className="mb-4 rounded-full border border-[rgba(var(--color-accent-rgb),0.45)] bg-[rgba(var(--color-accent-rgb),0.12)] px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-[color:var(--color-accent)]"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            Actualización
+          </motion.span>
+        )}
+
         <motion.div
           initial={{ opacity: 0, scale: 0.55, y: 36 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -70,7 +83,9 @@ export default function QySiStorySurface() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.58 }}
         >
-          {QISI_MEANING}. {QISI_TAGLINE}.
+          {isBodyHub
+            ? 'Progreso a tu medida: cuerpo, volumen y objetivos medibles.'
+            : `${QISI_MEANING}. ${QISI_TAGLINE}.`}
         </motion.p>
 
         <motion.div
@@ -79,22 +94,53 @@ export default function QySiStorySurface() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.78 }}
         >
-          <div className="rounded-2xl border border-[rgba(var(--color-primary-rgb),0.4)] bg-[rgba(var(--color-primary-rgb),0.12)] px-4 py-3.5 text-left backdrop-blur-md">
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-primary)]">
-              <FiZap size={13} /> Entrenamientos
-            </p>
-            <p className="mt-1 text-sm font-semibold text-[color:var(--text-primary)]">
-              Burbuja inferior derecha · 5 variantes listas
-            </p>
-          </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/85 px-4 py-3 text-left backdrop-blur-md">
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
-              <FiActivity size={13} className="text-[color:var(--color-primary)]" /> Rutas
-            </p>
-            <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-              Gym · Casa · Calistenia · Running · Full Body
-            </p>
-          </div>
+          {isBodyHub ? (
+            <>
+              <div className="rounded-2xl border border-[rgba(var(--color-primary-rgb),0.4)] bg-[rgba(var(--color-primary-rgb),0.12)] px-4 py-3.5 text-left backdrop-blur-md">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-primary)]">
+                  <FiSliders size={13} /> Ajustable
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[color:var(--text-primary)]">
+                  Rutinas más editables para ti y tus GymRats
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/85 px-4 py-3 text-left backdrop-blur-md">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+                  <FiTrendingUp size={13} className="text-[color:var(--color-primary)]" /> Medible
+                </p>
+                <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+                  Ficha corporal · check-ins · volumen real de entrenos
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/85 px-4 py-3 text-left backdrop-blur-md">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+                  <FiTarget size={13} className="text-[color:var(--color-primary)]" /> En Progreso
+                </p>
+                <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+                  Ábrelo en la pestaña Progreso · yo te guío
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded-2xl border border-[rgba(var(--color-primary-rgb),0.4)] bg-[rgba(var(--color-primary-rgb),0.12)] px-4 py-3.5 text-left backdrop-blur-md">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-primary)]">
+                  <FiZap size={13} /> Entrenamientos
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[color:var(--text-primary)]">
+                  Burbuja inferior derecha · 5 variantes listas
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/85 px-4 py-3 text-left backdrop-blur-md">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+                  <FiActivity size={13} className="text-[color:var(--color-primary)]" /> Rutas
+                </p>
+                <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+                  Gym · Casa · Calistenia · Running · Full Body
+                </p>
+              </div>
+            </>
+          )}
         </motion.div>
       </div>
     </div>

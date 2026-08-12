@@ -14,6 +14,7 @@ import challengeRoutes from './routes/challenges.js'
 import storyRoutes from './routes/stories.js'
 import noteRoutes from './routes/notes.js'
 import qisiRoutes from './routes/qisi.js'
+import bodyRoutes from './routes/body.js'
 import { isSupabaseConfigured } from './lib/supabase.js'
 import { ensureQiSiSystem } from './services/qisiService.js'
 
@@ -73,6 +74,7 @@ app.use('/api/challenges', challengeRoutes)
 app.use('/api/stories', storyRoutes)
 app.use('/api/notes', noteRoutes)
 app.use('/api/qisi', qisiRoutes)
+app.use('/api/body', bodyRoutes)
 
 // Warm QiSi system user + launch story (non-blocking)
 if (isSupabaseConfigured()) {
