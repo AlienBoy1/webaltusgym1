@@ -835,7 +835,7 @@ const CHALLENGE_STEPS = [
     demo: 'challenge-start',
     forceDemo: true,
     title: 'Iniciar el reto',
-    body: 'Dentro del detalle, Iniciar Reto arranca tu sesión. Si el objetivo es tiempo, el cronómetro va de 0 hasta la meta y se completa solo.'
+    body: 'Dentro del detalle, Iniciar Reto arranca tu sesión. En tiempo con ejercicios, completa todos lo más rápido posible: al marcar el último se pausa y finaliza solo.'
   },
   {
     id: 'ch-progress',

@@ -347,16 +347,50 @@ export default function Challenges() {
       setExerciseInputs(next)
     }
 
+    const challengeId = data.challenge?._id || data.challenge?.id || selectedChallenge?._id
+    const shouldAutoFinish =
+      Boolean(challengeId) &&
+      !data.participant?.completed &&
+      (data.canComplete || (data.autoPaused && data.allExercisesComplete))
+
+    if (shouldAutoFinish) {
+      try {
+        const body = {}
+        const challengeForComplete = {
+          ...(selectedChallenge || {}),
+          ...(data.challenge || {}),
+          _id: challengeId,
+          id: challengeId
+        }
+        if (exercises.length && isTimeGoalChallenge(challengeForComplete)) {
+          const src = data.participant?.exerciseProgress || {}
+          const { map } = clampExerciseProgress(exercises, src)
+          body.exerciseProgress = map
+        }
+        const { data: completeData } = await api.post(
+          `/challenges/${challengeId}/complete`,
+          body
+        )
+        await applyCompletionSuccess(challengeForComplete, completeData)
+        return
+      } catch (error) {
+        toast.error(
+          error.response?.data?.message ||
+            'Objetivo listo — pulsa Completar para obtener XP'
+        )
+      }
+    }
+
     if (selectedChallenge?._id) {
       fetchChallengeDetails(selectedChallenge._id)
     }
     fetchMyChallenges()
     await refreshUser()
 
-    if (data.canComplete || data.allExercisesComplete) {
+    if (data.autoPaused || data.allExercisesComplete) {
       toast.success(
-        data.canComplete
-          ? '¡Todos los ejercicios listos! Completa el reto para obtener XP'
+        data.autoPaused
+          ? data.message || '¡Listo! Cronómetro pausado'
           : 'Ejercicio registrado',
         { duration: 3500 }
       )
@@ -620,21 +654,40 @@ export default function Challenges() {
       return
     }
 
+    const exercises = getChallengeExercises(selectedChallenge)
+
     if (isTimeGoalChallenge(selectedChallenge)) {
+      // Time + exercises: finish as soon as all targets are locked (race / least time)
+      if (exercises.length && areAllExercisesComplete(exercises, participant.exerciseProgress)) {
+        try {
+          const { map } = clampExerciseProgress(exercises, participant.exerciseProgress || {})
+          const { data } = await api.post(`/challenges/${selectedChallenge._id}/complete`, {
+            exerciseProgress: map
+          })
+          await applyCompletionSuccess(selectedChallenge, data)
+        } catch (error) {
+          toast.error(error.response?.data?.message || 'Error al completar reto')
+        }
+        return
+      }
+
       const elapsed =
         (Number(participant.accumulatedMs) || 0) +
         (participant.status === 'active' && participant.startedAt
           ? Date.now() - new Date(participant.startedAt).getTime()
           : 0)
       if (elapsed < getTimeGoalMs(selectedChallenge) * 0.98) {
-        toast.error('Aún no has alcanzado el tiempo objetivo')
+        toast.error(
+          exercises.length
+            ? 'Completa todos los ejercicios o alcanza el tiempo objetivo'
+            : 'Aún no has alcanzado el tiempo objetivo'
+        )
         return
       }
       openTimeResultModal(selectedChallenge)
       return
     }
 
-    const exercises = getChallengeExercises(selectedChallenge)
     if (exercises.length) {
       if (!areAllExercisesComplete(exercises, participant.exerciseProgress)) {
         toast.error('Completa el objetivo de cada ejercicio antes de finalizar')
@@ -1247,6 +1300,11 @@ export default function Challenges() {
                   (challengeExercises.length
                     ? allExDone
                     : progress >= selectedChallenge.goal)
+                const canFinishTimeRace =
+                  isTime &&
+                  !completed &&
+                  challengeExercises.length > 0 &&
+                  allExDone
                 const showProgressEditor =
                   !completed &&
                   (challengeExercises.length > 0 || !isTime)
@@ -1317,7 +1375,9 @@ export default function Challenges() {
                         </div>
                         {isTime && (
                           <p className="mt-3 text-xs text-gray-400">
-                            Mientras corre el cronómetro puedes ir registrando cada ejercicio. Al completar el tiempo podrás confirmar o ajustar antes de obtener XP.
+                            {challengeExercises.length
+                              ? 'Completa todos los ejercicios lo más rápido posible. Al marcar el último, el cronómetro se pausa y el reto se finaliza solo.'
+                              : 'El cronómetro corre hasta el objetivo. Al llegar al tiempo podrás registrar tu resultado y obtener XP.'}
                           </p>
                         )}
                       </div>
@@ -1441,17 +1501,19 @@ export default function Challenges() {
                                 {!canEditProgress && !completed && (
                                   <p className="text-xs text-yellow-400 flex items-center gap-1">
                                     <FiPlay size={12} />
-                                    {canFinishQuantity
+                                    {canFinishQuantity || canFinishTimeRace
                                       ? 'Ejercicios listos. Completa el reto para obtener XP'
                                       : isJoined
                                         ? 'Inicia el reto para registrar ejercicios'
                                         : 'Reanuda el reto para seguir registrando'}
                                   </p>
                                 )}
-                                {canFinishQuantity && (
+                                {(canFinishQuantity || canFinishTimeRace) && (
                                   <p className="text-xs text-accent-green flex items-center gap-1">
                                     <FiCheck size={12} />
-                                    Reto pausado · Ya puedes finalizar y obtener XP
+                                    {canFinishTimeRace
+                                      ? 'Cronómetro pausado · Finalizando reto…'
+                                      : 'Reto pausado · Ya puedes finalizar y obtener XP'}
                                   </p>
                                 )}
                               </>
@@ -1570,7 +1632,17 @@ export default function Challenges() {
                               Completar y Obtener XP
                             </button>
                           )}
-                          {isTime && timeReached && !completed && (
+                          {canFinishTimeRace && (
+                            <button
+                              data-tour="tour-challenge-complete"
+                              onClick={handleComplete}
+                              className="btn-primary flex-1 flex items-center justify-center gap-2"
+                            >
+                              <FiCheck size={18} />
+                              Completar y Obtener XP
+                            </button>
+                          )}
+                          {isTime && timeReached && !completed && !canFinishTimeRace && (
                             <button
                               data-tour="tour-challenge-complete"
                               onClick={() => openTimeResultModal(selectedChallenge)}
@@ -1850,6 +1922,11 @@ export default function Challenges() {
                         min="1"
                         step="1"
                       />
+                      <p className="mt-1 text-xs text-gray-500">
+                        {createForm.exercises.length > 0
+                          ? 'Con ejercicios: completa todos lo más rápido posible dentro de este límite; al marcar el último se finaliza solo.'
+                          : 'Sin ejercicios: el cronómetro llega a este tiempo y luego registras el resultado.'}
+                      </p>
                     </>
                   )}
                   {createForm.goalMode === 'quantity' && createForm.exercises.length === 0 && (
@@ -1868,7 +1945,7 @@ export default function Challenges() {
                   )}
                   {createForm.goalMode === 'quantity' && createForm.exercises.length > 0 && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Cada ejercicio tiene su propio objetivo. Se completan uno por uno (
+                      Cada ejercicio tiene su propio objetivo. Al completar todos se finaliza el reto (
                       {createForm.exercises.filter((e) => e.name && Number(e.targetReps) > 0).length}{' '}
                       ejercicios).
                     </p>
@@ -1896,7 +1973,7 @@ export default function Challenges() {
                   </div>
                   {createForm.exercises.length === 0 ? (
                     <p className="text-xs text-gray-500">
-                      Opcional. Si agregas ejercicios, el avance pedirá un valor por cada uno.
+                      Opcional. Si agregas ejercicios, el avance pedirá el objetivo exacto de cada uno.
                     </p>
                   ) : (
                     <div className="space-y-2">

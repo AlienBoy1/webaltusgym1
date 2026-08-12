@@ -823,10 +823,11 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       ? allExercisesComplete
       : goal > 0 && nextProgress >= goal
 
-    // For time challenges, exercises can fill while the timer runs;
-    // only auto-pause when goals are done and (for time) the clock already met target.
+    // Quantity: pause as soon as the goal is met.
+    // Time + exercises: race — pause when all exercises are done (even under the clock).
+    // Time without exercises: clock-driven (client pauses at target); don't pause here on progress.
     let shouldAutoPause = reachedGoal && participant.status === 'active'
-    if (timeGoal && shouldAutoPause) {
+    if (timeGoal && shouldAutoPause && exercises.length === 0) {
       const elapsed = computeElapsedMs(participant)
       const targetMs = getTimeGoalMs(challenge)
       shouldAutoPause = targetMs > 0 && elapsed >= targetMs * 0.98
@@ -883,17 +884,16 @@ router.put('/:id/progress', authenticate, async (req, res) => {
       (p) => (p.user?.id || p.user?._id || p.user) === req.user.id
     )
 
-    const canComplete = timeGoal
-      ? false // time challenges complete via timer + result confirmation
-      : reachedGoal && !participant.completed
+    // Quantity always; time+exercises when all locked — time-only still finishes via timer + result.
+    const canComplete =
+      reachedGoal && !participant.completed && (!timeGoal || exercises.length > 0)
 
     res.json({
-      message:
-        shouldAutoPause
-          ? 'Ejercicios completados. Reto pausado: puedes obtener XP'
-          : allExercisesComplete && timeGoal
-            ? 'Ejercicios al objetivo. Continúa hasta completar el tiempo'
-            : 'Progreso actualizado',
+      message: shouldAutoPause
+        ? timeGoal
+          ? '¡Todos los ejercicios listos! Cronómetro pausado'
+          : 'Objetivo alcanzado. Reto pausado: puedes obtener XP'
+        : 'Progreso actualizado',
       participant: updatedPart || {
         ...mapParticipant(updatedParticipant, {}),
         user: req.user.id
@@ -903,6 +903,7 @@ router.put('/:id/progress', authenticate, async (req, res) => {
         id: challenge.id,
         title: challenge.title,
         goal: challenge.goal,
+        goalMode: getChallengeGoalMode(challenge),
         exercises,
         participants: hydrated.participants
       },
@@ -970,11 +971,6 @@ router.post('/:id/complete', authenticate, async (req, res) => {
     let resolvedResultUnit = resultUnit || null
 
     if (timeGoal) {
-      if (!timeObjectiveMet && !(timeReached && finalAccumulatedMs >= targetMs * 0.98)) {
-        return res.status(400).json({ message: 'Aún no has alcanzado el tiempo objetivo del reto' })
-      }
-      progressValue = Number(challenge.goal)
-
       if (exercises.length) {
         const input = exerciseProgress || participant.exercise_progress || {}
         const clamped = clampExerciseProgress(exercises, input)
@@ -982,7 +978,22 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         parsedResult = clamped.total
         resolvedResultUnit = 'reps'
         progressValue = exercises.filter((ex) => (clamped.map[ex.id] || 0) >= ex.targetReps).length
+
+        // Race mode: finish early when all exercises are done (elapsed time is the score).
+        // If time ran out first, allow completing with whatever progress was logged.
+        if (!clamped.allComplete) {
+          if (!timeObjectiveMet && !(timeReached && finalAccumulatedMs >= targetMs * 0.98)) {
+            return res.status(400).json({
+              message: 'Completa todos los ejercicios o alcanza el tiempo objetivo del reto'
+            })
+          }
+        }
       } else {
+        if (!timeObjectiveMet && !(timeReached && finalAccumulatedMs >= targetMs * 0.98)) {
+          return res.status(400).json({ message: 'Aún no has alcanzado el tiempo objetivo del reto' })
+        }
+        progressValue = Number(challenge.goal)
+
         if (parsedResult == null || Number.isNaN(parsedResult) || parsedResult < 0) {
           return res.status(400).json({
             message: 'Registra tu resultado (puede ser menor al objetivo, nunca mayor)'
