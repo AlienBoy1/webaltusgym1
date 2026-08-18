@@ -24,6 +24,7 @@ import {
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
+import { fetchAvatarsByIds } from '../../utils/userAvatars'
 import { onChatEvent, sendTyping, sendReceipt, showNotification, requestNotificationPermission } from '../../utils/socket'
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
@@ -885,7 +886,7 @@ export default function Chat() {
       }
       // Full sync less often and never re-mark as read (avoids stampede / 500s)
       fullTicks += 1
-      if (fullTicks % 4 !== 0) return
+      if (fullTicks % 5 !== 0) return
       try {
         const { data } = await api.get(`/chat/messages/${otherId}`, {
           params: { markRead: 0 },
@@ -913,7 +914,7 @@ export default function Chat() {
     }
 
     tick()
-    const poll = window.setInterval(tick, 2000)
+    const poll = window.setInterval(tick, 8000)
     return () => window.clearInterval(poll)
   }, [selectedChat?.otherId])
 
@@ -922,7 +923,7 @@ export default function Chat() {
     if (selectedChat?.otherId) return undefined
     const poll = window.setInterval(() => {
       if (document.visibilityState === 'visible') fetchConversations()
-    }, 10000)
+    }, 30000)
     return () => window.clearInterval(poll)
   }, [selectedChat?.otherId])
 
@@ -932,30 +933,31 @@ export default function Chat() {
     if (!missing.length) return
     let cancelled = false
     ;(async () => {
-      const updates = {}
-      await Promise.all(
-        missing.slice(0, 20).map(async (c) => {
-          try {
-            const { data } = await api.get(`/users/${c.otherId}`)
-            if (isRenderableAvatar(data?.avatar)) {
-              updates[c.otherId] = {
-                avatar: data.avatar,
-                name: data.name || c.name,
-                username: data.username || c.username
-              }
-            }
-          } catch {
-            /* ignore */
+      const map = await fetchAvatarsByIds(missing.map((c) => c.otherId))
+      if (cancelled || !Object.keys(map).length) return
+      setConversations((list) =>
+        list.map((c) => {
+          const hit = map[c.otherId]
+          if (!hit || !isRenderableAvatar(hit.avatar)) return c
+          return {
+            ...c,
+            avatar: hit.avatar,
+            name: hit.name || c.name,
+            username: hit.username || c.username
           }
         })
       )
-      if (cancelled || !Object.keys(updates).length) return
-      setConversations((list) =>
-        list.map((c) => (updates[c.otherId] ? { ...c, ...updates[c.otherId] } : c))
-      )
-      setSelectedChat((prev) =>
-        prev?.otherId && updates[prev.otherId] ? { ...prev, ...updates[prev.otherId] } : prev
-      )
+      setSelectedChat((prev) => {
+        if (!prev?.otherId) return prev
+        const hit = map[prev.otherId]
+        if (!hit) return prev
+        return {
+          ...prev,
+          avatar: isRenderableAvatar(hit.avatar) ? hit.avatar : prev.avatar,
+          name: hit.name || prev.name,
+          username: hit.username || prev.username
+        }
+      })
     })()
     return () => {
       cancelled = true
@@ -1054,16 +1056,19 @@ export default function Chat() {
     if (next.otherId && !isRenderableAvatar(next.avatar)) {
       ;(async () => {
         try {
-          const { data } = await api.get(`/users/${next.otherId}`)
-          const avatar = data?.avatar || data?.user?.avatar || null
+          const map = await fetchAvatarsByIds([next.otherId])
+          const hit = map[next.otherId]
+          const avatar = hit?.avatar || null
           if (!isRenderableAvatar(avatar)) return
           setSelectedChat((prev) =>
-            prev?.otherId === next.otherId ? { ...prev, avatar, name: data?.name || prev.name, username: data?.username || prev.username } : prev
+            prev?.otherId === next.otherId
+              ? { ...prev, avatar, name: hit?.name || prev.name, username: hit?.username || prev.username }
+              : prev
           )
           setConversations((list) =>
             list.map((c) =>
               c.otherId === next.otherId
-                ? { ...c, avatar, name: data?.name || c.name, username: data?.username || c.username }
+                ? { ...c, avatar, name: hit?.name || c.name, username: hit?.username || c.username }
                 : c
             )
           )
@@ -1886,16 +1891,17 @@ export default function Chat() {
     // Always hydrate media for new / existing selection
     ;(async () => {
       try {
-        const { data } = await api.get(`/users/${uid}`)
-        const avatar = data?.avatar || null
-        if (!isRenderableAvatar(avatar) && !data?.name) return
+        const map = await fetchAvatarsByIds([uid])
+        const hit = map[uid]
+        const avatar = hit?.avatar || null
+        if (!isRenderableAvatar(avatar) && !hit?.name) return
         setSelectedChat((prev) =>
           prev?.otherId === uid
             ? {
                 ...prev,
                 avatar: isRenderableAvatar(avatar) ? avatar : prev.avatar,
-                name: data?.name || prev.name,
-                username: data?.username || prev.username
+                name: hit?.name || prev.name,
+                username: hit?.username || prev.username
               }
             : prev
         )
@@ -1905,8 +1911,8 @@ export default function Chat() {
               ? {
                   ...c,
                   avatar: isRenderableAvatar(avatar) ? avatar : c.avatar,
-                  name: data?.name || c.name,
-                  username: data?.username || c.username
+                  name: hit?.name || c.name,
+                  username: hit?.username || c.username
                 }
               : c
           )

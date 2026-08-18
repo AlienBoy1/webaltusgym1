@@ -116,7 +116,7 @@ const BADGE_DEFINITIONS = [
 export async function awardXP(userId, amount, reason = 'Actividad', skipBadgeCheck = false) {
   const { data: user, error } = await supabaseAdmin
     .from('profiles')
-    .select('*')
+    .select('id, stats, badges, settings, membership')
     .eq('id', userId)
     .single()
   if (error || !user) throw new Error('Usuario no encontrado')
@@ -154,7 +154,7 @@ export async function awardXP(userId, amount, reason = 'Actividad', skipBadgeChe
 export async function checkBadgeUnlocks(userId, skipXPBadges = false, _depth = 0) {
   const { data: user, error } = await supabaseAdmin
     .from('profiles')
-    .select('*')
+    .select('id, stats, badges, settings, membership')
     .eq('id', userId)
     .single()
   if (error || !user) throw new Error('Usuario no encontrado')

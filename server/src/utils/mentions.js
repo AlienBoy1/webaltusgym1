@@ -7,8 +7,8 @@ import { encodeChatContent } from './chatMessage.js'
 export async function getMutualFollowIds(actorId) {
   if (!actorId) return new Set()
   const [{ data: following }, { data: followers }] = await Promise.all([
-    supabaseAdmin.from('follows').select('following_id').eq('follower_id', actorId),
-    supabaseAdmin.from('follows').select('follower_id').eq('following_id', actorId)
+    supabaseAdmin.from('follows').select('following_id').eq('follower_id', actorId).limit(200),
+    supabaseAdmin.from('follows').select('follower_id').eq('following_id', actorId).limit(200)
   ])
   const followingSet = new Set((following || []).map((f) => f.following_id))
   const mutual = new Set()

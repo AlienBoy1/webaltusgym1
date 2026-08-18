@@ -325,8 +325,8 @@ async function loadProfilesMap(ids) {
 
 async function getCommunityUserIds(userId) {
   const [{ data: following }, { data: followers }] = await Promise.all([
-    supabaseAdmin.from('follows').select('following_id').eq('follower_id', userId),
-    supabaseAdmin.from('follows').select('follower_id').eq('following_id', userId)
+    supabaseAdmin.from('follows').select('following_id').eq('follower_id', userId).limit(200),
+    supabaseAdmin.from('follows').select('follower_id').eq('following_id', userId).limit(200)
   ])
   return [
     ...new Set([
@@ -405,17 +405,32 @@ function forkLooksEdited(fork, source) {
   return false
 }
 
+const ROUTINE_LIST_COLUMNS =
+  'id, user_id, local_id, name, color, exercises, days, is_public, source_routine_id, original_creator_id, adopt_count, is_edited_fork, collaborator_at, source_kind, created_at, updated_at'
+
+async function loadProfilesMapWithSettings(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))]
+  if (!unique.length) return {}
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('id, name, username, avatar, settings')
+    .in('id', unique)
+  return Object.fromEntries((data || []).map((p) => [p.id, p]))
+}
+
 // My saved routines (server sync for GymRat / public)
 router.get('/routines', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('workout_routines')
-      .select('*')
+      .select(ROUTINE_LIST_COLUMNS)
       .eq('user_id', req.user.id)
       .order('updated_at', { ascending: false })
+      .limit(200)
     if (error) throw error
     const creatorIds = (data || []).map((r) => r.original_creator_id || r.user_id)
     const profiles = await loadProfilesMap(creatorIds)
+    res.setHeader('Cache-Control', 'private, max-age=15')
     res.json(
       (data || []).map((row) => {
         const creatorId = row.original_creator_id || row.user_id
@@ -432,43 +447,20 @@ router.get('/routines/explore', authenticate, async (req, res) => {
   try {
     const communityIds = await getCommunityUserIds(req.user.id)
 
-    const { data: publicProfiles } = await supabaseAdmin
-      .from('profiles')
-      .select('id, name, username, avatar, settings')
-      .neq('id', req.user.id)
-
-    const openProfileIds = (publicProfiles || [])
-      .filter((p) => p.settings?.privacy?.profilePublic === true)
-      .map((p) => p.id)
-
-    const allowedIds = [...new Set([req.user.id, ...communityIds, ...openProfileIds])]
-    if (!allowedIds.length) {
-      return res.json([])
-    }
-
     const { data, error } = await supabaseAdmin
       .from('workout_routines')
-      .select('*')
+      .select(ROUTINE_LIST_COLUMNS)
       .eq('is_public', true)
       .is('source_routine_id', null)
-      .in('user_id', allowedIds)
       .order('updated_at', { ascending: false })
       .limit(100)
 
     if (error) throw error
 
-    const profileMap = Object.fromEntries((publicProfiles || []).map((p) => [p.id, p]))
-    // Also fetch community profiles missing from publicProfiles select if needed
-    const missing = (data || []).map((r) => r.user_id).filter((id) => !profileMap[id])
-    if (missing.length) {
-      const { data: extra } = await supabaseAdmin
-        .from('profiles')
-        .select('id, name, username, avatar, settings')
-        .in('id', missing)
-      for (const p of extra || []) profileMap[p.id] = p
-    }
+    const ownerIds = (data || []).map((r) => r.user_id)
+    const creatorIds = (data || []).map((r) => r.original_creator_id || r.user_id)
+    const profileMap = await loadProfilesMapWithSettings([...ownerIds, ...creatorIds])
 
-    // Community members + own public routines always visible; others only if profilePublic
     const filtered = (data || []).filter((row) => {
       if (row.source_kind === 'qisi') return false
       const owner = profileMap[row.user_id]
@@ -478,6 +470,7 @@ router.get('/routines/explore', authenticate, async (req, res) => {
       return owner?.settings?.privacy?.profilePublic === true
     })
 
+    res.setHeader('Cache-Control', 'private, max-age=30')
     res.json(
       filtered.map((row) => {
         const owner = profileMap[row.user_id]
@@ -488,7 +481,9 @@ router.get('/routines/explore', authenticate, async (req, res) => {
               avatar: profileMap[row.user_id].avatar
             }
           : null
-        return mapRoutine(row, owner, owner)
+        const creatorId = row.original_creator_id || row.user_id
+        const creator = profileMap[creatorId] || owner
+        return mapRoutine(row, owner, creator)
       })
     )
   } catch (error) {

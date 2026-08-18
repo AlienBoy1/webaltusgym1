@@ -153,6 +153,46 @@ async function hydrateChallenge(row, { includeLevel = false, sortParticipants = 
   return mapped
 }
 
+async function hydrateChallengeList(rows) {
+  if (!rows?.length) return []
+  const ids = rows.map((r) => r.id)
+  const { data: participants } = await supabaseAdmin
+    .from('challenge_participants')
+    .select(
+      'id, challenge_id, user_id, progress, status, completed, completed_at, joined_at, started_at, paused_at, accumulated_ms, last_progress_at, result_value, result_unit, exercise_progress'
+    )
+    .in('challenge_id', ids)
+    .limit(800)
+
+  const byChallenge = new Map()
+  for (const p of participants || []) {
+    if (!byChallenge.has(p.challenge_id)) byChallenge.set(p.challenge_id, [])
+    byChallenge.get(p.challenge_id).push(p)
+  }
+
+  const userIds = [
+    ...new Set([
+      ...rows.map((r) => r.created_by),
+      ...(participants || []).map((p) => p.user_id)
+    ])
+  ]
+  const userMap = await getProfilesMap(userIds)
+
+  return rows.map((row) => {
+    const mappedParticipants = (byChallenge.get(row.id) || []).map((p) =>
+      mapParticipant(p, userMap, false)
+    )
+    const mapped = mapChallenge(row, { participants: mappedParticipants })
+    const creator = userMap[row.created_by]
+    mapped.createdBy = creator
+      ? { _id: creator.id, id: creator.id, name: creator.name, avatar: creator.avatar }
+      : row.created_by
+    mapped.featured = !!(row.reward && row.reward.featured)
+    mapped.isPublic = row.reward?.isPublic !== false
+    return mapped
+  })
+}
+
 async function getDefaultXpForType(type) {
   const { data } = await supabaseAdmin
     .from('challenge_types')
@@ -383,7 +423,13 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const { active = true, featured } = req.query
 
-    let query = supabaseAdmin.from('challenges').select('*').order('start_date', { ascending: true })
+    let query = supabaseAdmin
+      .from('challenges')
+      .select(
+        'id, title, description, type, goal, unit, goal_mode, exercises, image, start_date, end_date, reward, created_by, created_at'
+      )
+      .order('start_date', { ascending: true })
+      .limit(80)
 
     if (active === 'true' || active === true) {
       query = query.gte('end_date', new Date().toISOString())
@@ -404,7 +450,7 @@ router.get('/', authenticate, async (req, res) => {
       return new Date(a.start_date) - new Date(b.start_date)
     })
 
-    const hydrated = await Promise.all(rows.map((c) => hydrateChallenge(c)))
+    const hydrated = await hydrateChallengeList(rows)
     res.json(hydrated)
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener retos', error: error.message })

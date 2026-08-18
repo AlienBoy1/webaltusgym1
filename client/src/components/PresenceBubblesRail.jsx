@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../utils/api'
+import { fetchAvatarsByIds } from '../utils/userAvatars'
 import { Avatar, isRenderableAvatar } from '../utils/avatarUtils'
 import PresenceDot from './PresenceDot'
 import {
@@ -135,25 +136,13 @@ export default function PresenceBubblesRail() {
     if (!missing.length) return undefined
 
     ;(async () => {
-      const updates = {}
-      await Promise.all(
-        missing.map(async (person) => {
-          const id = person._id || person.id
-          try {
-            const { data } = await api.get(`/users/${id}`)
-            const avatar = data?.avatar || null
-            if (!isRenderableAvatar(avatar)) return
-            updates[id] = avatar
-          } catch {
-            /* ignore */
-          }
-        })
-      )
-      if (cancelled || !Object.keys(updates).length) return
+      const map = await fetchAvatarsByIds(missing.map((p) => p._id || p.id))
+      if (cancelled || !Object.keys(map).length) return
       setPeople((prev) =>
         prev.map((p) => {
           const id = p._id || p.id
-          return updates[id] ? { ...p, avatar: updates[id] } : p
+          const avatar = map[id]?.avatar
+          return avatar && isRenderableAvatar(avatar) ? { ...p, avatar } : p
         })
       )
     })()

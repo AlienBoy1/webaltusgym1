@@ -79,7 +79,7 @@ app.use('/api/body', bodyRoutes)
 // Warm QiSi system user + launch story (non-blocking)
 if (isSupabaseConfigured()) {
   setTimeout(() => {
-    ensureQiSiSystem().catch((err) => {
+    ensureQiSiSystem({ maintainStories: true }).catch((err) => {
       console.warn('QiSi warm-up:', err?.message || err)
     })
   }, 1500)

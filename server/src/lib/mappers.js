@@ -186,11 +186,12 @@ export function mapChallenge(row, extras = {}) {
 
 export async function attachSocial(supabase, profileRow) {
   const userId = profileRow.id
+  const GRAPH_CAP = 400
   const [{ data: following }, { data: followers }, { data: outgoing }, { data: incoming }] = await Promise.all([
-    supabase.from('follows').select('following_id').eq('follower_id', userId),
-    supabase.from('follows').select('follower_id').eq('following_id', userId),
-    supabase.from('follow_requests').select('to_user_id, created_at').eq('from_user_id', userId),
-    supabase.from('follow_requests').select('from_user_id, created_at, id').eq('to_user_id', userId)
+    supabase.from('follows').select('following_id').eq('follower_id', userId).limit(GRAPH_CAP),
+    supabase.from('follows').select('follower_id').eq('following_id', userId).limit(GRAPH_CAP),
+    supabase.from('follow_requests').select('to_user_id, created_at').eq('from_user_id', userId).limit(GRAPH_CAP),
+    supabase.from('follow_requests').select('from_user_id, created_at, id').eq('to_user_id', userId).limit(GRAPH_CAP)
   ])
 
   return {

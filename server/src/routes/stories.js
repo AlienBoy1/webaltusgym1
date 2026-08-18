@@ -396,7 +396,7 @@ router.get('/feed', authenticate, async (req, res) => {
     let qisiId = null
     try {
       const { ensureQiSiSystem } = await import('../services/qisiService.js')
-      const qisi = await ensureQiSiSystem()
+      const qisi = await ensureQiSiSystem({ maintainStories: true })
       qisiId = qisi?.id || null
       if (qisiId) userIds = [...new Set([...userIds, qisiId])]
     } catch {

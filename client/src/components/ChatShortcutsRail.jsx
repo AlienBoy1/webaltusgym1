@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore'
 import { Avatar, isRenderableAvatar } from '../utils/avatarUtils'
 import UserNoteBadge from './UserNoteBadge'
 import { loadChatShortcuts, removeChatShortcut, saveChatShortcuts } from '../utils/chatShortcuts'
-import api from '../utils/api'
+import { fetchAvatarsByIds } from '../utils/userAvatars'
 
 /**
  * Chat shortcuts pinned on the dashboard (below weekly activity).
@@ -37,27 +37,20 @@ export default function ChatShortcutsRail() {
     if (!needRefresh.length) return undefined
 
     ;(async () => {
-      const updates = {}
-      await Promise.all(
-        needRefresh.map(async (person) => {
-          try {
-            const { data } = await api.get(`/users/${person.id}`)
-            const avatar = data?.avatar || data?.user?.avatar || null
-            if (!isRenderableAvatar(avatar) && !data?.name && !data?.username) return
-            updates[person.id] = {
-              avatar: isRenderableAvatar(avatar) ? avatar : person.avatar,
-              name: data?.name || person.name,
-              username: data?.username || person.username || null
-            }
-          } catch {
-            /* ignore */
+      const map = await fetchAvatarsByIds(needRefresh.map((p) => p.id))
+      if (cancelled || !Object.keys(map).length) return
+      setItems((prev) => {
+        const next = prev.map((person) => {
+          const hit = map[person.id]
+          if (!hit) return person
+          const avatar = hit.avatar
+          return {
+            ...person,
+            avatar: isRenderableAvatar(avatar) ? avatar : person.avatar,
+            name: hit.name || person.name,
+            username: hit.username || person.username || null
           }
         })
-      )
-      if (cancelled || !Object.keys(updates).length) return
-
-      setItems((prev) => {
-        const next = prev.map((p) => (updates[p.id] ? { ...p, ...updates[p.id] } : p))
         saveChatShortcuts(uid, next)
         return next
       })

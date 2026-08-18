@@ -113,9 +113,12 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const { type, instructor } = req.query
 
-    let query = supabaseAdmin.from('classes').select('*')
+    let query = supabaseAdmin
+      .from('classes')
+      .select('id, name, description, instructor_id, type, capacity, duration, image, equipment, schedule')
     if (type) query = query.eq('type', type)
     if (instructor) query = query.eq('instructor_id', instructor)
+    query = query.limit(80)
 
     const { data, error } = await query
     if (error) throw error

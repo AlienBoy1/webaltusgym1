@@ -152,4 +152,18 @@ api.interceptors.response.use(
   }
 )
 
+/** Deduplicate simultaneous identical GETs (many rails used to stampede /users/:id). */
+const inflightGets = new Map()
+const originalGet = api.get.bind(api)
+api.get = (url, config = {}) => {
+  const key = `${url}|${JSON.stringify(config.params || {})}`
+  const existing = inflightGets.get(key)
+  if (existing) return existing
+  const pending = originalGet(url, config).finally(() => {
+    inflightGets.delete(key)
+  })
+  inflightGets.set(key, pending)
+  return pending
+}
+
 export default api

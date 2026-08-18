@@ -357,25 +357,23 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  /** Load full avatar/cover after slim /auth/me — same endpoint as perfil público. */
+  /** Load full avatar/cover after slim /auth/me — dedicated media endpoint (no social graph). */
   loadMyMedia: async () => {
     const token = getStoredToken()
     const prev = get().user
     const id = prev?.id || prev?._id
     if (!token || !id) return
     try {
-      const { data } = await api.get(`/users/${id}`, { timeout: 90000 })
+      const { data } = await api.get('/users/profile-media', { timeout: 90000 })
       if (!data) return
       const nextAvatar = data.avatar || prev.avatar
-      const nextCover = data.profile?.coverUrl ?? prev.profile?.coverUrl ?? null
+      const nextCover = data.coverUrl ?? prev.profile?.coverUrl ?? null
       set({
         user: withIdAlias({
           ...prev,
-          ...data,
           avatar: nextAvatar,
           profile: {
             ...(prev.profile || {}),
-            ...(data.profile || {}),
             coverUrl: nextCover
           }
         }),

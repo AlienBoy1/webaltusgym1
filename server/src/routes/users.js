@@ -110,6 +110,7 @@ router.get('/presence-rail', authenticate, async (req, res) => {
       .from('follows')
       .select('following_id')
       .eq('follower_id', me)
+      .limit(80)
 
     const followingIds = (followingRows || []).map((r) => r.following_id).filter(Boolean)
     const followingSet = new Set(followingIds)
@@ -188,6 +189,7 @@ router.get('/community-rail', authenticate, async (req, res) => {
       .from('follows')
       .select('following_id')
       .eq('follower_id', me)
+      .limit(80)
 
     const followingIds = (followingRows || []).map((r) => r.following_id).filter(Boolean)
     const followingSet = new Set(followingIds)
@@ -340,6 +342,32 @@ router.get('/profile-media', authenticate, async (req, res) => {
     })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener media del perfil', error: error.message })
+  }
+})
+
+/** Batch avatars/names — avoids N× GET /users/:id (which also loads the social graph). */
+router.get('/avatars', authenticate, async (req, res) => {
+  try {
+    const raw = String(req.query.ids || '')
+    const ids = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 40)
+    if (!ids.length) return res.json({ users: [] })
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, username, avatar')
+      .in('id', ids)
+    if (error) throw error
+    res.setHeader('Cache-Control', 'private, max-age=60')
+    res.json({
+      users: (data || []).map((p) => ({
+        id: p.id,
+        _id: p.id,
+        name: p.name,
+        username: p.username || null,
+        avatar: p.avatar || null
+      }))
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener avatares', error: error.message })
   }
 })
 
@@ -589,7 +617,9 @@ router.get('/memberships', authenticate, async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('membership_plans')
-      .select('*')
+      .select(
+        'id, plan, name, description, price, duration, duration_unit, benefits, features, active, created_at'
+      )
       .order('price', { ascending: true })
     if (error) throw error
 
@@ -685,6 +715,7 @@ router.get('/search', authenticate, async (req, res) => {
         .from('follows')
         .select('following_id')
         .eq('follower_id', req.user.id)
+        .limit(200)
       const ids = (following || []).map((f) => f.following_id)
       if (!ids.length) return res.json([])
       query = query.in('id', ids)
@@ -694,11 +725,13 @@ router.get('/search', authenticate, async (req, res) => {
         supabaseAdmin
           .from('follows')
           .select('following_id')
-          .eq('follower_id', req.user.id),
+          .eq('follower_id', req.user.id)
+          .limit(200),
         supabaseAdmin
           .from('follows')
           .select('follower_id')
           .eq('following_id', req.user.id)
+          .limit(200)
       ])
       const followingSetM = new Set((followingRowsM || []).map((f) => f.following_id))
       const mutualIds = (followerRowsM || [])
@@ -711,6 +744,7 @@ router.get('/search', authenticate, async (req, res) => {
         .from('follows')
         .select('following_id')
         .eq('follower_id', req.user.id)
+        .limit(200)
       const ids = (following || []).map((f) => f.following_id)
       if (ids.length) query = query.not('id', 'in', `(${ids.join(',')})`)
     } else if (filter === 'with_conversation') {
@@ -718,6 +752,8 @@ router.get('/search', authenticate, async (req, res) => {
         .from('messages')
         .select('from_user_id, to_user_id')
         .or(`from_user_id.eq.${req.user.id},to_user_id.eq.${req.user.id}`)
+        .order('created_at', { ascending: false })
+        .limit(200)
       const ids = [
         ...new Set(
           (msgs || []).map((m) =>
@@ -736,11 +772,13 @@ router.get('/search', authenticate, async (req, res) => {
       supabaseAdmin
         .from('follows')
         .select('following_id')
-        .eq('follower_id', req.user.id),
+        .eq('follower_id', req.user.id)
+        .limit(200),
       supabaseAdmin
         .from('follow_requests')
         .select('to_user_id')
         .eq('from_user_id', req.user.id)
+        .limit(200)
     ])
     const followingSet = new Set((followingRows || []).map((f) => f.following_id))
     const pendingSet = new Set((pendingRows || []).map((r) => r.to_user_id))
@@ -794,7 +832,9 @@ router.get('/:id', authenticate, async (req, res) => {
     }
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-    let query = supabaseAdmin.from('profiles').select('*')
+    const PROFILE_PUBLIC_COLUMNS =
+      'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, onboarding_completed, must_reset_password, last_login, last_seen_at, created_at, updated_at'
+    let query = supabaseAdmin.from('profiles').select(PROFILE_PUBLIC_COLUMNS)
     if (isUuid) {
       query = query.eq('id', id)
     } else {
@@ -822,7 +862,8 @@ router.get('/:id', authenticate, async (req, res) => {
       }
     }
 
-    const withSocial = await attachSocial(supabaseAdmin, profile)
+    const lite = ['1', 'true', 'yes'].includes(String(req.query.lite || '').toLowerCase())
+    const withSocial = lite ? profile : await attachSocial(supabaseAdmin, profile)
     res.json(mapProfile(withSocial))
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener usuario', error: error.message })

@@ -1845,9 +1845,10 @@ router.get('/follow-requests', authenticate, async (req, res) => {
   try {
     const { data: requests, error } = await supabaseAdmin
       .from('follow_requests')
-      .select('*')
+      .select('id, from_user_id, created_at')
       .eq('to_user_id', req.user.id)
       .order('created_at', { ascending: false })
+      .limit(100)
 
     if (error) throw error
 
@@ -1878,6 +1879,7 @@ router.get('/following', authenticate, async (req, res) => {
       .from('follows')
       .select('following_id')
       .eq('follower_id', userId)
+      .limit(300)
 
     if (error) throw error
     const ids = (following || []).map((f) => f.following_id)
@@ -1912,6 +1914,7 @@ router.get('/followers', authenticate, async (req, res) => {
       .from('follows')
       .select('follower_id')
       .eq('following_id', userId)
+      .limit(300)
 
     if (error) throw error
     const ids = (followers || []).map((f) => f.follower_id)
@@ -1963,7 +1966,7 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
       await Promise.all([
         supabaseAdmin
           .from('follows')
-          .select('*')
+          .select('id')
           .eq('follower_id', req.user.id)
           .eq('following_id', targetUserId)
           .maybeSingle(),
@@ -1975,11 +1978,11 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
           .maybeSingle(),
         supabaseAdmin
           .from('follows')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('following_id', targetUserId),
         supabaseAdmin
           .from('follows')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('follower_id', targetUserId)
       ])
 

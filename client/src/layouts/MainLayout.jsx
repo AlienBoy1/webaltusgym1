@@ -77,6 +77,8 @@ export default function MainLayout() {
   })
   const avatarMenuRef = useRef(null)
   const avatarMenuPanelRef = useRef(null)
+  const pathRef = useRef(location.pathname)
+  pathRef.current = location.pathname
 
   // Facebook-like swipe between bottom-nav screens (mobile primary nav)
   useMainNavSwipe(!chatThreadOpen)
@@ -209,7 +211,7 @@ export default function MainLayout() {
 
     const alertMessage = (data) => {
       if (data?.from) ackDelivered(data.from)
-      if (location.pathname.startsWith('/chat')) return
+      if (pathRef.current.startsWith('/chat')) return
       const tag = data.tag || `msg-${data.from}`
       if (recentPushTags.has(tag)) return
       recentPushTags.add(tag)
@@ -246,16 +248,16 @@ export default function MainLayout() {
     }
     navigator.serviceWorker?.addEventListener('message', onSwMessage)
 
-    // Keep sweeping while the app is open — covers missed INSERT realtime events
+    // Realtime INSERT handles live delivery; this is only a safety net
     sweepUndelivered()
-    const sweepTimer = window.setInterval(sweepUndelivered, 8000)
+    const sweepTimer = window.setInterval(sweepUndelivered, 60000)
 
     return () => {
       unsub()
       window.clearInterval(sweepTimer)
       navigator.serviceWorker?.removeEventListener('message', onSwMessage)
     }
-  }, [user?.id, user?._id, location.pathname, navigate])
+  }, [user?.id, user?._id, navigate])
 
   // Keep realtime / push alive when returning to the app (mobile browsers kill WS in background)
   useEffect(() => {
@@ -270,7 +272,7 @@ export default function MainLayout() {
       try {
         const access = getStoredToken()
         const refresh = getStoredRefreshToken()
-        if (access && refresh) {
+        if (force && access && refresh) {
           try {
             await supabase.auth.setSession({
               access_token: access,
@@ -339,7 +341,7 @@ export default function MainLayout() {
     // Soft heartbeat — only resubscribe if channel looks dead (no force teardown)
     const heartbeat = window.setInterval(() => {
       if (document.visibilityState === 'visible') revive({ force: false })
-    }, 45000)
+    }, 90000)
 
     // Initial sweep once mounted
     revive({ force: false })

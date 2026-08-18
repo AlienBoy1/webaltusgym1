@@ -118,21 +118,10 @@ export function initSocket(userId) {
       },
       async (payload) => {
         const row = payload.new
-        let fromName = 'Usuario'
-        try {
-          const { data } = await supabase
-            .from('profiles')
-            .select('name')
-            .eq('id', row.from_user_id)
-            .single()
-          if (data?.name) fromName = data.name
-        } catch {
-          /* ignore */
-        }
         const decoded = decodeChatContent(row.content)
         emit('newMessage', {
           from: row.from_user_id,
-          fromName,
+          fromName: 'Usuario',
           message: decoded.preview,
           text: decoded.text,
           attachment: decoded.attachment,

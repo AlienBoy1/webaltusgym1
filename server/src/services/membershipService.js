@@ -42,8 +42,16 @@ export function mapMembershipPlanRow(row) {
 /**
  * Tag legacy plans + flip active flags for free→paid cutover.
  */
-export async function syncMembershipPlansLifecycle() {
-  const { data: rows, error } = await supabaseAdmin.from('membership_plans').select('*')
+let lastPlanSyncAt = 0
+const PLAN_SYNC_TTL_MS = 30 * 60 * 1000
+
+export async function syncMembershipPlansLifecycle({ force = false } = {}) {
+  if (!force && Date.now() - lastPlanSyncAt < PLAN_SYNC_TTL_MS) return
+  lastPlanSyncAt = Date.now()
+
+  const { data: rows, error } = await supabaseAdmin
+    .from('membership_plans')
+    .select('id, plan, name, description, price, duration, duration_unit, benefits, features, active, created_at')
   if (error) throw error
 
   for (const row of rows || []) {
@@ -103,16 +111,14 @@ export async function syncUserMembershipOnProfile(profile) {
   if (!changed) {
     return { ...profile, membership }
   }
-  const { data, error } = await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from('profiles')
     .update({ membership, updated_at: new Date().toISOString() })
     .eq('id', profile.id)
-    .select('*')
-    .single()
-  if (error || !data) {
+  if (error) {
     return { ...profile, membership }
   }
-  return data
+  return { ...profile, membership }
 }
 
 export function buildScheduledPaidFeatures(featureFlags = {}) {

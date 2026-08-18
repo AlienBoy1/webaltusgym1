@@ -215,7 +215,9 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
 
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
-      .select('*')
+      .select(
+        'id, from_user_id, to_user_id, content, created_at, delivered, delivered_at, read, read_at, hidden_for'
+      )
       .or(
         `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
       )
@@ -298,19 +300,35 @@ router.post('/delivered/:userId', authenticate, async (req, res) => {
 router.post('/ack-delivered', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
-    const now = new Date().toISOString()
-    const { data, error } = await supabaseAdmin
+    const { data: pending, error: pendingError } = await supabaseAdmin
       .from('messages')
-      .update({ delivered: true, delivered_at: now })
+      .select('id, from_user_id')
       .eq('to_user_id', myId)
       .eq('delivered', false)
-      .select('id, from_user_id')
+      .limit(40)
+
+    if (pendingError) {
+      console.error('ack-delivered schema:', pendingError.message)
+      return res.json({ ok: false, count: 0, peers: [], error: pendingError.message })
+    }
+
+    if (!pending?.length) {
+      return res.json({ ok: true, count: 0, peers: [] })
+    }
+
+    const ids = pending.map((row) => row.id)
+    const now = new Date().toISOString()
+    const { error } = await supabaseAdmin
+      .from('messages')
+      .update({ delivered: true, delivered_at: now })
+      .in('id', ids)
 
     if (error) {
-      // Legacy DB without delivered column — treat "unread inbound" as needing peer notify only via read path
       console.error('ack-delivered schema:', error.message)
       return res.json({ ok: false, count: 0, peers: [], error: error.message })
     }
+
+    const data = pending
 
     const byFrom = new Map()
     for (const row of data || []) {

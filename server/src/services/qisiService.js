@@ -49,6 +49,10 @@ function needsShowcaseHeal(profile) {
 
 let cachedQySi = null
 let ensurePromise = null
+let lastStoryEnsureAt = 0
+let catalogEnsured = false
+
+const STORY_ENSURE_TTL_MS = 15 * 60 * 1000
 
 function buildQiSiAvatarSvg() {
   // Prefer the public brand asset when serving client-relative avatars.
@@ -295,22 +299,25 @@ async function ensureLaunchStory(QySiUserId) {
   const marker = `#${QISI_BODY_HUB_STORY_KEY}`
 
   try {
-    // Remove every QySi story that is not the current campaign marker
     const { data: all } = await supabaseAdmin
       .from('stories')
       .select('id, caption, created_at, expires_at')
       .eq('user_id', QySiUserId)
+      .limit(20)
 
-    for (const row of all || []) {
-      const caption = String(row.caption || '')
-      const created = new Date(row.created_at).getTime()
-      const expired =
-        new Date(row.expires_at).getTime() <= now.getTime() ||
-        (Number.isFinite(created) && created < now.getTime() - STORY_TTL_MS)
-      const isCurrent = caption.includes(marker)
-      if (!isCurrent || expired) {
-        await supabaseAdmin.from('stories').delete().eq('id', row.id)
-      }
+    const staleIds = (all || [])
+      .filter((row) => {
+        const caption = String(row.caption || '')
+        const created = new Date(row.created_at).getTime()
+        const expired =
+          new Date(row.expires_at).getTime() <= now.getTime() ||
+          (Number.isFinite(created) && created < now.getTime() - STORY_TTL_MS)
+        const isCurrent = caption.includes(marker)
+        return !isCurrent || expired
+      })
+      .map((row) => row.id)
+    if (staleIds.length) {
+      await supabaseAdmin.from('stories').delete().in('id', staleIds)
     }
   } catch (err) {
     console.warn('QySi story purge:', err?.message || err)
@@ -352,18 +359,13 @@ async function ensureLaunchStory(QySiUserId) {
   }
 }
 
-export async function ensureQiSiSystem() {
+export async function ensureQiSiSystem({ maintainStories = false } = {}) {
   if (cachedQySi?.id && !needsShowcaseHeal(cachedQySi._raw || cachedQySi)) {
-    supabaseAdmin
-      .from('profiles')
-      .update({ last_seen_at: new Date().toISOString() })
-      .eq('id', cachedQySi.id)
-      .then(() => {})
-      .catch(() => {})
-    try {
-      await ensureLaunchStory(cachedQySi.id)
-    } catch (err) {
-      console.warn('QySi story ensure (cached):', err?.message || err)
+    if (maintainStories && Date.now() - lastStoryEnsureAt > STORY_ENSURE_TTL_MS) {
+      lastStoryEnsureAt = Date.now()
+      ensureLaunchStory(cachedQySi.id).catch((err) => {
+        console.warn('QySi story ensure (cached):', err?.message || err)
+      })
     }
     return cachedQySi
   }
@@ -421,16 +423,22 @@ export async function ensureQiSiSystem() {
       profile = healed || { ...profile, ...patch }
     }
 
-    try {
-      await ensureCatalogRoutines(profile.id)
-    } catch (err) {
-      console.warn('QySi catalog ensure:', err?.message || err)
+    if (!catalogEnsured) {
+      try {
+        await ensureCatalogRoutines(profile.id)
+        catalogEnsured = true
+      } catch (err) {
+        console.warn('QySi catalog ensure:', err?.message || err)
+      }
     }
 
-    try {
-      await ensureLaunchStory(profile.id)
-    } catch (err) {
-      console.warn('QySi story ensure:', err?.message || err)
+    if (maintainStories || Date.now() - lastStoryEnsureAt > STORY_ENSURE_TTL_MS) {
+      try {
+        await ensureLaunchStory(profile.id)
+        lastStoryEnsureAt = Date.now()
+      } catch (err) {
+        console.warn('QySi story ensure:', err?.message || err)
+      }
     }
 
     const mapped = mapQiSiProfile(profile)
