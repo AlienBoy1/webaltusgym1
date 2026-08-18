@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "migrate:mongo": "node scripts/migrate-mongo-to-supabase.js"
+    "migrate:mongo": "node scripts/migrate-mongo-to-supabase.js",
+    "migrate:media": "node scripts/migrate-media-to-storage.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
 import { resolveMentions, notifyStoryMentions } from '../utils/mentions.js'
 import { isQiSiUsername, isQiSiProfile, QISI_MESSAGING_CODE, QISI_MESSAGING_COPY } from '../utils/qisi.js'
+import { persistMedia, isInlineDataUrl } from '../utils/mediaStorage.js'
 
 const router = express.Router()
 
@@ -34,9 +35,27 @@ async function getProfilesMap(ids) {
   if (!unique.length) return {}
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, username, avatar')
+    .select('id, name, username')
     .in('id', unique)
-  return Object.fromEntries((data || []).map((p) => [p.id, p]))
+  return Object.fromEntries(
+    (data || []).map((p) => [p.id, { ...p, avatar: null }])
+  )
+}
+
+async function migrateStoryMedia(row) {
+  if (!row?.id || !isInlineDataUrl(row.media_url)) return row
+  const next = await persistMedia(row.media_url, {
+    folder: 'stories',
+    userId: row.user_id,
+    id: row.id
+  })
+  if (!next || next === row.media_url) return row
+  const { error } = await supabaseAdmin.from('stories').update({ media_url: next }).eq('id', row.id)
+  if (error) {
+    console.warn('migrateStoryMedia:', error.message)
+    return row
+  }
+  return { ...row, media_url: next }
 }
 
 async function enrichStories(rows, viewerId) {
@@ -503,12 +522,22 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     const expiresAt = new Date(Date.now() + STORY_TTL_MS).toISOString()
+    let storedUrl = mediaUrl
+    try {
+      storedUrl = await persistMedia(mediaUrl, { folder: 'stories', userId: req.user.id })
+    } catch (persistErr) {
+      if (persistErr?.status === 413) {
+        return res.status(413).json({ message: persistErr.message })
+      }
+      throw persistErr
+    }
+
     const { data, error } = await supabaseAdmin
       .from('stories')
       .insert({
         user_id: req.user.id,
         media_type: mediaType,
-        media_url: mediaUrl,
+        media_url: storedUrl,
         caption: (caption || '').slice(0, 280),
         expires_at: expiresAt
       })
@@ -572,17 +601,20 @@ router.post('/media/batch', authenticate, async (req, res) => {
     const now = new Date().toISOString()
     const { data, error } = await supabaseAdmin
       .from('stories')
-      .select('id, media_type, media_url')
+      .select('id, user_id, media_type, media_url')
       .in('id', ids)
       .gt('expires_at', now)
     if (error) throw error
-    res.json({
-      items: (data || []).map((r) => ({
-        id: r.id,
-        mediaType: r.media_type,
-        mediaUrl: r.media_url
-      }))
-    })
+    const items = []
+    for (const row of data || []) {
+      const migrated = await migrateStoryMedia(row)
+      items.push({
+        id: migrated.id,
+        mediaType: migrated.media_type,
+        mediaUrl: migrated.media_url
+      })
+    }
+    res.json({ items })
   } catch (error) {
     res.status(500).json({ message: 'Error al cargar media', error: error.message })
   }
@@ -593,7 +625,7 @@ router.get('/:id/media', authenticate, async (req, res) => {
     const now = new Date().toISOString()
     const { data, error } = await supabaseAdmin
       .from('stories')
-      .select('id, media_type, media_url')
+      .select('id, user_id, media_type, media_url')
       .eq('id', req.params.id)
       .gt('expires_at', now)
       .maybeSingle()
@@ -601,10 +633,11 @@ router.get('/:id/media', authenticate, async (req, res) => {
     if (!data) {
       return res.status(410).json({ message: 'Este estado ya expiró o no está disponible' })
     }
+    const migrated = await migrateStoryMedia(data)
     res.json({
-      id: data.id,
-      mediaType: data.media_type,
-      mediaUrl: data.media_url
+      id: migrated.id,
+      mediaType: migrated.media_type,
+      mediaUrl: migrated.media_url
     })
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })
@@ -626,7 +659,8 @@ router.get('/:id', authenticate, async (req, res) => {
       return res.status(410).json({ message: 'Este estado ya expiró o no está disponible' })
     }
 
-    const [story] = await enrichStories([data], req.user.id)
+    const migrated = await migrateStoryMedia(data)
+    const [story] = await enrichStories([migrated], req.user.id)
     res.json(story)
   } catch (error) {
     res.status(500).json({ message: 'Error', error: error.message })

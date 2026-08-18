@@ -9,6 +9,7 @@ import {
   QISI_MESSAGING_CODE,
   QISI_MESSAGING_COPY
 } from '../utils/qisi.js'
+import { persistMedia, isInlineDataUrl } from '../utils/mediaStorage.js'
 
 /** Mark peer→me messages as delivered/read. Falls back if `delivered` column missing. */
 async function markInboundReceipts({ fromId, myId, mode }) {
@@ -73,21 +74,99 @@ function extractFirstUrl(text) {
 }
 
 async function getChatClearsMap(userId) {
-  const { data } = await supabaseAdmin
-    .from('chat_clears')
-    .select('peer_id, cleared_at')
-    .eq('user_id', userId)
-  return Object.fromEntries((data || []).map((row) => [row.peer_id, row.cleared_at]))
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('chat_clears')
+      .select('peer_id, cleared_at')
+      .eq('user_id', userId)
+    if (error) {
+      console.warn('chat_clears:', error.message)
+      return {}
+    }
+    return Object.fromEntries((data || []).map((row) => [row.peer_id, row.cleared_at]))
+  } catch (err) {
+    console.warn('chat_clears:', err?.message || err)
+    return {}
+  }
 }
 
 async function getChatClear(userId, peerId) {
-  const { data } = await supabaseAdmin
-    .from('chat_clears')
-    .select('cleared_at')
-    .eq('user_id', userId)
-    .eq('peer_id', peerId)
-    .maybeSingle()
-  return data?.cleared_at || null
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('chat_clears')
+      .select('cleared_at')
+      .eq('user_id', userId)
+      .eq('peer_id', peerId)
+      .maybeSingle()
+    if (error) {
+      console.warn('chat_clears:', error.message)
+      return null
+    }
+    return data?.cleared_at || null
+  } catch (err) {
+    console.warn('chat_clears:', err?.message || err)
+    return null
+  }
+}
+
+const THREAD_SELECTS = [
+  'id, from_user_id, to_user_id, content, created_at, delivered, delivered_at, read, read_at, hidden_for',
+  'id, from_user_id, to_user_id, content, created_at, read, read_at, hidden_for',
+  'id, from_user_id, to_user_id, content, created_at, read, read_at',
+  'id, from_user_id, to_user_id, content, created_at, read'
+]
+
+async function selectThreadMessages({ myId, otherId, limit = 300 }) {
+  const filter = `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
+  let lastError = null
+  const limits = [...new Set([limit, 80, 40])]
+  for (const cols of THREAD_SELECTS) {
+    for (const cap of limits) {
+      const { data, error } = await supabaseAdmin
+        .from('messages')
+        .select(cols)
+        .or(filter)
+        .order('created_at', { ascending: true })
+        .limit(cap)
+      if (!error) return { data: data || [], error: null }
+      lastError = error
+    }
+  }
+  return { data: [], error: lastError }
+}
+
+async function persistChatAttachment(attachment, userId, id) {
+  if (!attachment?.url || !isInlineDataUrl(attachment.url)) return attachment
+  const url = await persistMedia(attachment.url, { folder: 'chat', userId, id })
+  return { ...attachment, url }
+}
+
+async function migrateMessageMedia(row, capLeft) {
+  if (!capLeft) return row
+  const decoded = decodeChatContent(row.content)
+  if (!isInlineDataUrl(decoded.attachment?.url)) return row
+  const attachment = await persistChatAttachment(decoded.attachment, row.from_user_id, row.id)
+  if (!attachment?.url || attachment.url === decoded.attachment.url) return row
+  const stored = encodeChatContent({
+    text: decoded.text,
+    attachment,
+    reply: decoded.reply,
+    reactions: decoded.reactions,
+    deleted: decoded.deleted
+  })
+  const preview = decodeChatContent(stored).preview?.slice(0, 180) || ''
+  let { error } = await supabaseAdmin
+    .from('messages')
+    .update({ content: stored, preview })
+    .eq('id', row.id)
+  if (error && /preview/i.test(error.message || '')) {
+    ;({ error } = await supabaseAdmin.from('messages').update({ content: stored }).eq('id', row.id))
+  }
+  if (error) {
+    console.warn('migrateMessageMedia:', error.message)
+    return row
+  }
+  return { ...row, content: stored }
 }
 
 function isAfterClear(message, clearedAt) {
@@ -104,23 +183,41 @@ router.get('/conversations', authenticate, async (req, res) => {
   try {
     const userId = req.user.id
     const clearsMap = await getChatClearsMap(userId)
-    // Cap scan — enough for inbox preview without loading full history
-    const { data: messages, error } = await supabaseAdmin
-      .from('messages')
-      .select('id, from_user_id, to_user_id, content, created_at, read, delivered')
-      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
-      .order('created_at', { ascending: false })
-      .limit(200)
+
+    const inboxSelects = [
+      'id, from_user_id, to_user_id, created_at, read, delivered, preview',
+      'id, from_user_id, to_user_id, created_at, read, preview',
+      'id, from_user_id, to_user_id, created_at, read, delivered',
+      'id, from_user_id, to_user_id, created_at, read'
+    ]
+    let messages = null
+    let error = null
+    for (const cols of inboxSelects) {
+      const result = await supabaseAdmin
+        .from('messages')
+        .select(cols)
+        .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(500)
+      error = result.error
+      if (!error) {
+        messages = result.data
+        break
+      }
+    }
 
     if (error) throw error
 
     const conversationMap = new Map()
     for (const msg of messages || []) {
       const partnerId = msg.from_user_id === userId ? msg.to_user_id : msg.from_user_id
+      if (!partnerId) continue
       const clearedAt = clearsMap[partnerId]
       if (!isAfterClear(msg, clearedAt)) continue
 
-      const preview = decodeChatContent(msg.content).preview
+      const preview =
+        (typeof msg.preview === 'string' && msg.preview.trim()) ||
+        (msg.content != null ? decodeChatContent(msg.content).preview : 'Mensaje')
       const isInboundUnread =
         msg.to_user_id === userId && msg.from_user_id !== userId && msg.read !== true
       const lastFromMe = String(msg.from_user_id) === String(userId)
@@ -147,11 +244,15 @@ router.get('/conversations', authenticate, async (req, res) => {
     }
 
     const partnerIds = [...conversationMap.keys()]
-    if (!partnerIds.length) return res.json([])
+    if (!partnerIds.length) {
+      res.setHeader('Cache-Control', 'no-store')
+      return res.json([])
+    }
 
+    // Never select avatar here — data-URL blobs timed out the inbox after the DB transfer.
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, username, avatar')
+      .select('id, name, username')
       .in('id', partnerIds)
 
     const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]))
@@ -159,13 +260,13 @@ router.get('/conversations', authenticate, async (req, res) => {
       .map((otherId) => {
         const user = profileMap[otherId]
         const conv = conversationMap.get(otherId)
-        if (!user || !conv) return null
+        if (!conv) return null
         return {
           id: otherId,
           otherId,
-          name: user.name,
-          username: user.username || null,
-          avatar: user.avatar || null,
+          name: user?.name || 'Usuario',
+          username: user?.username || null,
+          avatar: null,
           lastMessage: conv.lastMessage,
           time: conv.lastMessageTime,
           lastFromMe: Boolean(conv.lastFromMe),
@@ -177,9 +278,10 @@ router.get('/conversations', authenticate, async (req, res) => {
       })
       .filter(Boolean)
 
-    res.setHeader('Cache-Control', 'private, max-age=10')
+    res.setHeader('Cache-Control', 'no-store')
     res.json(conversations)
   } catch (error) {
+    console.error('GET /conversations error:', error?.message || error)
     res.status(500).json({ message: 'Error', error: error.message })
   }
 })
@@ -213,20 +315,19 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       console.warn('getChatClear:', clearErr?.message || clearErr)
     }
 
-    const { data: messages, error } = await supabaseAdmin
-      .from('messages')
-      .select(
-        'id, from_user_id, to_user_id, content, created_at, delivered, delivered_at, read, read_at, hidden_for'
-      )
-      .or(
-        `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
-      )
-      .order('created_at', { ascending: true })
-      .limit(300)
+    const { data: messages, error } = await selectThreadMessages({ myId, otherId, limit: 300 })
 
     if (error) throw error
 
-    const visible = (messages || []).filter((m) => {
+    let remainingMigrates = 6
+    const hydrated = []
+    for (const row of messages || []) {
+      const next = await migrateMessageMedia(row, remainingMigrates > 0)
+      if (next !== row && remainingMigrates > 0) remainingMigrates -= 1
+      hydrated.push(next)
+    }
+
+    const visible = hydrated.filter((m) => {
       if (!isAfterClear(m, clearedAt)) return false
       const hidden = Array.isArray(m.hidden_for) ? m.hidden_for.map(String) : []
       return !hidden.includes(String(myId))
@@ -272,6 +373,7 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       }
     })
 
+    res.setHeader('Cache-Control', 'no-store')
     res.json(payload)
   } catch (error) {
     console.error('GET /messages error:', error?.message || error)
@@ -382,13 +484,22 @@ router.get('/receipts/:userId', authenticate, async (req, res) => {
   try {
     const myId = req.user.id
     const otherId = req.params.userId
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('messages')
       .select('id, delivered, read')
       .eq('from_user_id', myId)
       .eq('to_user_id', otherId)
       .order('created_at', { ascending: false })
       .limit(80)
+    if (error) {
+      ;({ data, error } = await supabaseAdmin
+        .from('messages')
+        .select('id, read')
+        .eq('from_user_id', myId)
+        .eq('to_user_id', otherId)
+        .order('created_at', { ascending: false })
+        .limit(80))
+    }
     if (error) throw error
     res.json(
       (data || []).map((row) => ({
@@ -558,21 +669,47 @@ router.post('/send', authenticate, async (req, res) => {
       }
     }
 
+    let safeAttachment = attachment || null
+    if (safeAttachment?.url && isInlineDataUrl(safeAttachment.url)) {
+      try {
+        safeAttachment = await persistChatAttachment(safeAttachment, req.user.id)
+      } catch (persistErr) {
+        if (persistErr?.status === 413) {
+          return res.status(413).json({ message: persistErr.message })
+        }
+        throw persistErr
+      }
+    }
+
     const stored = encodeChatContent({
       text,
-      attachment: attachment || null,
+      attachment: safeAttachment,
       reply: safeReply
     })
+    const preview = decodeChatContent(stored).preview?.slice(0, 180) || text.slice(0, 180)
 
-    const { data: message, error } = await supabaseAdmin
+    let { data: message, error } = await supabaseAdmin
       .from('messages')
       .insert({
         from_user_id: req.user.id,
         to_user_id: to,
-        content: stored
+        content: stored,
+        preview
       })
-      .select('*')
+      .select('id, from_user_id, to_user_id, content, created_at, read')
       .single()
+
+    if (error && /preview/i.test(error.message || '')) {
+      ;({ data: message, error } = await supabaseAdmin
+        .from('messages')
+        .insert({
+          from_user_id: req.user.id,
+          to_user_id: to,
+          content: stored
+        })
+        .select('id, from_user_id, to_user_id, content, created_at, read')
+        .single())
+    }
 
     if (error) throw error
 
@@ -587,7 +724,8 @@ router.post('/send', authenticate, async (req, res) => {
 
     res.status(201).json(formatChatMessage(message, req.user.id))
   } catch (error) {
-    res.status(500).json({ message: 'Error', error: error.message })
+    console.error('POST /send error:', error?.message || error)
+    res.status(error?.status || 500).json({ message: 'Error', error: error.message })
   }
 })
 

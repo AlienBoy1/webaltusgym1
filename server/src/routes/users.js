@@ -11,6 +11,13 @@ import { isPaidEraLive } from '../utils/membershipLifecycle.js'
 import { checkBadgeUnlocks } from '../services/xpService.js'
 import { ensureQiSiSystem } from '../services/qisiService.js'
 import { QISI_USERNAME } from '../utils/qisi.js'
+import {
+  persistMedia,
+  slimMediaForList,
+  migrateProfileMediaRow,
+  scheduleProfileMediaMigrate,
+  isInlineDataUrl
+} from '../utils/mediaStorage.js'
 
 const router = express.Router()
 
@@ -119,14 +126,14 @@ router.get('/presence-rail', authenticate, async (req, res) => {
     if (followingIds.length) {
       const { data: profiles } = await supabaseAdmin
         .from('profiles')
-        .select('id, name, username, avatar, last_seen_at, last_login')
+        .select('id, name, username, last_seen_at, last_login')
         .in('id', followingIds)
       following = (profiles || []).map((p) => ({
         _id: p.id,
         id: p.id,
         name: p.name,
         username: p.username || null,
-        avatar: p.avatar,
+        avatar: null,
         lastSeenAt: p.last_seen_at || p.last_login || null,
         source: 'following'
       }))
@@ -141,7 +148,7 @@ router.get('/presence-rail', authenticate, async (req, res) => {
     let suggestions = []
     const { data: pool } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, username, avatar, last_seen_at, last_login, membership')
+      .select('id, name, username, last_seen_at, last_login, membership')
       .neq('id', me)
       .limit(80)
 
@@ -156,7 +163,7 @@ router.get('/presence-rail', authenticate, async (req, res) => {
         id: p.id,
         name: p.name,
         username: p.username || null,
-        avatar: p.avatar,
+        avatar: null,
         lastSeenAt: p.last_seen_at || p.last_login || null,
         source: 'suggestion'
       }))
@@ -214,7 +221,7 @@ router.get('/community-rail', authenticate, async (req, res) => {
 
     let { data: pool } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, username, avatar, last_seen_at, last_login, membership, settings')
+      .select('id, name, username, last_seen_at, last_login, membership, settings')
       .neq('id', me)
       .order('last_seen_at', { ascending: false })
       .limit(120)
@@ -224,7 +231,7 @@ router.get('/community-rail', authenticate, async (req, res) => {
       if (missing.length) {
         const { data: extras } = await supabaseAdmin
           .from('profiles')
-          .select('id, name, username, avatar, last_seen_at, last_login, membership, settings')
+          .select('id, name, username, last_seen_at, last_login, membership, settings')
           .in('id', missing)
         pool = [...(pool || []), ...(extras || [])]
       }
@@ -263,7 +270,7 @@ router.get('/community-rail', authenticate, async (req, res) => {
           id: p.id,
           name: p.name,
           username: p.username || null,
-          avatar: p.avatar,
+          avatar: null,
           lastSeenAt: p.last_seen_at || p.last_login || null,
           hasStory,
           hasUnseen,
@@ -312,14 +319,14 @@ router.get('/community-rail', authenticate, async (req, res) => {
 
 router.get('/profile', authenticate, async (req, res) => {
   try {
-    const { data: profile } = await supabaseAdmin
+    const { data: raw } = await supabaseAdmin
       .from('profiles')
       .select(
         'id, name, username, email, phone, role, avatar, goal, membership, stats, badges, settings, profile, onboarding_completed, must_reset_password, last_login, created_at, updated_at'
       )
       .eq('id', req.user.id)
       .single()
-    // Keep social empty here — follow counts load via dedicated endpoints / UserProfile
+    const profile = raw ? await migrateProfileMediaRow(raw) : raw
     res.json({ ...mapProfile(profile), settings: profile?.settings || {} })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener perfil', error: error.message })
@@ -331,14 +338,15 @@ router.get('/profile-media', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('avatar, profile')
+      .select('id, avatar, profile')
       .eq('id', req.user.id)
       .single()
     if (error) throw error
-    res.setHeader('Cache-Control', 'private, max-age=60')
+    const row = await migrateProfileMediaRow(data || {})
+    res.setHeader('Cache-Control', 'private, max-age=30')
     res.json({
-      avatar: data?.avatar || null,
-      coverUrl: data?.profile?.coverUrl || null
+      avatar: slimMediaForList(row?.avatar),
+      coverUrl: slimMediaForList(row?.profile?.coverUrl)
     })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener media del perfil', error: error.message })
@@ -351,14 +359,35 @@ router.get('/avatars', authenticate, async (req, res) => {
     const raw = String(req.query.ids || '')
     const ids = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 40)
     if (!ids.length) return res.json({ users: [] })
-    const { data, error } = await supabaseAdmin
-      .from('profiles')
-      .select('id, name, username, avatar')
-      .in('id', ids)
-    if (error) throw error
-    res.setHeader('Cache-Control', 'private, max-age=60')
+
+    let rows = []
+    const rpc = await supabaseAdmin.rpc('list_profile_avatars', { ids })
+    if (!rpc.error) {
+      rows = rpc.data || []
+      const pending = rows.filter((p) => p.pending_storage).map((p) => ({ id: p.id }))
+      if (pending.length) scheduleProfileMediaMigrate(pending)
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, username, avatar')
+        .in('id', ids)
+      if (error) throw error
+      rows = (data || []).map((p) => {
+        const pending = isInlineDataUrl(p.avatar)
+        if (pending) scheduleProfileMediaMigrate(p)
+        return {
+          id: p.id,
+          name: p.name,
+          username: p.username,
+          avatar: pending ? null : slimMediaForList(p.avatar),
+          pending_storage: pending
+        }
+      })
+    }
+
+    res.setHeader('Cache-Control', 'private, max-age=30')
     res.json({
-      users: (data || []).map((p) => ({
+      users: (rows || []).map((p) => ({
         id: p.id,
         _id: p.id,
         name: p.name,
@@ -376,7 +405,20 @@ router.put('/profile', authenticate, async (req, res) => {
     const { name, avatar, phone, settings, goal, profile, username } = req.body
     const updateData = { updated_at: new Date().toISOString() }
     if (name) updateData.name = name
-    if (avatar !== undefined) updateData.avatar = avatar
+    if (avatar !== undefined) {
+      try {
+        updateData.avatar = await persistMedia(avatar, {
+          folder: 'avatars',
+          userId: req.user.id,
+          id: 'avatar'
+        })
+      } catch (persistErr) {
+        if (persistErr?.status === 413) {
+          return res.status(413).json({ message: persistErr.message })
+        }
+        throw persistErr
+      }
+    }
     if (phone !== undefined) updateData.phone = phone
     if (goal !== undefined) updateData.goal = goal
 
@@ -393,6 +435,19 @@ router.put('/profile', authenticate, async (req, res) => {
       updateData.profile = { ...(current?.profile || {}), ...profile }
       if (updateData.profile.coverUrl === null || updateData.profile.coverUrl === '') {
         delete updateData.profile.coverUrl
+      } else if (isInlineDataUrl(updateData.profile.coverUrl)) {
+        try {
+          updateData.profile.coverUrl = await persistMedia(updateData.profile.coverUrl, {
+            folder: 'covers',
+            userId: req.user.id,
+            id: 'cover'
+          })
+        } catch (persistErr) {
+          if (persistErr?.status === 413) {
+            return res.status(413).json({ message: persistErr.message })
+          }
+          throw persistErr
+        }
       }
     }
 
@@ -449,24 +504,12 @@ router.put('/profile', authenticate, async (req, res) => {
     }
 
     const out = { ...data }
-    // Never echo megabyte data-URLs in the response — client already has them in memory
-    const reqCover = profile?.coverUrl
+    const storedCover = updateData.profile?.coverUrl
     out.profile = {
-      ...(updateData.profile || {}),
-      coverUrl:
-        typeof reqCover === 'string' && reqCover.startsWith('data:')
-          ? null
-          : updateData.profile?.coverUrl || null
+      ...(updateData.profile || current?.profile || {}),
+      coverUrl: slimMediaForList(storedCover)
     }
-    if (
-      typeof avatar === 'string' &&
-      avatar.startsWith('data:') &&
-      avatar.length > 12000
-    ) {
-      out.avatar = null
-    } else if (out.avatar && String(out.avatar).startsWith('data:') && String(out.avatar).length > 12000) {
-      out.avatar = null
-    }
+    out.avatar = slimMediaForList(out.avatar)
     res.json({
       message: 'Perfil actualizado',
       user: mapProfile(out),
@@ -698,7 +741,7 @@ router.get('/search', authenticate, async (req, res) => {
     const { q, filter } = req.query
     let query = supabaseAdmin
       .from('profiles')
-      .select('id, name, username, email, avatar, stats, membership, role')
+      .select('id, name, username, email, stats, membership, role')
       .neq('id', req.user.id)
       .limit(50)
 
@@ -788,7 +831,7 @@ router.get('/search', authenticate, async (req, res) => {
       id: u.id,
       name: u.name,
       username: u.username || null,
-      avatar: u.avatar || null,
+      avatar: null,
       stats: u.stats || null,
       membership: u.membership || null,
       role: u.role || 'user',
@@ -842,9 +885,10 @@ router.get('/:id', authenticate, async (req, res) => {
       query = query.eq('username', handle)
     }
 
-    const { data: profile, error } = await query.maybeSingle()
+    const { data: found, error } = await query.maybeSingle()
 
-    if (error || !profile) return res.status(404).json({ message: 'Usuario no encontrado' })
+    if (error || !found) return res.status(404).json({ message: 'Usuario no encontrado' })
+    const profile = await migrateProfileMediaRow(found)
 
     // Hide badges from visitors when profile is private and they don't follow
     if (profile.id !== req.user.id) {

@@ -24,7 +24,10 @@ export const useChatStore = create((set, get) => ({
     const soft = get().loaded
     set({ loading: soft ? false : true, error: null })
     try {
-      const { data } = await api.get('/chat/conversations')
+      const { data } = await api.get('/chat/conversations', {
+        headers: { 'Cache-Control': 'no-store' },
+        timeout: 20000
+      })
       const mapped = mapConversations(data)
       set((state) => {
         const localOnly = (state.conversations || []).filter(
@@ -33,12 +36,17 @@ export const useChatStore = create((set, get) => ({
         return {
           conversations: [...localOnly, ...mapped],
           loading: false,
-          loaded: true
+          loaded: true,
+          error: null
         }
       })
     } catch (error) {
       console.error('Error prefetching conversations:', error)
-      set({ loading: false, loaded: true, error: error.message || 'Error' })
+      set({
+        loading: false,
+        loaded: true,
+        error: error.response?.data?.message || error.message || 'No se pudieron cargar las conversaciones'
+      })
     }
   },
 

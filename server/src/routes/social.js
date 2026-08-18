@@ -5,11 +5,25 @@ import { authenticate } from '../middleware/auth.js'
 import { notifyUser } from '../services/notificationService.js'
 import { resolveMentions, notifyPostMentions } from '../utils/mentions.js'
 import { isQiSiProfile, isQiSiUsername } from '../utils/qisi.js'
+import { persistMediaList, isInlineDataUrl, scheduleProfileMediaMigrate } from '../utils/mediaStorage.js'
 
 const router = express.Router()
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+async function migratePostImages(post) {
+  if (!post?.id || !Array.isArray(post.images) || !post.images.some(isInlineDataUrl)) return post
+  const next = await persistMediaList(post.images, { folder: 'posts', userId: post.user_id, id: post.id })
+  const changed = next.some((url, i) => url !== post.images[i])
+  if (!changed) return post
+  const { error } = await supabaseAdmin.from('posts').update({ images: next }).eq('id', post.id)
+  if (error) {
+    console.warn('migratePostImages:', error.message)
+    return post
+  }
+  return { ...post, images: next }
+}
 
 async function resolveProfileTarget(raw) {
   const key = String(raw || '').trim()
@@ -244,7 +258,6 @@ function postLikelyHasImages(row) {
 async function getProfilesMap(ids) {
   const unique = [...new Set((ids || []).filter(Boolean))]
   if (!unique.length) return {}
-  // Chunk large ID lists (PostgREST URL / payload limits)
   const chunkSize = 80
   const chunks = []
   for (let i = 0; i < unique.length; i += chunkSize) {
@@ -252,11 +265,17 @@ async function getProfilesMap(ids) {
   }
   const maps = await Promise.all(
     chunks.map(async (chunk) => {
-      const { data } = await supabaseAdmin
-        .from('profiles')
-        .select('id, name, username, avatar, stats')
-        .in('id', chunk)
-      return data || []
+      const [{ data }, rpc] = await Promise.all([
+        supabaseAdmin.from('profiles').select('id, name, username, stats').in('id', chunk),
+        supabaseAdmin.rpc('list_profile_avatars', { ids: chunk })
+      ])
+      const avatarById = Object.fromEntries((rpc.data || []).map((p) => [p.id, p.avatar || null]))
+      const pending = (rpc.data || []).filter((p) => p.pending_storage).map((p) => ({ id: p.id }))
+      if (pending.length) scheduleProfileMediaMigrate(pending)
+      return (data || []).map((p) => ({
+        ...p,
+        avatar: rpc.error ? null : avatarById[p.id] || null
+      }))
     })
   )
   return Object.fromEntries(maps.flat().map((p) => [p.id, p]))
@@ -854,7 +873,8 @@ router.get('/:id/images', authenticate, async (req, res) => {
     }
 
     res.setHeader('Cache-Control', 'private, max-age=120')
-    res.json({ images: Array.isArray(post.images) ? post.images : [] })
+    const migrated = await migratePostImages(post)
+    res.json({ images: Array.isArray(migrated.images) ? migrated.images : [] })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener imágenes', error: error.message })
   }
@@ -891,7 +911,7 @@ router.get('/post/:id', authenticate, async (req, res) => {
       }
     }
 
-    const [enriched] = await enrichPosts([post], req.user.id)
+    const [enriched] = await enrichPosts([await migratePostImages(post)], req.user.id)
     res.json(enriched)
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener publicación', error: error.message })
@@ -994,6 +1014,16 @@ router.post('/', authenticate, async (req, res) => {
       }
     }
 
+    let storedImages = imageList
+    try {
+      storedImages = await persistMediaList(imageList, { folder: 'posts', userId: req.user.id })
+    } catch (persistErr) {
+      if (persistErr?.status === 413) {
+        return res.status(413).json({ message: persistErr.message })
+      }
+      throw persistErr
+    }
+
     let finalPostType = postType || 'text'
     const isChallengeShare =
       postType === 'challenge' || Boolean(workoutData?.shareKind === 'challenge')
@@ -1020,7 +1050,7 @@ router.post('/', authenticate, async (req, res) => {
     const insertPayload = {
       user_id: req.user.id,
       content: content || '',
-      images: imageList,
+      images: storedImages,
       mood: mood || null,
       poll: poll
         ? {

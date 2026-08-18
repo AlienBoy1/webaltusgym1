@@ -503,6 +503,7 @@ export default function Chat() {
   const setConversations = useChatStore((s) => s.setConversations)
   const listLoading = useChatStore((s) => s.loading)
   const listLoaded = useChatStore((s) => s.loaded)
+  const listError = useChatStore((s) => s.error)
   const prefetchConversations = useChatStore((s) => s.prefetch)
   const [selectedChat, setSelectedChat] = useState(null)
   const [messages, setMessages] = useState([])
@@ -989,7 +990,11 @@ export default function Chat() {
 
   const fetchMessages = async (otherId) => {
     try {
-      const { data } = await api.get(`/chat/messages/${otherId}`)
+      const { data } = await api.get(`/chat/messages/${otherId}`, { timeout: 45000 })
+      if (!Array.isArray(data)) {
+        toast.error('No se pudieron cargar los mensajes')
+        return
+      }
       setMessages(data)
       setConversations((convs) =>
         convs.map((c) => (c.otherId === otherId ? { ...c, unread: 0 } : c))
@@ -1039,7 +1044,7 @@ export default function Chat() {
       }
     } catch (error) {
       console.error('Error fetching messages:', error)
-      setMessages([])
+      toast.error(error.response?.data?.message || 'No se pudieron cargar los mensajes')
     }
   }
 
@@ -1840,7 +1845,19 @@ export default function Chat() {
         ? `q=${encodeURIComponent(userSearch)}&filter=${userFilter}`
         : `filter=${userFilter}`
       const { data } = await api.get(`/users/search?${query}`)
-      setSearchResults(data || [])
+      const list = data || []
+      setSearchResults(list)
+      const missing = list.filter((u) => (u._id || u.id) && !isRenderableAvatar(u.avatar))
+      if (missing.length) {
+        const map = await fetchAvatarsByIds(missing.map((u) => u._id || u.id))
+        setSearchResults((prev) =>
+          prev.map((u) => {
+            const hit = map[u._id || u.id]
+            if (!hit || !isRenderableAvatar(hit.avatar)) return u
+            return { ...u, avatar: hit.avatar, name: hit.name || u.name, username: hit.username || u.username }
+          })
+        )
+      }
     } catch {
       setSearchResults([])
     } finally {
@@ -2061,6 +2078,20 @@ export default function Chat() {
               <div className="mb-4 h-10 w-10 animate-spin rounded-full border-[3px] border-[color:var(--border-subtle)] border-t-[color:var(--color-primary)]" />
               <p className="text-sm font-medium text-[color:var(--text-primary)]">Cargando mensajes…</p>
               <p className="mt-1 text-xs text-[color:var(--text-muted)]">Preparando tus conversaciones</p>
+            </div>
+          ) : listError && filteredConversations.length === 0 ? (
+            <div className="px-5 py-16 text-center">
+              <p className="text-base font-semibold text-[color:var(--text-primary)]">No se pudieron cargar tus chats</p>
+              <p className="mx-auto mt-1.5 max-w-[16rem] text-sm leading-relaxed text-[color:var(--text-muted)]">
+                {listError}
+              </p>
+              <button
+                type="button"
+                onClick={() => prefetchConversations()}
+                className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white"
+              >
+                Reintentar
+              </button>
             </div>
           ) : filteredConversations.length === 0 ? (
             <div className="px-5 py-16 text-center">
