@@ -14,8 +14,7 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
-    { "handle": "filesystem" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/)(?!\\.well-known/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
