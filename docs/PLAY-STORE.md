@@ -8,7 +8,7 @@ Sigue los pasos **en orden**. No saltes el paso 8 (huella de Play App Signing): 
 | URL PWA | `https://qyntagymweb.vercel.app` |
 | Política privacidad | `https://qyntagymweb.vercel.app/privacidad` |
 
----
+----
 
 ## Paso 1 — Subir cambios web a Vercel
 
