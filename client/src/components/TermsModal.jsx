@@ -66,8 +66,11 @@ export default function TermsModal({ isOpen, onClose, onAccept }) {
               <section>
                 <h3 className="text-lg font-semibold text-white mb-3">6. Privacidad</h3>
                 <p>
-                  Respetamos su privacidad y protegemos sus datos personales de acuerdo con nuestra Política de Privacidad. 
-                  Sus datos se utilizan únicamente para proporcionar y mejorar nuestros servicios.
+                  Respetamos su privacidad y protegemos sus datos personales de acuerdo con nuestra{' '}
+                  <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-[color:var(--color-primary)] underline">
+                    Política de Privacidad
+                  </a>
+                  . Sus datos se utilizan únicamente para proporcionar y mejorar nuestros servicios.
                 </p>
               </section>
               

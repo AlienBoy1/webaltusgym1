@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiDownload, FiShare2, FiPlusSquare, FiX, FiCheck } from 'react-icons/fi'
-import { FaWindows, FaApple, FaAndroid } from 'react-icons/fa'
+import { FaWindows, FaApple, FaAndroid, FaGooglePlay } from 'react-icons/fa'
+
+const PLAY_STORE_URL = import.meta.env.VITE_PLAY_STORE_URL || ''
 
 const PLATFORMS = [
   {
@@ -16,9 +18,9 @@ const PLATFORMS = [
     id: 'android',
     name: 'Android',
     icon: FaAndroid,
-    blurb: 'APK o instalación PWA rápida',
+    blurb: PLAY_STORE_URL ? 'Descarga desde Google Play' : 'APK o instalación PWA rápida',
     href: '/downloads/QyntraGym.apk',
-    fileLabel: 'Paquete Android (.apk)'
+    fileLabel: PLAY_STORE_URL ? 'Google Play Store' : 'Paquete Android (.apk)'
   },
   {
     id: 'ios',
@@ -75,6 +77,11 @@ export default function DownloadApps({ compact = false }) {
       return
     }
 
+    if (platform.id === 'android' && PLAY_STORE_URL) {
+      window.open(PLAY_STORE_URL, '_blank', 'noopener,noreferrer')
+      return
+    }
+
     // Prefer native PWA install when available
     if (deferredPrompt && (platform.id === 'windows' || platform.id === 'android')) {
       const ok = await installPwa()
@@ -128,7 +135,7 @@ export default function DownloadApps({ compact = false }) {
 
       <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'sm:grid-cols-3'}`}>
         {PLATFORMS.map((platform) => {
-          const Icon = platform.icon
+          const Icon = platform.id === 'android' && PLAY_STORE_URL ? FaGooglePlay : platform.icon
           const selected = active === platform.id
           return (
             <motion.button

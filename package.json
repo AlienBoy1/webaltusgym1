@@ -10,7 +10,10 @@
     "build": "cd client && npm install --include=dev && npx vite build",
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
     "start": "cd server && npm start",
-    "migrate:mongo": "cd server && npm run migrate:mongo"
+    "migrate:mongo": "cd server && npm run migrate:mongo",
+    "android:setup": "powershell -ExecutionPolicy Bypass -File ./scripts/android-setup.ps1",
+    "android:build": "powershell -ExecutionPolicy Bypass -File ./scripts/android-build.ps1",
+    "android:assetlinks": "powershell -ExecutionPolicy Bypass -File ./scripts/android-assetlinks.ps1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

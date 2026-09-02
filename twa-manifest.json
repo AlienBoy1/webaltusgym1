@@ -1,0 +1,55 @@
+{
+  "packageId": "gym.qyntra.app",
+  "host": "qyntagymweb.vercel.app",
+  "name": "QYNTRA GYM",
+  "launcherName": "QYNTRA",
+  "display": "standalone",
+  "themeColor": "#FF6B35",
+  "themeColorDark": "#0A0A0F",
+  "navigationColor": "#0A0A0F",
+  "navigationColorDark": "#0A0A0F",
+  "navigationDividerColor": "#0A0A0F",
+  "navigationDividerColorDark": "#0A0A0F",
+  "backgroundColor": "#0A0A0F",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://qyntagymweb.vercel.app/pwa-512x512.png",
+  "maskableIconUrl": "https://qyntagymweb.vercel.app/pwa-512x512.png",
+  "monochromeIconUrl": "https://qyntagymweb.vercel.app/badge-96x96.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android/qyntra-upload.keystore",
+    "alias": "qyntra"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Iniciar Entrenamiento",
+      "shortName": "Entrenar",
+      "url": "/workouts",
+      "chosenIconUrl": "https://qyntagymweb.vercel.app/pwa-192x192.png"
+    },
+    {
+      "name": "Mi Progreso",
+      "shortName": "Progreso",
+      "url": "/progress",
+      "chosenIconUrl": "https://qyntagymweb.vercel.app/pwa-192x192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://qyntagymweb.vercel.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "orientation": "portrait-primary",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0"
+}

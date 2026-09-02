@@ -5,3 +5,14 @@ node_modules
 dist
 .vercel
 
+# Android TWA (Play Store) — no commitear secretos
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/qyntra-upload.keystore
+android/*.aab
+android/*.apk
+*.keystore
+*.jks
+
