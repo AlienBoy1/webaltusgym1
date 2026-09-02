@@ -6,13 +6,14 @@ dist
 .vercel
 
 # Android TWA (Play Store) — no commitear secretos
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
+.gradle/
+app/build/
+build/
+local.properties
 android/qyntra-upload.keystore
-android/*.aab
-android/*.apk
+*.aab
+*.apk
 *.keystore
 *.jks
+keystore.properties
 

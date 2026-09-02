@@ -13,7 +13,8 @@
     "migrate:mongo": "cd server && npm run migrate:mongo",
     "android:setup": "powershell -ExecutionPolicy Bypass -File ./scripts/android-setup.ps1",
     "android:build": "powershell -ExecutionPolicy Bypass -File ./scripts/android-build.ps1",
-    "android:assetlinks": "powershell -ExecutionPolicy Bypass -File ./scripts/android-assetlinks.ps1"
+    "android:assetlinks": "powershell -ExecutionPolicy Bypass -File ./scripts/android-assetlinks.ps1",
+    "android:sdk-fix": "powershell -ExecutionPolicy Bypass -File ./scripts/android-sdk-fix.ps1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

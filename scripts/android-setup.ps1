@@ -16,6 +16,36 @@ if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
   throw "Java JDK no encontrado. Instala JDK 17+ y agrega java al PATH."
 }
 
+# keytool no siempre está en PATH aunque java sí — resolver JAVA_HOME\bin
+if (-not (Get-Command keytool -ErrorAction SilentlyContinue)) {
+  $JavaCandidates = @(
+    $env:JAVA_HOME,
+    "C:\Program Files\Java\jdk-26.0.1",
+    "C:\Program Files\Eclipse Adoptium\jdk-17*",
+    "C:\Program Files\Android\Android Studio\jbr"
+  ) | Where-Object { $_ }
+
+  foreach ($candidate in $JavaCandidates) {
+    $resolved = $null
+    if ($candidate -like "**") {
+      $resolved = Get-ChildItem -Path ($candidate -replace '\\jdk-17\*','\jdk-17*') -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+    } elseif (Test-Path $candidate) {
+      $resolved = $candidate
+    }
+    if ($resolved -and (Test-Path (Join-Path $resolved "bin\keytool.exe"))) {
+      $env:JAVA_HOME = $resolved
+      $env:PATH = "$resolved\bin;$env:PATH"
+      Write-Host "keytool encontrado en: $resolved\bin" -ForegroundColor Green
+      break
+    }
+  }
+}
+
+if (-not (Get-Command keytool -ErrorAction SilentlyContinue)) {
+  throw "keytool no encontrado. Agrega JAVA_HOME\bin al PATH, por ejemplo:`n  `$env:JAVA_HOME = 'C:\Program Files\Java\jdk-26.0.1'`n  `$env:PATH = `"`$env:JAVA_HOME\bin;`$env:PATH`""
+}
+
 New-Item -ItemType Directory -Force -Path (Split-Path $KeystorePath) | Out-Null
 New-Item -ItemType Directory -Force -Path (Split-Path $AssetLinksPath) | Out-Null
 

@@ -18,6 +18,7 @@ import {
   scheduleProfileMediaMigrate,
   isInlineDataUrl
 } from '../utils/mediaStorage.js'
+import { deleteUserAccount } from '../services/deleteUserAccount.js'
 
 const router = express.Router()
 
@@ -530,6 +531,16 @@ router.post('/complete-onboarding', authenticate, async (req, res) => {
     res.json({ message: 'Onboarding completado', onboardingCompleted: true })
   } catch (error) {
     res.status(500).json({ message: 'Error al completar onboarding', error: error.message })
+  }
+})
+
+router.delete('/me', authenticate, async (req, res) => {
+  try {
+    await deleteUserAccount(req.user.id)
+    res.json({ message: 'Cuenta eliminada correctamente' })
+  } catch (error) {
+    const status = error.status || 500
+    res.status(status).json({ message: 'Error al eliminar cuenta', error: error.message })
   }
 })
 

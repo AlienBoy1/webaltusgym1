@@ -22,6 +22,7 @@ const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const DeleteAccount = lazy(() => import('./pages/DeleteAccount'))
 
 // User pages — code-split for faster navigation
 const Dashboard = lazy(() => import('./pages/user/Dashboard'))
@@ -174,6 +175,7 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/privacidad" element={<PrivacyPolicy />} />
+          <Route path="/eliminar-cuenta" element={<DeleteAccount />} />
 
           <Route
             element={

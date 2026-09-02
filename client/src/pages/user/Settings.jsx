@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive, FiLink } from 'react-icons/fi'
+import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive, FiLink, FiTrash2 } from 'react-icons/fi'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -56,7 +57,8 @@ function mergeSettings(base, incoming) {
 }
 
 export default function UserSettings() {
-  const { user } = useAuthStore()
+  const { user, logout } = useAuthStore()
+  const navigate = useNavigate()
   const dialog = useAppDialog()
   const [searchParams] = useSearchParams()
   const [activeSection, setActiveSection] = useState(() => searchParams.get('section') || 'notifications')
@@ -70,6 +72,7 @@ export default function UserSettings() {
     return mergeSettings(DEFAULT_SETTINGS, cached || {})
   })
   const [saving, setSaving] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
 
   useEffect(() => {
     const section = searchParams.get('section')
@@ -232,6 +235,29 @@ export default function UserSettings() {
     }
   }
 
+  const handleDeleteAccount = async () => {
+    const ok = await dialog.confirm(
+      'Se eliminarán tu perfil, publicaciones, mensajes, rutinas y todos los datos asociados. Esta acción no se puede deshacer.',
+      {
+        title: '¿Eliminar tu cuenta?',
+        confirmLabel: 'Eliminar cuenta'
+      }
+    )
+    if (!ok) return
+
+    setDeletingAccount(true)
+    try {
+      await api.delete('/users/me')
+      await logout()
+      toast.success('Cuenta eliminada')
+      navigate('/', { replace: true })
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo eliminar la cuenta')
+    } finally {
+      setDeletingAccount(false)
+    }
+  }
+
   const Toggle = ({ enabled, onChange }) => (
     <button
       type="button"
@@ -348,6 +374,25 @@ export default function UserSettings() {
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Usa el mismo correo de tu cuenta Qyntra. Si Google usa otro email, la vinculación fallará.
                 </p>
+
+                <div
+                  className="rounded-xl border p-4"
+                  style={{ borderColor: 'rgba(239, 68, 68, 0.35)', background: 'rgba(239, 68, 68, 0.08)' }}
+                >
+                  <h3 className="font-medium text-red-400">Eliminar cuenta</h3>
+                  <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    Elimina permanentemente tu cuenta y datos personales de Qyntra Gym.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deletingAccount}
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-60"
+                  >
+                    <FiTrash2 size={16} />
+                    {deletingAccount ? 'Eliminando…' : 'Eliminar mi cuenta'}
+                  </button>
+                </div>
               </div>
             )}
             

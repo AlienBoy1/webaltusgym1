@@ -10,6 +10,7 @@ import {
   syncMembershipPlansLifecycle
 } from '../services/membershipService.js'
 import { isPaidEraLive, PAID_ERA_START_ISO } from '../utils/membershipLifecycle.js'
+import { deleteUserAccount } from '../services/deleteUserAccount.js'
 
 const router = express.Router()
 router.use(authenticate, isAdmin)
@@ -345,76 +346,11 @@ router.put('/users/:id', async (req, res) => {
 // Delete user — purge all related app data
 router.delete('/users/:id', async (req, res) => {
   try {
-    const userId = req.params.id
-    const { data: user } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle()
-
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' })
-
-    // User-authored posts → likes/comments on those posts, then posts
-    const { data: userPosts } = await supabaseAdmin.from('posts').select('id').eq('user_id', userId)
-    const postIds = (userPosts || []).map((p) => p.id)
-    if (postIds.length) {
-      await supabaseAdmin.from('post_likes').delete().in('post_id', postIds)
-      await supabaseAdmin.from('post_comments').delete().in('post_id', postIds)
-      await supabaseAdmin.from('posts').delete().in('id', postIds)
-    }
-
-    // Activity on others' content
-    await supabaseAdmin.from('post_comments').delete().eq('user_id', userId)
-    await supabaseAdmin.from('post_likes').delete().eq('user_id', userId)
-
-    // Stories + reactions/views/favorites
-    const { data: userStories } = await supabaseAdmin.from('stories').select('id').eq('user_id', userId)
-    const storyIds = (userStories || []).map((s) => s.id)
-    if (storyIds.length) {
-      await supabaseAdmin.from('story_reactions').delete().in('story_id', storyIds)
-      await supabaseAdmin.from('story_views').delete().in('story_id', storyIds)
-      await supabaseAdmin.from('stories').delete().in('id', storyIds)
-    }
-    await supabaseAdmin.from('story_reactions').delete().eq('user_id', userId)
-    await supabaseAdmin.from('story_views').delete().eq('user_id', userId)
-    await supabaseAdmin.from('story_favorites').delete().eq('user_id', userId)
-    await supabaseAdmin.from('story_favorite_albums').delete().eq('user_id', userId)
-
-    // Social graph, chat, notifications
-    await supabaseAdmin.from('follows').delete().eq('follower_id', userId)
-    await supabaseAdmin.from('follows').delete().eq('following_id', userId)
-    await supabaseAdmin.from('messages').delete().eq('from_user_id', userId)
-    await supabaseAdmin.from('messages').delete().eq('to_user_id', userId)
-    await supabaseAdmin.from('notifications').delete().eq('user_id', userId)
-    await supabaseAdmin.from('notifications').delete().eq('related_user_id', userId)
-    await supabaseAdmin.from('follow_requests').delete().eq('from_user_id', userId)
-    await supabaseAdmin.from('follow_requests').delete().eq('to_user_id', userId)
-
-    // Classes, challenges, gym activity
-    await supabaseAdmin.from('class_enrollments').delete().eq('user_id', userId)
-    await supabaseAdmin.from('class_waitlist').delete().eq('user_id', userId)
-    await supabaseAdmin.from('challenge_participants').delete().eq('user_id', userId)
-    // Challenges created by the user
-    const { data: ownedChallenges } = await supabaseAdmin
-      .from('challenges')
-      .select('id')
-      .eq('created_by', userId)
-    const challengeIds = (ownedChallenges || []).map((c) => c.id)
-    if (challengeIds.length) {
-      await supabaseAdmin.from('challenge_participants').delete().in('challenge_id', challengeIds)
-      await supabaseAdmin.from('challenges').delete().in('id', challengeIds)
-    }
-
-    await supabaseAdmin.from('workouts').delete().eq('user_id', userId)
-    await supabaseAdmin.from('attendance').delete().eq('user_id', userId)
-
-    // Profile + auth (username lives on profile)
-    await supabaseAdmin.from('profiles').delete().eq('id', userId)
-    await supabaseAdmin.auth.admin.deleteUser(userId)
-
+    await deleteUserAccount(req.params.id)
     res.json({ message: 'Usuario y todo su contenido eliminados' })
   } catch (error) {
-    res.status(500).json({ message: 'Error al eliminar usuario', error: error.message })
+    const status = error.status || 500
+    res.status(status).json({ message: 'Error al eliminar usuario', error: error.message })
   }
 })
 

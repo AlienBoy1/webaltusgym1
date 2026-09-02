@@ -29,11 +29,24 @@ Abre PowerShell en la raíz del repo:
 ```powershell
 cd "c:\Users\Hoppe\OneDrive\Documentos\PersonalDocuments\webaltusgym1"
 $env:ANDROID_HOME = "C:\Users\Hoppe\AppData\Local\Android\Sdk"
-$env:PATH += ";$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\cmdline-tools\latest\bin"
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-26.0.1"
+$env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 java -version
+keytool -help
 ```
 
-Si `java -version` falla o el build da error de Gradle, instala **JDK 17** (Temurin) y úsalo solo para Android.
+Si `keytool -help` responde sin error, ya está listo.
+
+> **Bubblewrap exige JDK 17** (no 21 ni 26). Tienes dos opciones:
+>
+> **A) Dejar que Bubblewrap lo instale (recomendado):** al ejecutar `init`, responde **Yes** a *"Do you want Bubblewrap to install the JDK?"*
+>
+> **B) Instalar JDK 17 manualmente:**
+> ```powershell
+> winget install EclipseAdoptium.Temurin.17.JDK
+> ```
+> Luego usa la ruta: `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`  
+> (ajusta el número de versión si difiere; busca en `C:\Program Files\Eclipse Adoptium\`).
 
 ---
 
@@ -47,6 +60,8 @@ keytool -genkeypair -alias qyntra -keyalg RSA -keysize 2048 -validity 9125 `
   -keystore android\qyntra-upload.keystore `
   -dname "CN=Qyntra Gym, OU=Mobile, O=Qyntra, L=MX, ST=MX, C=MX"
 ```
+
+> Si `keytool` no se reconoce, ejecuta primero el Paso 2 (añadir `JAVA_HOME\bin` al PATH).
 
 Te pedirá contraseña del keystore y de la clave → **usa la misma** para ambas.
 
@@ -64,7 +79,7 @@ Responde así cuando pregunte:
 
 | Pregunta | Respuesta |
 |----------|-----------|
-| ¿Instalar JDK? | **No** (ya tienes Java) |
+| ¿Instalar JDK? | **Yes** (Bubblewrap instala JDK 17 solo) — o **No** + ruta Temurin 17 |
 | Domain / Host | `qyntagymweb.vercel.app` (confirma) |
 | Package name | `gym.qyntra.app` |
 | App name | `QYNTRA GYM` |

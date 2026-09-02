@@ -86,7 +86,20 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white">8. Tus derechos</h2>
+            <h2 className="text-lg font-semibold text-white">8. Eliminación de cuenta</h2>
+            <p className="mt-3">
+              Puedes eliminar tu cuenta en cualquier momento desde{' '}
+              <strong className="text-white">Ajustes → Cuenta → Eliminar mi cuenta</strong>, o siguiendo las
+              instrucciones en{' '}
+              <a href="/eliminar-cuenta" className="text-[color:var(--color-primary)] underline">
+                qyntagymweb.vercel.app/eliminar-cuenta
+              </a>
+              .
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-white">9. Tus derechos</h2>
             <p>
               Según tu jurisdicción, puedes solicitar acceso, rectificación, eliminación, portabilidad u
               oposición al tratamiento de tus datos. Para ejercerlos, contacta al administrador de tu gimnasio
@@ -95,7 +108,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white">9. Menores de edad</h2>
+            <h2 className="text-lg font-semibold text-white">10. Menores de edad</h2>
             <p>
               El servicio está dirigido a usuarios registrados por un gimnasio. Si eres menor de edad, el
               registro debe ser autorizado por un tutor o el administrador del centro deportivo.
@@ -103,7 +116,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white">10. Cambios</h2>
+            <h2 className="text-lg font-semibold text-white">11. Cambios</h2>
             <p>
               Podemos actualizar esta política. Publicaremos la versión vigente en esta URL. El uso continuado
               de la app después de un cambio implica tu aceptación de la política actualizada.
@@ -111,7 +124,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white">11. Contacto</h2>
+            <h2 className="text-lg font-semibold text-white">12. Contacto</h2>
             <p>
               Para dudas sobre privacidad: contacta al administrador de tu gimnasio o escribe a los canales
               oficiales de soporte de Qyntra Gym indicados en la aplicación.
