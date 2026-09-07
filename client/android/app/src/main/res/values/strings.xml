@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">QYNTRA</string>
+    <string name="title_activity_main">QYNTRA</string>
+    <string name="package_name">gym.qyntra.app</string>
+    <string name="custom_url_scheme">gym.qyntra.app</string>
+</resources>

@@ -1,0 +1,29 @@
+{
+  "appId": "gym.qyntra.app",
+  "appName": "QYNTRA",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": [
+      "qyntagymweb.vercel.app",
+      "*.supabase.co",
+      "accounts.google.com"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#0A0A0F",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0A0A0F"
+    }
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0A0A0F",
+    "webContentsDebuggingEnabled": false
+  }
+}

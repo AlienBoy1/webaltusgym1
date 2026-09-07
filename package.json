@@ -15,7 +15,10 @@
     "android:build": "powershell -ExecutionPolicy Bypass -File ./scripts/android-build.ps1",
     "android:assetlinks": "powershell -ExecutionPolicy Bypass -File ./scripts/android-assetlinks.ps1",
     "android:sdk-fix": "powershell -ExecutionPolicy Bypass -File ./scripts/android-sdk-fix.ps1",
-    "play-store:assets": "node scripts/generate-play-store-assets.mjs"
+    "play-store:assets": "node scripts/generate-play-store-assets.mjs",
+    "cap:sync": "cd client && npm run cap:sync",
+    "cap:open": "cd client && npm run cap:open",
+    "cap:android:build": "powershell -ExecutionPolicy Bypass -File ./scripts/cap-android-build.ps1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

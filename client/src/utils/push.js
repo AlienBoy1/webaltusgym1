@@ -1,4 +1,5 @@
 import api from './api'
+import { isNativeApp } from './appMode'
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -17,15 +18,60 @@ async function getRegistration() {
 }
 
 export async function isPushSupported() {
-  return (
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window
-  )
+  if (typeof window === 'undefined') return false
+  if (isNativeApp()) return true
+  return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
 }
 
-export async function subscribeToPush() {
+async function subscribeNativeFcm() {
+  const { PushNotifications } = await import('@capacitor/push-notifications')
+
+  let perm = await PushNotifications.checkPermissions()
+  if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+    perm = await PushNotifications.requestPermissions()
+  }
+  if (perm.receive !== 'granted') {
+    throw new Error('Permiso de notificaciones denegado')
+  }
+
+  const tokenPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout esperando token FCM'))
+    }, 20000)
+
+    PushNotifications.addListener('registration', (ev) => {
+      clearTimeout(timeout)
+      resolve(ev?.value || '')
+    }).catch(reject)
+
+    PushNotifications.addListener('registrationError', (err) => {
+      clearTimeout(timeout)
+      reject(new Error(err?.error || 'Error registrando FCM'))
+    }).catch(() => {})
+  })
+
+  await PushNotifications.register()
+  const token = await tokenPromise
+
+  if (!token) throw new Error('No se obtuvo token FCM')
+
+  await PushNotifications.addListener('pushNotificationReceived', () => {
+    /* foreground — la lista in-app se actualiza por API/realtime */
+  })
+  await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+    const url = action?.notification?.data?.url
+    if (url && typeof window !== 'undefined') {
+      window.location.assign(url.startsWith('/') ? url : `/${url}`)
+    }
+  })
+
+  await api.post('/notifications/subscribe', {
+    subscription: { type: 'fcm', token, platform: 'android' }
+  })
+  return { type: 'fcm', token }
+}
+
+async function subscribeWebPush() {
   if (!(await isPushSupported())) {
     throw new Error('Push no soportado en este dispositivo')
   }
@@ -52,7 +98,27 @@ export async function subscribeToPush() {
   return subscription
 }
 
+export async function subscribeToPush() {
+  if (isNativeApp()) return subscribeNativeFcm()
+  return subscribeWebPush()
+}
+
 export async function unsubscribeFromPush() {
+  if (isNativeApp()) {
+    try {
+      const { PushNotifications } = await import('@capacitor/push-notifications')
+      await PushNotifications.removeAllListeners()
+    } catch {
+      /* ignore */
+    }
+    try {
+      await api.delete('/notifications/subscribe')
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+
   if (!(await isPushSupported())) return
   const reg = await navigator.serviceWorker.getRegistration()
   const subscription = await reg?.pushManager?.getSubscription()

@@ -11,6 +11,10 @@
 Ver [DEPLOY-VERCEL.md](./DEPLOY-VERCEL.md) — Root Directory = raíz del repo.
 
 ## Google Play Store
-Ver [docs/PLAY-STORE.md](./docs/PLAY-STORE.md) — empaquetado TWA, firma y publicación.
+Ver [docs/PLAY-STORE.md](./docs/PLAY-STORE.md) — ficha y publicación.
+
+## App nativa Android (Capacitor)
+Ver [docs/CAPACITOR-ANDROID.md](./docs/CAPACITOR-ANDROID.md) — reemplaza TWA/Bubblewrap.
+Compilar AAB: `npm run cap:android:build`
 
 **QYNTRA GYM** — Supera tus límites

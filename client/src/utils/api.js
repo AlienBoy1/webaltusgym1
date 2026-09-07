@@ -6,14 +6,23 @@ import {
   clearAuthTokens,
   isRememberMeEnabled
 } from './tokenStorage'
+import { isNativeApp } from './appMode'
+
+const PRODUCTION_ORIGIN = 'https://qyntagymweb.vercel.app'
 
 /**
- * - Local: Vite proxy /api → localhost:3001 (or VITE_API_URL)
- * - Producción (Vercel): same-origin /api (sin Render)
+ * - Local web: Vite proxy /api → localhost:3001 (or VITE_API_URL)
+ * - Producción web (Vercel): same-origin /api
+ * - Capacitor Android/iOS: absolute URL (no same-origin)
  */
 const getApiURL = () => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
+  }
+
+  if (isNativeApp()) {
+    const appUrl = String(import.meta.env.VITE_APP_URL || PRODUCTION_ORIGIN).replace(/\/$/, '')
+    return `${appUrl}/api`
   }
 
   if (import.meta.env.PROD) {

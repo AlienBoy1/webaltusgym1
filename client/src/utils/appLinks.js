@@ -1,14 +1,24 @@
 /**
  * App / invite deep links for shares (WhatsApp, native share, etc.)
  */
+import { isNativeApp } from './appMode'
+
+const PRODUCTION_ORIGIN = 'https://qyntagymweb.vercel.app'
 
 export function getAppOrigin() {
   const fromEnv = String(import.meta.env.VITE_APP_URL || '').trim().replace(/\/$/, '')
   if (fromEnv) return fromEnv
+  if (isNativeApp()) return PRODUCTION_ORIGIN
   if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = window.location.origin
+    if (origin.startsWith('http://') || origin.startsWith('https://')) {
+      if (!origin.includes('localhost') || origin.includes('vercel.app')) return origin
+    }
+  }
+  if (typeof window !== 'undefined' && window.location?.origin?.includes('vercel.app')) {
     return window.location.origin
   }
-  return ''
+  return PRODUCTION_ORIGIN
 }
 
 /** Deep link path to open a post in Comunidad (PostDetailSheet). */

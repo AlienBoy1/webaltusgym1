@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "904418520302",
+    "project_id": "qyntragymapp",
+    "storage_bucket": "qyntragymapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:904418520302:android:d0eb641b08e0ad516f17ff",
+        "android_client_info": {
+          "package_name": "gym.qyntra.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABGvARXFXj0Z9SyE8gWTxJsODIynAOpI0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

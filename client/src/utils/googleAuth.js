@@ -1,9 +1,15 @@
 import { supabase } from '../lib/supabase'
+import { getAppOrigin } from './appLinks'
+import { isNativeApp } from './appMode'
 
 const PENDING_KEY = 'pendingGoogleRegistration'
 
 export function getGoogleRedirectTo({ link = false } = {}) {
-  const url = new URL(`${window.location.origin}/auth/callback`)
+  // En Capacitor origin es capacitor:// o https://localhost — OAuth debe volver al dominio web público
+  const origin = isNativeApp()
+    ? getAppOrigin() || 'https://qyntagymweb.vercel.app'
+    : window.location.origin
+  const url = new URL(`${origin}/auth/callback`)
   if (link) url.searchParams.set('link', '1')
   return url.toString()
 }

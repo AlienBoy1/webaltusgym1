@@ -14,7 +14,10 @@ router.get('/vapid-public-key', authenticate, (_req, res) => {
 router.post('/subscribe', authenticate, async (req, res) => {
   try {
     const { subscription } = req.body
-    if (!subscription?.endpoint || !subscription?.keys) {
+    const isFcm = subscription?.type === 'fcm' && subscription?.token
+    const isWeb = subscription?.endpoint && subscription?.keys
+
+    if (!isFcm && !isWeb) {
       return res.status(400).json({ message: 'Suscripción inválida' })
     }
 
@@ -27,16 +30,20 @@ router.post('/subscribe', authenticate, async (req, res) => {
     const settings = profile?.settings || {}
     const notifications = { ...(settings.notifications || {}), push: true }
 
+    const stored = isFcm
+      ? { type: 'fcm', token: subscription.token, platform: subscription.platform || 'android' }
+      : subscription
+
     const { error } = await supabaseAdmin
       .from('profiles')
       .update({
-        push_subscription: subscription,
+        push_subscription: stored,
         settings: { ...settings, notifications }
       })
       .eq('id', req.user.id)
 
     if (error) throw error
-    res.json({ message: 'Suscripción guardada', pushEnabled: true })
+    res.json({ message: 'Suscripción guardada', pushEnabled: true, channel: isFcm ? 'fcm' : 'webpush' })
   } catch (error) {
     res.status(500).json({ message: 'Error al guardar suscripción', error: error.message })
   }
