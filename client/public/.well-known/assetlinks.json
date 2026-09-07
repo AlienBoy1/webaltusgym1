@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "gym.qyntra.app",
       "sha256_cert_fingerprints": [
-        "REEMPLAZAR_CON_SHA256_DEL_KEYSTORE"
+        "DF:0D:F9:73:8E:0B:56:D5:ED:9A:DF:91:BF:4B:85:95:F5:06:15:80:8C:34:D6:3E:95:E6:55:BD:30:72:F5:EF",
+        "E6:A8:19:76:AD:FC:EA:CD:32:05:0E:5F:F3:C2:42:FD:77:5C:BC:88:5B:46:A9:2A:7F:F2:09:21:37:E2:51:CB"
       ]
     }
   }

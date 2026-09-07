@@ -14,7 +14,8 @@
     "android:setup": "powershell -ExecutionPolicy Bypass -File ./scripts/android-setup.ps1",
     "android:build": "powershell -ExecutionPolicy Bypass -File ./scripts/android-build.ps1",
     "android:assetlinks": "powershell -ExecutionPolicy Bypass -File ./scripts/android-assetlinks.ps1",
-    "android:sdk-fix": "powershell -ExecutionPolicy Bypass -File ./scripts/android-sdk-fix.ps1"
+    "android:sdk-fix": "powershell -ExecutionPolicy Bypass -File ./scripts/android-sdk-fix.ps1",
+    "play-store:assets": "node scripts/generate-play-store-assets.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",
@@ -30,7 +31,9 @@
     "web-push": "^3.6.6"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "playwright": "^1.51.0",
+    "sharp": "^0.33.5"
   },
   "keywords": [
     "gym",

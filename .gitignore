@@ -5,6 +5,9 @@ node_modules
 dist
 .vercel
 
+# Play Store assets are committed; temp renders optional
+play-store/.tmp/
+
 # Android TWA (Play Store) — no commitear secretos
 .gradle/
 app/build/

@@ -124,6 +124,17 @@ En **Configuración → Detalles de la app**:
 
 ## Paso 7 — Ficha de Play Store (antes de producción)
 
+Assets generados en la carpeta **`play-store/`** (ejecuta `npm run play-store:assets` para regenerar):
+
+| Play Console | Archivo |
+|--------------|---------|
+| App icon (512×512) | `play-store/icon/app-icon-512.png` |
+| Feature graphic (1024×500) | `play-store/feature-graphic/feature-graphic-1024x500.png` |
+| Phone screenshots | `play-store/phone/01-landing.png` … `05-delete-account.png` |
+| Tablet 7" (opcional) | `play-store/tablet-7/*.png` |
+| Tablet 10" (opcional) | `play-store/tablet-10/*.png` |
+| Textos (descripción) | `play-store/copy/LISTING-ES.md` |
+
 Completa en **Presencia en Play Store → Ficha principal**:
 
 | Recurso | Archivo / texto |
