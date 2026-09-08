@@ -13,6 +13,14 @@ const DEFAULT_REST_SECONDS = 60
 let nativeChannelReady = false
 let nativeActionsReady = false
 let lastNativeBody = ''
+let workoutHudPlugin = null
+
+async function getWorkoutHud() {
+  if (workoutHudPlugin) return workoutHudPlugin
+  const { registerPlugin } = await import('@capacitor/core')
+  workoutHudPlugin = registerPlugin('WorkoutHud')
+  return workoutHudPlugin
+}
 
 export function getWorkoutSession() {
   try {
@@ -126,7 +134,11 @@ export function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
 }
 
-function buildWorkoutNotificationCopy(session, now = Date.now()) {
+/**
+ * @param {{ omitLiveTimers?: boolean }} [opts]
+ * omitLiveTimers: native HUD uses system chronometer — body must stay stable.
+ */
+function buildWorkoutNotificationCopy(session, now = Date.now(), opts = {}) {
   const workout = session?.activeWorkout
   if (!workout) return null
 
@@ -136,18 +148,25 @@ function buildWorkoutNotificationCopy(session, now = Date.now()) {
   const done = session.completedExercises?.length || 0
   const total = workout.exercises?.length || 0
   const exerciseLabel = nextExercise?.name || 'Sesión completa'
+  const omitLiveTimers = Boolean(opts.omitLiveTimers)
 
   const title = 'Entrenamiento en curso'
   let body
   let actionHint = 'complete'
   if (restRemaining > 0) {
-    body = `${formatTime(elapsed)} · Descanso ${formatTime(restRemaining)} · Luego: ${exerciseLabel}`
+    body = omitLiveTimers
+      ? `Descanso · Luego: ${exerciseLabel}`
+      : `${formatTime(elapsed)} · Descanso ${formatTime(restRemaining)} · Luego: ${exerciseLabel}`
     actionHint = 'skip_rest'
   } else if (!nextExercise) {
-    body = `${formatTime(elapsed)} · Completado ${done}/${total} · Listo para finalizar`
+    body = omitLiveTimers
+      ? `Completado ${done}/${total} · Listo para finalizar`
+      : `${formatTime(elapsed)} · Completado ${done}/${total} · Listo para finalizar`
     actionHint = 'open'
   } else {
-    body = `${formatTime(elapsed)} · Ahora: ${exerciseLabel} · ${done}/${total}`
+    body = omitLiveTimers
+      ? `Ahora: ${exerciseLabel} · ${done}/${total}`
+      : `${formatTime(elapsed)} · Ahora: ${exerciseLabel} · ${done}/${total}`
     actionHint = 'complete'
   }
 
@@ -159,6 +178,8 @@ function buildWorkoutNotificationCopy(session, now = Date.now()) {
     elapsed,
     restRemaining,
     exerciseLabel,
+    done,
+    total,
     actionHint
   }
 }
@@ -260,42 +281,49 @@ async function sendNativeWorkoutNotification(session) {
   }
   if (perm.display !== 'granted') return false
 
-  await ensureNativeWorkoutChannel()
-  await ensureNativeWorkoutActions()
-  const copy = buildWorkoutNotificationCopy(session)
+  const copy = buildWorkoutNotificationCopy(session, Date.now(), { omitLiveTimers: true })
   if (!copy) return false
 
-  // Skip identical payload to avoid unnecessary NotificationManager churn
-  const fingerprint = `${copy.body}|${copy.actionHint}`
+  const restEndsAtMs = session.restEndsAt ? new Date(session.restEndsAt).getTime() : 0
+  const sessionStartMs = session.sessionStart
+    ? new Date(session.sessionStart).getTime()
+    : Date.now()
+  const inRest = copy.restRemaining > 0 && !Number.isNaN(restEndsAtMs)
+  const whenMs = inRest ? restEndsAtMs : sessionStartMs
+
+  // Structural fingerprint only — never include ticking seconds
+  const fingerprint = `${copy.body}|${copy.actionHint}|${whenMs}|${inRest ? 1 : 0}`
   if (fingerprint === lastNativeBody) return true
   lastNativeBody = fingerprint
 
-  await LocalNotifications.schedule({
-    notifications: [
-      {
-        id: NATIVE_NOTIF_ID,
-        title: copy.title,
-        body: `${copy.workoutName}\n${copy.body}`,
-        channelId: NATIVE_CHANNEL_ID,
-        largeBody: `${copy.workoutName}\n${copy.body}`,
-        summaryText: copy.exerciseLabel,
-        ongoing: true,
-        autoCancel: false,
-        silent: true,
-        actionTypeId: ACTION_TYPE_ID,
-        extra: {
-          type: 'workout_session',
-          url: `/workouts?focus=${copy.exerciseId || ''}`,
-          actionHint: copy.actionHint
-        }
-      }
-    ]
+  const content = `${copy.workoutName} · ${copy.body}`
+  const WorkoutHud = await getWorkoutHud()
+  await WorkoutHud.show({
+    title: copy.title,
+    content,
+    bigText: content,
+    showChronometer: true,
+    countDown: inRest,
+    whenMs
   })
+
+  // Cancel any leftover LocalNotifications from older builds (same id)
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: NATIVE_NOTIF_ID }] })
+  } catch {
+    /* ignore */
+  }
   return true
 }
 
 async function clearNativeWorkoutNotification() {
   lastNativeBody = ''
+  try {
+    const WorkoutHud = await getWorkoutHud()
+    await WorkoutHud.clear()
+  } catch {
+    /* ignore */
+  }
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications')
     await LocalNotifications.cancel({ notifications: [{ id: NATIVE_NOTIF_ID }] })

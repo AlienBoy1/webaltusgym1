@@ -9,6 +9,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(WorkoutHudPlugin.class);
         super.onCreate(savedInstanceState);
         createDefaultNotificationChannel();
     }
