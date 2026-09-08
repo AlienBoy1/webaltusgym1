@@ -31,6 +31,14 @@
                 <data android:scheme="https" android:host="qyntagymweb.vercel.app" />
             </intent-filter>
 
+            <!-- Google OAuth return (Custom Tabs → app) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gym.qyntra.app" android:host="auth" android:pathPrefix="/callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

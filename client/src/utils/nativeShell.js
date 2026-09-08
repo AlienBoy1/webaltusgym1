@@ -11,6 +11,9 @@ export async function initNativeShell() {
     const { hydrateNativeTokenStorage } = await import('./tokenStorage')
     await hydrateNativeTokenStorage()
 
+    const { ensureNativeOAuthListener } = await import('./googleAuth')
+    await ensureNativeOAuthListener()
+
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
     // Let /auth/callback finish on Vercel, then it hands off itself.
     if (!path.startsWith('/auth/callback') && !path.startsWith('/auth/native-handoff')) {

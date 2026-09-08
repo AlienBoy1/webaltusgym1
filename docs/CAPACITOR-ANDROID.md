@@ -38,7 +38,18 @@ Cliente usa `@capacitor/push-notifications` en Android. Backend usa `firebase-ad
 - [x] `client/android/app/google-services.json`
 - [x] Plugin en el código + canal `qyntra_default`
 
-### Lo que te toca (servidor)
+### Google OAuth (app nativa)
+
+1. Supabase → **Authentication → URL configuration → Redirect URLs**, añade exactamente:
+   ```
+   gym.qyntra.app://auth/callback
+   https://qyntagymweb.vercel.app/auth/callback
+   https://qyntagymweb.vercel.app/**
+   ```
+2. La app abre Google en **Chrome Custom Tabs** (cuentas guardadas) y vuelve por deep link.
+3. Si ves 404 tras login, falta la URL `gym.qyntra.app://auth/callback` en Supabase.
+
+---
 
 1. Firebase Console → ⚙️ Project settings → **Service accounts** → **Generate new private key**.
 2. Guarda el JSON **fuera de git** (o como secreto).

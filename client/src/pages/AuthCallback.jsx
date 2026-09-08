@@ -10,7 +10,20 @@ import {
 } from '../utils/googleAuth'
 import { buildNativeHandoffUrl, isNativeOnRemoteOrigin } from '../utils/nativeOrigin'
 
-async function waitForSession({ timeoutMs = 8000 } = {}) {
+async function resolveSessionFromUrl({ timeoutMs = 12000 } = {}) {
+  // PKCE: ?code=...
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (code) {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+      if (!error && data?.session?.access_token) return data.session
+    }
+  } catch (err) {
+    console.warn('exchangeCodeForSession:', err?.message || err)
+  }
+
+  // Implicit / already restored
   const existing = await supabase.auth.getSession()
   if (existing.data?.session?.access_token) {
     return existing.data.session
@@ -29,7 +42,10 @@ async function waitForSession({ timeoutMs = 8000 } = {}) {
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.access_token && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')) {
+      if (
+        session?.access_token &&
+        (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')
+      ) {
         finish(session)
       }
     })
@@ -55,7 +71,17 @@ export default function AuthCallback() {
 
     ;(async () => {
       try {
-        const session = await waitForSession()
+        // Close Custom Tabs if still open
+        try {
+          if (window.Capacitor?.isNativePlatform?.()) {
+            const { Browser } = await import('@capacitor/browser')
+            await Browser.close()
+          }
+        } catch {
+          /* ignore */
+        }
+
+        const session = await resolveSessionFromUrl()
         if (!session?.access_token || !session?.refresh_token) {
           toast.error('No se pudo obtener la sesión de Google')
           navigate('/login', { replace: true })
@@ -100,7 +126,6 @@ export default function AuthCallback() {
             name: result.name,
             avatar: result.avatar
           })
-          // Keep Supabase session so /register and código de acceso can attach the profile
           toast(
             'Completa tu registro con los datos restantes. El correo de Google ya está listo.',
             { icon: '🔐', duration: 5000 }

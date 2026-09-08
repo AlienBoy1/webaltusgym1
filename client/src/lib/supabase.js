@@ -10,7 +10,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    // PKCE: deep links use ?code= (hash tokens often stripped on Android)
+    flowType: 'pkce'
   }
 })
 

@@ -6,8 +6,7 @@
     "androidScheme": "https",
     "allowNavigation": [
       "qyntagymweb.vercel.app",
-      "*.supabase.co",
-      "accounts.google.com"
+      "*.supabase.co"
     ]
   },
   "plugins": {
