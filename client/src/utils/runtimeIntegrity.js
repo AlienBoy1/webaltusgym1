@@ -46,6 +46,14 @@ function isChunkLoadError(err) {
 export function installRuntimeIntegrityGuards() {
   if (typeof window === 'undefined') return () => {}
 
+  // Native Capacitor loads bundled assets — SW reloads cause blank screens
+  try {
+    const cap = window.Capacitor
+    if (cap?.isNativePlatform?.()) return () => {}
+  } catch {
+    /* continue for web */
+  }
+
   const onVitePreload = (event) => {
     try {
       event.preventDefault()

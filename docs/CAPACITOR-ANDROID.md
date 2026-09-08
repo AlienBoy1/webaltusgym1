@@ -6,7 +6,7 @@ La app de Play deja de ser TWA/Bubblewrap y pasa a **Capacitor**: shell Android 
 |----------|--------|
 | Package ID | `gym.qyntra.app` (mismo que en Play) |
 | Proyecto Android | `client/android/` |
-| Versión | `2.2.1` (`versionCode` **6**) — sesión persistente + notif. entreno |
+| Versión | `2.2.3` (`versionCode` **8**) — fix pantalla en blanco (SW nativo) |
 | API en nativo | `https://qyntagymweb.vercel.app/api` |
 
 ---

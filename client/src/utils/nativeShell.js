@@ -1,35 +1,81 @@
 /**
- * Init Capacitor native chrome (status bar, splash). Safe no-op on web.
- * Hydrates remember-me tokens from Preferences, then recovers if OAuth left
- * the WebView on the public Vercel host.
+ * Init Capacitor native chrome. Must never hang the React boot.
+ * Unregisters PWA service workers (common cause of blank WebView on Android).
  */
-export async function initNativeShell() {
+import { isNativeApp } from './appMode'
+
+const BOOT_TIMEOUT_MS = 2500
+
+async function withTimeout(promise, ms) {
+  let timer
   try {
-    const { Capacitor } = await import('@capacitor/core')
-    if (!Capacitor.isNativePlatform()) return
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve('__timeout__'), ms)
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Kill SW + caches so Capacitor always loads bundled assets. */
+export async function disableNativeServiceWorkers() {
+  if (!isNativeApp() || typeof navigator === 'undefined') return
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map((r) => r.unregister().catch(() => {})))
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (typeof caches !== 'undefined') {
+      const keys = await caches.keys()
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => {})))
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function initNativeShell() {
+  if (!isNativeApp()) return
+
+  try {
+    await withTimeout(disableNativeServiceWorkers(), 1500)
 
     const { hydrateNativeTokenStorage } = await import('./tokenStorage')
-    await hydrateNativeTokenStorage()
+    await withTimeout(hydrateNativeTokenStorage(), 1500)
 
     const { ensureNativeOAuthListener } = await import('./googleAuth')
-    await ensureNativeOAuthListener()
+    await withTimeout(ensureNativeOAuthListener(), 1000)
 
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
-    // Let /auth/callback finish on Vercel, then it hands off itself.
-    if (!path.startsWith('/auth/callback') && !path.startsWith('/auth/native-handoff')) {
+    // Only recover if WebView is clearly on the public site — never on localhost
+    if (
+      !path.startsWith('/auth/callback') &&
+      !path.startsWith('/auth/native-handoff') &&
+      typeof window !== 'undefined' &&
+      String(window.location.hostname || '').includes('vercel.app')
+    ) {
       const { recoverNativeLocalOrigin } = await import('./nativeOrigin')
-      const redirected = await recoverNativeLocalOrigin()
-      if (redirected) return
+      const redirected = await withTimeout(recoverNativeLocalOrigin(), 2000)
+      if (redirected && redirected !== '__timeout__') return
     }
 
-    const { StatusBar, Style } = await import('@capacitor/status-bar')
-    const { SplashScreen } = await import('@capacitor/splash-screen')
+    try {
+      const { StatusBar, Style } = await import('@capacitor/status-bar')
+      const { SplashScreen } = await import('@capacitor/splash-screen')
+      await StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
+      await StatusBar.setBackgroundColor({ color: '#0A0A0F' }).catch(() => {})
+      await SplashScreen.hide().catch(() => {})
+    } catch {
+      /* optional chrome */
+    }
 
-    await StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
-    await StatusBar.setBackgroundColor({ color: '#0A0A0F' }).catch(() => {})
-    await SplashScreen.hide().catch(() => {})
-
-    // Tap on workout local notification → open Entrenos
     try {
       const { LocalNotifications } = await import('@capacitor/local-notifications')
       await LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
@@ -41,7 +87,18 @@ export async function initNativeShell() {
     } catch {
       /* optional */
     }
-  } catch {
-    /* Capacitor plugins unavailable on web */
+  } catch (err) {
+    console.warn('initNativeShell:', err?.message || err)
+    try {
+      const { SplashScreen } = await import('@capacitor/splash-screen')
+      await SplashScreen.hide().catch(() => {})
+    } catch {
+      /* ignore */
+    }
   }
+}
+
+/** Bound for main.jsx so React always mounts. */
+export async function initNativeShellSafe() {
+  await withTimeout(initNativeShell(), BOOT_TIMEOUT_MS)
 }

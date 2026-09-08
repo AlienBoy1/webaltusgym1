@@ -5,7 +5,6 @@
   "server": {
     "androidScheme": "https",
     "allowNavigation": [
-      "qyntagymweb.vercel.app",
       "*.supabase.co"
     ]
   },

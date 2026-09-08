@@ -191,6 +191,9 @@ export default function UpdateCenter() {
     }
 
     const setupSW = async () => {
+      // Capacitor: SW causes blank WebViews / stale caches — never register on native
+      const { isNativeApp } = await import('../utils/appMode')
+      if (isNativeApp()) return
       if (!('serviceWorker' in navigator)) return
       try {
         const reg = await navigator.serviceWorker.register('/sw.js')
