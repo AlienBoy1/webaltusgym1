@@ -16,7 +16,9 @@ import {
   FiUser,
   FiUsers,
   FiEye,
-  FiZap
+  FiZap,
+  FiChevronLeft,
+  FiChevronRight
 } from 'react-icons/fi'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
@@ -261,18 +263,18 @@ function ShareWorkoutPrompt({ workout, onShare, onClose, onViewHistory }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="app-overlay-sheet fixed inset-0 flex items-end justify-center bg-black/75 sm:items-center sm:p-4"
+      className="app-overlay-sheet fixed inset-0 z-[120] flex items-end justify-center bg-black/75 sm:items-center sm:p-4"
     >
       <motion.div
         initial={{ y: 30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 30, opacity: 0 }}
-        className="w-full max-w-md rounded-t-3xl border border-app bg-elevated p-5 sm:rounded-3xl sm:p-6"
+        className="app-bottom-sheet-panel w-full max-w-md rounded-t-3xl border border-app bg-elevated p-5 sm:rounded-3xl sm:p-6"
       >
-        <p className="text-xs uppercase tracking-[0.3em] text-app-secondary">Sesión guardada</p>
+        <p className="text-xs uppercase tracking-[0.3em] text-app-secondary">Sesión terminada</p>
         <h3 className="mt-2 font-display text-2xl text-app">{workout.name}</h3>
         <p className="mt-2 text-sm text-app-secondary">
-          ¿Quieres compartir este entrenamiento en Comunidad para que lo vean quienes te siguen?
+          Entrenamiento guardado. ¿Quieres compartirlo en Comunidad?
         </p>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
           <button type="button" onClick={onShare} className="btn-primary flex flex-1 items-center justify-center gap-2 py-3">
@@ -305,12 +307,14 @@ export default function Workouts() {
   const [shareTarget, setShareTarget] = useState(null)
   const [previewRoutine, setPreviewRoutine] = useState(null)
   const [sharing, setSharing] = useState(false)
-  const [dayFilter, setDayFilter] = useState('all')
+  const [dayFilter, setDayFilter] = useState(() => new Date().getDay())
   const [searchQuery, setSearchQuery] = useState('')
   /** During active session: which exercises to show in the checklist */
   const [exerciseListFilter, setExerciseListFilter] = useState('pending') // 'pending' | 'completed'
   const [templates, setTemplates] = useState(loadTemplatesFromStorage)
+  const [routinesSyncError, setRoutinesSyncError] = useState(false)
   const [activeWorkout, setActiveWorkout] = useState(() => getWorkoutSession()?.activeWorkout ?? null)
+  const routinesCarouselRef = useRef(null)
 
   // Merge GymRat / creator metadata from server into local templates
   useEffect(() => {
@@ -319,6 +323,7 @@ export default function Workouts() {
       try {
         const { data } = await api.get('/workouts/routines')
         if (cancelled || !Array.isArray(data)) return
+        setRoutinesSyncError(false)
 
         let pendingCollabSync = []
         setTemplates((prev) => {
@@ -347,7 +352,7 @@ export default function Workouts() {
           }
         }
       } catch {
-        /* offline / schema pending — local list still works */
+        if (!cancelled) setRoutinesSyncError(true)
       }
     })()
     return () => {
@@ -447,6 +452,13 @@ export default function Workouts() {
       return matchesSearch && matchesDay
     })
   }, [templates, searchQuery, dayFilter])
+
+  const scrollRoutinesCarousel = (direction) => {
+    const el = routinesCarouselRef.current
+    if (!el) return
+    const amount = Math.min(360, Math.round(el.clientWidth * 0.85))
+    el.scrollBy({ left: direction * amount, behavior: 'smooth' })
+  }
 
   const syncRoutineToServer = async (routine, { remove = false } = {}) => {
     try {
@@ -625,6 +637,17 @@ export default function Workouts() {
   }
 
   const startWorkout = async (workout) => {
+    const ok = await dialog.confirm(
+      'Se registrarán tus tiempos y pesos de la rutina. ¡Mucha suerte!',
+      {
+        title: `¿Iniciar «${workout.name}»?`,
+        confirmLabel: 'Iniciar',
+        cancelLabel: 'Cancelar',
+        tone: 'info'
+      }
+    )
+    if (!ok) return
+
     const start = new Date().toISOString()
     setActiveWorkout(workout)
     setSessionStart(start)
@@ -633,12 +656,16 @@ export default function Workouts() {
     setRestHistory([])
     setExerciseListFilter('pending')
     clearRestState()
-    await sendWorkoutNotification({
-      activeWorkout: workout,
-      sessionStart: start,
-      completedExercises: [],
-      workoutTime: 0
-    })
+    try {
+      await sendWorkoutNotification({
+        activeWorkout: workout,
+        sessionStart: start,
+        completedExercises: [],
+        workoutTime: 0
+      })
+    } catch {
+      /* notification optional */
+    }
   }
 
   const cancelWorkout = async () => {
@@ -1490,8 +1517,20 @@ export default function Workouts() {
             />
           </div>
           <p className="mt-2 max-w-lg text-sm text-app-secondary sm:text-base">
-            Elige una rutina e inicia. Tu sesión sigue activa si cambias de pantalla.
+            Filtra por día y desliza las rutinas. Tu sesión sigue activa si cambias de pantalla.
           </p>
+          {routinesSyncError && (
+            <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              No se pudo sincronizar con el servidor. Se muestran tus rutinas guardadas en este dispositivo.
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={() => setRoutinesSyncError(false)}
+              >
+                Ocultar
+              </button>
+            </p>
+          )}
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:self-start">
           <button
@@ -1532,7 +1571,7 @@ export default function Workouts() {
           />
         </div>
 
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-hide">
           <button
             type="button"
             onClick={() => setDayFilter('all')}
@@ -1574,35 +1613,81 @@ export default function Workouts() {
         <div className="rounded-[1.75rem] border border-app bg-elevated px-6 py-12 text-center">
           <p className="font-display text-xl text-app">Sin rutinas</p>
           <p className="mt-2 text-sm text-app-secondary">
-            {searchQuery.trim() || dayFilter !== 'all'
-              ? 'No hay rutinas que coincidan con tu búsqueda o filtro.'
-              : 'Crea tu primera rutina para empezar a entrenar.'}
+            {searchQuery.trim()
+              ? 'No hay rutinas que coincidan con tu búsqueda.'
+              : dayFilter !== 'all'
+                ? `No hay rutinas para ${WEEK_DAYS.find((d) => d.id === Number(dayFilter))?.full || 'este día'}. Asigna días al crear/editar, o mira todas.`
+                : 'Crea tu primera rutina para empezar a entrenar.'}
           </p>
-          {(searchQuery.trim() || dayFilter !== 'all') && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('')
-                setDayFilter('all')
-              }}
-              className="btn-secondary mt-4 px-4 py-2 text-sm"
-            >
-              Limpiar filtros
-            </button>
-          )}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            {(searchQuery.trim() || dayFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('')
+                  setDayFilter('all')
+                }}
+                className="btn-secondary px-4 py-2 text-sm"
+              >
+                Ver todas
+              </button>
+            )}
+            {dayFilter !== 'all' && Number(dayFilter) !== todayId && (
+              <button
+                type="button"
+                onClick={() => setDayFilter(todayId)}
+                className="btn-secondary px-4 py-2 text-sm"
+              >
+                Ver hoy
+              </button>
+            )}
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-          {filteredTemplates.map((template, i) => {
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <p className="text-xs text-app-secondary">
+              {filteredTemplates.length} rutina{filteredTemplates.length === 1 ? '' : 's'}
+              {dayFilter !== 'all'
+                ? ` · ${WEEK_DAYS.find((d) => d.id === Number(dayFilter))?.full || ''}`
+                : ' · Todas'}
+              {filteredTemplates.length > 1 ? ' · Desliza →' : ''}
+            </p>
+            {filteredTemplates.length > 1 && (
+              <div className="hidden items-center gap-1 sm:flex">
+                <button
+                  type="button"
+                  onClick={() => scrollRoutinesCarousel(-1)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-app bg-elevated text-app-secondary hover:text-app"
+                  aria-label="Rutina anterior"
+                >
+                  <FiChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollRoutinesCarousel(1)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-app bg-elevated text-app-secondary hover:text-app"
+                  aria-label="Rutina siguiente"
+                >
+                  <FiChevronRight size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+          <div
+            ref={routinesCarouselRef}
+            className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 scrollbar-hide sm:mx-0 sm:px-0"
+          >
+            {filteredTemplates.map((template, i) => {
             const templateDays = normalizeDays(template.days)
             return (
               <motion.article
                 key={template.id}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
+                transition={{ delay: Math.min(i, 6) * 0.04 }}
                 whileHover={{ y: -3 }}
-                className={`group relative overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-5 sm:p-6 ${
+                className={`group relative w-[min(88vw,22rem)] shrink-0 snap-center overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-5 sm:w-[min(48%,22rem)] sm:snap-start sm:p-6 ${
                   COLOR_MAP[template.color] || COLOR_MAP.primary
                 }`}
               >
@@ -1768,6 +1853,7 @@ export default function Workouts() {
               </motion.article>
             )
           })}
+          </div>
         </div>
       )}
 

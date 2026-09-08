@@ -19,7 +19,8 @@ import {
   FiFile,
   FiActivity,
   FiCornerUpLeft,
-  FiLink
+  FiLink,
+  FiSlash
 } from 'react-icons/fi'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -1774,6 +1775,29 @@ export default function Chat() {
     }
   }
 
+  const handleBlockPeer = async () => {
+    if (!selectedChat?.otherId) return
+    setShowThreadMenu(false)
+    const ok = await dialog.confirm(
+      `${selectedChat.name || 'Esta persona'} no podrá enviarte mensajes ni ver tu perfil. Se eliminará el seguimiento entre ambos.`,
+      {
+        title: '¿Bloquear a este usuario?',
+        confirmLabel: 'Bloquear',
+        cancelLabel: 'Cancelar',
+        tone: 'danger'
+      }
+    )
+    if (!ok) return
+    try {
+      await api.post(`/social/${selectedChat.otherId}/block`)
+      toast.success('Usuario bloqueado')
+      setSelectedChat(null)
+      setConversations((convs) => convs.filter((c) => c.otherId !== selectedChat.otherId))
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo bloquear')
+    }
+  }
+
   const handleAddShortcut = () => {
     if (!user?._id || !selectedChat?.otherId) return
     setShowThreadMenu(false)
@@ -2354,6 +2378,12 @@ export default function Chat() {
                         { icon: FiImage, label: 'Archivos y publicaciones', action: openSharedSheet },
                         { icon: FiActivity, label: 'Ver entrenamientos', action: openRoutinesSheet },
                         { icon: FiUser, label: 'Estilo del chat', action: openWallpaperSheet },
+                        {
+                          icon: FiSlash,
+                          label: 'Bloquear a este usuario',
+                          action: handleBlockPeer,
+                          danger: true
+                        },
                         { icon: FiTrash2, label: 'Vaciar chat', action: handleClearChat, danger: true },
                         { icon: FiBookmark, label: 'Crear acceso directo', action: handleAddShortcut }
                       ].map(({ icon: Icon, label, action, danger }) => (

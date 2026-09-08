@@ -10,6 +10,7 @@ import {
   QISI_MESSAGING_COPY
 } from '../utils/qisi.js'
 import { persistMedia, isInlineDataUrl } from '../utils/mediaStorage.js'
+import { areUsersBlocked } from '../utils/userBlocks.js'
 
 /** Mark peer→me messages as delivered/read. Falls back if `delivered` column missing. */
 async function markInboundReceipts({ fromId, myId, mode }) {
@@ -650,6 +651,13 @@ router.post('/send', authenticate, async (req, res) => {
       return res.status(403).json({
         message: QISI_MESSAGING_COPY,
         code: QISI_MESSAGING_CODE
+      })
+    }
+
+    if (await areUsersBlocked(req.user.id, to)) {
+      return res.status(403).json({
+        message: 'No puedes enviar mensajes a este usuario',
+        code: 'USER_BLOCKED'
       })
     }
 

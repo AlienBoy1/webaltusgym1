@@ -19,6 +19,7 @@ import {
   isInlineDataUrl
 } from '../utils/mediaStorage.js'
 import { deleteUserAccount } from '../services/deleteUserAccount.js'
+import { getBlockRelation } from '../utils/userBlocks.js'
 
 const router = express.Router()
 
@@ -900,6 +901,27 @@ router.get('/:id', authenticate, async (req, res) => {
 
     if (error || !found) return res.status(404).json({ message: 'Usuario no encontrado' })
     const profile = await migrateProfileMediaRow(found)
+
+    if (profile.id !== req.user.id) {
+      const blockRel = await getBlockRelation(req.user.id, profile.id)
+      if (blockRel.isBlockedByMe || blockRel.isBlockedByThem) {
+        return res.status(403).json({
+          message: blockRel.isBlockedByMe
+            ? 'Bloqueaste a este usuario. Desbloquéalo para ver su perfil.'
+            : 'No puedes ver este perfil',
+          code: 'USER_BLOCKED',
+          isBlockedByMe: blockRel.isBlockedByMe,
+          isBlockedByThem: blockRel.isBlockedByThem,
+          user: {
+            id: profile.id,
+            _id: profile.id,
+            name: blockRel.isBlockedByMe ? profile.name : 'Usuario',
+            username: blockRel.isBlockedByMe ? profile.username : null,
+            avatar: blockRel.isBlockedByMe ? profile.avatar : null
+          }
+        })
+      }
+    }
 
     // Hide badges from visitors when profile is private and they don't follow
     if (profile.id !== req.user.id) {

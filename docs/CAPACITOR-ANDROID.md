@@ -6,7 +6,7 @@ La app de Play deja de ser TWA/Bubblewrap y pasa a **Capacitor**: shell Android 
 |----------|--------|
 | Package ID | `gym.qyntra.app` (mismo que en Play) |
 | Proyecto Android | `client/android/` |
-| Versión FCM | `2.1.0` (`versionCode` **4**) |
+| Versión | `2.2.1` (`versionCode` **6**) — sesión persistente + notif. entreno |
 | API en nativo | `https://qyntagymweb.vercel.app/api` |
 
 ---
@@ -78,14 +78,14 @@ En la captura:
 
 > “Create new release” está gris porque ya hay un draft. Edita ese draft; no crees otro.
 
-### B) Subir 2.1.0 (FCM) — nueva release Alpha
+### B) Subir 2.2.0 (bloqueo + push fix) — Alpha
 
-Cuando compiles `2.1.0` (`versionCode` 4):
+Cuando compiles `2.2.0` (`versionCode` 5):
 
-1. Si 2.0.0 ya no es draft (ya en Alpha), pulsa **Create new release**.
+1. Si 2.0.0 / 2.1.0 ya no es draft, pulsa **Create new release**.
 2. Sube:
    `client\android\app\build\outputs\bundle\release\app-release.aab`
-3. Notas: `2.1.0 — Push nativo FCM`.
+3. Notas: `2.2.0 — Push nativo + bloqueo de usuarios + fixes follow`.
 4. Rollout to Alpha → revisión.
 
 ### C) Versión pública (Production) — dónde y cómo

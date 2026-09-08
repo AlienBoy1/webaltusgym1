@@ -19,6 +19,7 @@ import Login from './pages/Login'
 
 const Register = lazy(() => import('./pages/Register'))
 const AuthCallback = lazy(() => import('./pages/AuthCallback'))
+const AuthNativeHandoff = lazy(() => import('./pages/AuthNativeHandoff'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
@@ -172,6 +173,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/native-handoff" element={<AuthNativeHandoff />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/privacidad" element={<PrivacyPolicy />} />

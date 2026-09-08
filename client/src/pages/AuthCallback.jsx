@@ -8,6 +8,7 @@ import {
   savePendingGoogleRegistration,
   clearPendingGoogleRegistration
 } from '../utils/googleAuth'
+import { buildNativeHandoffUrl, isNativeOnRemoteOrigin } from '../utils/nativeOrigin'
 
 async function waitForSession({ timeoutMs = 8000 } = {}) {
   const existing = await supabase.auth.getSession()
@@ -69,6 +70,18 @@ export default function AuthCallback() {
 
         if (result.success) {
           clearPendingGoogleRegistration()
+          // Capacitor: leave Vercel WebView → local origin so PushNotifications works
+          if (isNativeOnRemoteOrigin()) {
+            toast.success(isLink ? 'Google vinculado correctamente' : '¡Bienvenido!')
+            window.location.replace(
+              buildNativeHandoffUrl({
+                accessToken: session.access_token,
+                refreshToken: session.refresh_token,
+                next: isLink ? '/settings?section=account' : '/dashboard'
+              })
+            )
+            return
+          }
           toast.success(isLink ? 'Google vinculado correctamente' : '¡Bienvenido!')
           navigate(isLink ? '/settings?section=account' : '/dashboard', { replace: true })
           return
@@ -92,6 +105,16 @@ export default function AuthCallback() {
             'Completa tu registro con los datos restantes. El correo de Google ya está listo.',
             { icon: '🔐', duration: 5000 }
           )
+          if (isNativeOnRemoteOrigin()) {
+            window.location.replace(
+              buildNativeHandoffUrl({
+                accessToken: session.access_token,
+                refreshToken: session.refresh_token,
+                next: '/register?google=1'
+              })
+            )
+            return
+          }
           navigate('/register?google=1', { replace: true })
           return
         }

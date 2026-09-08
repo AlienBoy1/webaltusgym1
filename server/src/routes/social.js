@@ -6,6 +6,12 @@ import { notifyUser } from '../services/notificationService.js'
 import { resolveMentions, notifyPostMentions } from '../utils/mentions.js'
 import { isQiSiProfile, isQiSiUsername } from '../utils/qisi.js'
 import { persistMediaList, isInlineDataUrl, scheduleProfileMediaMigrate } from '../utils/mediaStorage.js'
+import {
+  areUsersBlocked,
+  getBlockRelation,
+  blockUser,
+  unblockUser
+} from '../utils/userBlocks.js'
 
 const router = express.Router()
 
@@ -1654,6 +1660,13 @@ router.post('/:id/follow', authenticate, async (req, res) => {
       })
     }
 
+    if (await areUsersBlocked(currentUserId, targetUserId)) {
+      return res.status(403).json({
+        message: 'No puedes seguir a este usuario',
+        code: 'USER_BLOCKED'
+      })
+    }
+
     const { data: existingFollow } = await supabaseAdmin
       .from('follows')
       .select('id')
@@ -1736,17 +1749,16 @@ router.post('/:id/follow', authenticate, async (req, res) => {
 // Accept follow request
 router.post('/:id/accept-follow', authenticate, async (req, res) => {
   try {
-    const requesterId = req.params.id
+    const requester = await resolveProfileTarget(req.params.id)
     const currentUserId = req.user.id
-
-    const { data: requester } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('id', requesterId)
-      .maybeSingle()
 
     if (!requester) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+    const requesterId = requester.id
+
+    if (await areUsersBlocked(currentUserId, requesterId)) {
+      return res.status(403).json({ message: 'No puedes aceptar esta solicitud', code: 'USER_BLOCKED' })
     }
 
     const { data: deletedRequests, error: deleteError } = await supabaseAdmin
@@ -1786,18 +1798,13 @@ router.post('/:id/accept-follow', authenticate, async (req, res) => {
 // Reject follow request
 router.post('/:id/reject-follow', authenticate, async (req, res) => {
   try {
-    const requesterId = req.params.id
+    const requester = await resolveProfileTarget(req.params.id)
     const currentUserId = req.user.id
-
-    const { data: requester } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('id', requesterId)
-      .maybeSingle()
 
     if (!requester) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
+    const requesterId = requester.id
 
     await supabaseAdmin
       .from('follow_requests')
@@ -1814,18 +1821,13 @@ router.post('/:id/reject-follow', authenticate, async (req, res) => {
 // Unfollow user
 router.post('/:id/unfollow', authenticate, async (req, res) => {
   try {
-    const targetUserId = req.params.id
+    const targetUser = await resolveProfileTarget(req.params.id)
     const currentUserId = req.user.id
-
-    const { data: targetUser } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('id', targetUserId)
-      .maybeSingle()
 
     if (!targetUser) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
+    const targetUserId = targetUser.id
 
     await supabaseAdmin
       .from('follows')
@@ -1849,8 +1851,13 @@ router.post('/:id/unfollow', authenticate, async (req, res) => {
 // Cancel pending follow request
 router.post('/:id/cancel-follow', authenticate, async (req, res) => {
   try {
-    const targetUserId = req.params.id
+    const targetUser = await resolveProfileTarget(req.params.id)
     const currentUserId = req.user.id
+
+    if (!targetUser) {
+      return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+    const targetUserId = targetUser.id
 
     const { data: deleted, error } = await supabaseAdmin
       .from('follow_requests')
@@ -1867,6 +1874,80 @@ router.post('/:id/cancel-follow', authenticate, async (req, res) => {
     res.json({ message: 'Solicitud cancelada' })
   } catch (error) {
     res.status(500).json({ message: 'Error al cancelar solicitud', error: error.message })
+  }
+})
+
+// Block user
+router.post('/:id/block', authenticate, async (req, res) => {
+  try {
+    const targetUser = await resolveProfileTarget(req.params.id)
+    if (!targetUser) {
+      return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+    const targetUserId = targetUser.id
+    const currentUserId = req.user.id
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({ message: 'No puedes bloquearte a ti mismo' })
+    }
+    if (isQiSiProfile(targetUser) || isQiSiUsername(targetUser.username)) {
+      return res.status(403).json({ message: 'No se puede bloquear la cuenta de sistema', code: 'QISI_NO_BLOCK' })
+    }
+
+    await blockUser(currentUserId, targetUserId)
+    res.json({ message: 'Usuario bloqueado', status: 'blocked' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al bloquear usuario', error: error.message })
+  }
+})
+
+// Unblock user
+router.delete('/:id/block', authenticate, async (req, res) => {
+  try {
+    const targetUser = await resolveProfileTarget(req.params.id)
+    if (!targetUser) {
+      return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
+    await unblockUser(req.user.id, targetUser.id)
+    res.json({ message: 'Usuario desbloqueado', status: 'unblocked' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al desbloquear usuario', error: error.message })
+  }
+})
+
+// List users I blocked
+router.get('/blocked', authenticate, async (req, res) => {
+  try {
+    const { data: rows, error } = await supabaseAdmin
+      .from('user_blocks')
+      .select('blocked_id, created_at')
+      .eq('blocker_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (error) {
+      if (/user_blocks|schema cache|does not exist/i.test(error.message || '')) {
+        return res.json([])
+      }
+      throw error
+    }
+
+    const userMap = await getProfilesMap((rows || []).map((r) => r.blocked_id))
+    res.json(
+      (rows || []).map((r) => {
+        const u = userMap[r.blocked_id]
+        return {
+          id: r.blocked_id,
+          _id: r.blocked_id,
+          blockedAt: r.created_at,
+          user: u
+            ? { _id: u.id, id: u.id, name: u.name, username: u.username || null, avatar: u.avatar }
+            : r.blocked_id
+        }
+      })
+    )
+  } catch (error) {
+    res.status(500).json({ message: 'Error al listar bloqueados', error: error.message })
   }
 })
 
@@ -1986,11 +2067,14 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
         hasPendingRequest: false,
         followersCount: 0,
         followingCount: 0,
+        isBlockedByMe: false,
+        isBlockedByThem: false,
         isSystemAccount: true
       })
     }
 
     const targetUserId = targetUser.id
+    const blockRel = await getBlockRelation(req.user.id, targetUserId)
 
     const [{ data: follow }, { data: pending }, { count: followersCount }, { count: followingCount }] =
       await Promise.all([
@@ -2020,7 +2104,9 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
       isFollowing: !!follow,
       hasPendingRequest: !!pending,
       followersCount: followersCount || 0,
-      followingCount: followingCount || 0
+      followingCount: followingCount || 0,
+      isBlockedByMe: blockRel.isBlockedByMe,
+      isBlockedByThem: blockRel.isBlockedByThem
     })
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener estado', error: error.message })

@@ -40,6 +40,8 @@ export async function deleteUserAccount(userId) {
 
   await supabaseAdmin.from('follows').delete().eq('follower_id', userId)
   await supabaseAdmin.from('follows').delete().eq('following_id', userId)
+  await supabaseAdmin.from('user_blocks').delete().eq('blocker_id', userId)
+  await supabaseAdmin.from('user_blocks').delete().eq('blocked_id', userId)
   await supabaseAdmin.from('messages').delete().eq('from_user_id', userId)
   await supabaseAdmin.from('messages').delete().eq('to_user_id', userId)
   await supabaseAdmin.from('notifications').delete().eq('user_id', userId)

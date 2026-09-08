@@ -1,7 +1,11 @@
+import { isNativeApp } from './appMode'
+
 const WORKOUT_SESSION_KEY = 'qyntra:workout_session'
 const WORKOUT_PREFERENCES_KEY = 'qyntra:workout_preferences'
 const WORKOUT_BUBBLE_POS_KEY = 'qyntra:workout_bubble_pos'
 const SESSION_EVENT = 'qyntra:workout-session'
+const NATIVE_NOTIF_ID = 42001
+const NATIVE_CHANNEL_ID = 'qyntra_workout'
 
 export function getWorkoutSession() {
   try {
@@ -116,19 +120,114 @@ export function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
 }
 
-export async function sendWorkoutNotification(session) {
-  if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return
+function buildWorkoutNotificationCopy(session, now = Date.now()) {
+  const workout = session?.activeWorkout
+  if (!workout) return null
+
   const nextExercise = getCurrentExercise(session)
-  const elapsed = getElapsedSeconds(session)
-  const body = `Sesión: ${session.activeWorkout.name} · ${session.completedExercises.length}/${session.activeWorkout.exercises.length} · Tiempo ${formatTime(elapsed)} · Siguiente: ${nextExercise ? nextExercise.name : 'Finalizando'}`
+  const elapsed = getElapsedSeconds(session, now)
+  const restRemaining = getRestRemaining(session, now)
+  const done = session.completedExercises?.length || 0
+  const total = workout.exercises?.length || 0
+  const exerciseLabel = nextExercise?.name || 'Finalizando'
+
+  const title = 'Entrenamiento en curso'
+  let body
+  if (restRemaining > 0) {
+    body = `${formatTime(elapsed)} · Descanso ${formatTime(restRemaining)} · Luego: ${exerciseLabel}`
+  } else {
+    body = `${formatTime(elapsed)} · Ahora: ${exerciseLabel} · ${done}/${total}`
+  }
+
+  return {
+    title,
+    body,
+    workoutName: workout.name,
+    exerciseId: nextExercise?.id || '',
+    elapsed,
+    restRemaining,
+    exerciseLabel
+  }
+}
+
+let nativeChannelReady = false
+
+async function ensureNativeWorkoutChannel() {
+  if (nativeChannelReady || !isNativeApp()) return
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.createChannel({
+      id: NATIVE_CHANNEL_ID,
+      name: 'Entrenamiento',
+      description: 'Sesión de entreno en curso',
+      importance: 4,
+      visibility: 1,
+      sound: undefined,
+      vibration: false
+    })
+    nativeChannelReady = true
+  } catch {
+    /* channel may already exist */
+    nativeChannelReady = true
+  }
+}
+
+async function sendNativeWorkoutNotification(session) {
+  const { LocalNotifications } = await import('@capacitor/local-notifications')
+  let perm = await LocalNotifications.checkPermissions()
+  if (perm.display === 'prompt' || perm.display === 'prompt-with-rationale') {
+    perm = await LocalNotifications.requestPermissions()
+  }
+  if (perm.display !== 'granted') return false
+
+  await ensureNativeWorkoutChannel()
+  const copy = buildWorkoutNotificationCopy(session)
+  if (!copy) return false
+
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: NATIVE_NOTIF_ID,
+        title: copy.title,
+        body: `${copy.workoutName}\n${copy.body}`,
+        channelId: NATIVE_CHANNEL_ID,
+        largeBody: `${copy.workoutName}\n${copy.body}`,
+        summaryText: copy.exerciseLabel,
+        ongoing: true,
+        autoCancel: false,
+        silent: true,
+        extra: {
+          type: 'workout_session',
+          url: `/workouts?focus=${copy.exerciseId || ''}`
+        }
+      }
+    ]
+  })
+  return true
+}
+
+async function clearNativeWorkoutNotification() {
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.cancel({ notifications: [{ id: NATIVE_NOTIF_ID }] })
+  } catch {
+    /* ignore */
+  }
+}
+
+async function sendWebWorkoutNotification(session) {
+  if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return false
+  const copy = buildWorkoutNotificationCopy(session)
+  if (!copy) return false
+
   const registration = await navigator.serviceWorker.ready.catch(() => null)
-  if (!registration) return
+  if (!registration) return false
 
   const existing = await registration.getNotifications({ tag: 'qyntra-workout-session' }).catch(() => [])
   existing.forEach((notification) => notification.close())
 
-  registration.showNotification('Entrenamiento en curso', {
-    body,
+  registration.showNotification(copy.title, {
+    body: `${copy.workoutName} · ${copy.body}`,
     icon: '/pwa-192x192.png',
     badge: '/badge-96x96.png',
     tag: 'qyntra-workout-session',
@@ -137,12 +236,34 @@ export async function sendWorkoutNotification(session) {
     silent: true,
     data: {
       type: 'NOTIFICATION_CLICK',
-      url: `/workouts?focus=${nextExercise?.id || ''}`
+      url: `/workouts?focus=${copy.exerciseId || ''}`
     }
   })
+  return true
+}
+
+export async function sendWorkoutNotification(session) {
+  if (!session?.activeWorkout) return false
+  if (isNativeApp()) {
+    try {
+      return await sendNativeWorkoutNotification(session)
+    } catch (err) {
+      console.warn('native workout notification:', err?.message || err)
+      return false
+    }
+  }
+  try {
+    return await sendWebWorkoutNotification(session)
+  } catch {
+    return false
+  }
 }
 
 export async function clearWorkoutNotification() {
+  if (isNativeApp()) {
+    await clearNativeWorkoutNotification()
+    return
+  }
   if (!('serviceWorker' in navigator)) return
   const registration = await navigator.serviceWorker.ready.catch(() => null)
   if (!registration) return

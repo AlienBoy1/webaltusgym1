@@ -24,6 +24,16 @@ export async function isPushSupported() {
 }
 
 async function subscribeNativeFcm() {
+  const { Capacitor } = await import('@capacitor/core')
+  if (!Capacitor.isPluginAvailable('PushNotifications')) {
+    const { recoverNativeLocalOrigin, isNativeOnRemoteOrigin } = await import('./nativeOrigin')
+    if (isNativeOnRemoteOrigin()) {
+      await recoverNativeLocalOrigin({ next: '/settings?section=notifications' })
+      throw new Error('Reabriendo la app nativa para activar notificaciones…')
+    }
+    throw new Error('Notificaciones nativas no disponibles. Cierra la app por completo y ábrela de nuevo.')
+  }
+
   const { PushNotifications } = await import('@capacitor/push-notifications')
 
   let perm = await PushNotifications.checkPermissions()

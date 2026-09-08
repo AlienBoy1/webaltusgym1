@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
@@ -15,7 +16,9 @@ import {
   FiClock,
   FiLock,
   FiShare2,
-  FiZap
+  FiZap,
+  FiMoreVertical,
+  FiSlash
 } from 'react-icons/fi'
 import api from '../../utils/api'
 import { useAuthStore } from '../../store/authStore'
@@ -55,8 +58,14 @@ export default function UserProfile() {
     isFollowing: false,
     hasPendingRequest: false,
     followersCount: 0,
-    followingCount: 0
+    followingCount: 0,
+    isBlockedByMe: false,
+    isBlockedByThem: false
   })
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [profileBlocked, setProfileBlocked] = useState(null) // { isBlockedByMe, isBlockedByThem, user }
+  const profileMenuRef = useRef(null)
+  const profileMenuDropdownRef = useRef(null)
   const [posts, setPosts] = useState([])
   const [showPosts, setShowPosts] = useState(false)
   const [loadingPosts, setLoadingPosts] = useState(false)
@@ -191,6 +200,7 @@ export default function UserProfile() {
   const fetchUser = async () => {
     try {
       setLoading(true)
+      setProfileBlocked(null)
       const { data } = await api.get(`/users/${id}`)
       setUser(data)
       // Sync own media into shell/Profile store (slim /auth/me omits base64)
@@ -204,6 +214,23 @@ export default function UserProfile() {
       }
     } catch (error) {
       console.error('Error fetching user:', error)
+      if (error.response?.data?.code === 'USER_BLOCKED') {
+        setProfileBlocked({
+          isBlockedByMe: Boolean(error.response.data.isBlockedByMe),
+          isBlockedByThem: Boolean(error.response.data.isBlockedByThem),
+          user: error.response.data.user || null
+        })
+        setUser(error.response.data.user || null)
+        setFollowStatus((prev) => ({
+          ...prev,
+          isFollowing: false,
+          hasPendingRequest: false,
+          isBlockedByMe: Boolean(error.response.data.isBlockedByMe),
+          isBlockedByThem: Boolean(error.response.data.isBlockedByThem)
+        }))
+        setFollowStatusReady(true)
+        return
+      }
       toast.error('Error al cargar perfil')
     } finally {
       setLoading(false)
@@ -406,6 +433,14 @@ export default function UserProfile() {
   }
 
   const handleMessage = async () => {
+    if (followStatus.isBlockedByMe || followStatus.isBlockedByThem || profileBlocked) {
+      await dialog.alert('No puedes enviar mensajes a este usuario.', {
+        title: 'Mensajería no disponible',
+        confirmLabel: 'Entendido',
+        tone: 'info'
+      })
+      return
+    }
     if (isQiSiProfile(user)) {
       await dialog.alert(QISI_MESSAGING_COPY, {
         title: QISI_MESSAGING_TITLE,
@@ -438,10 +473,109 @@ export default function UserProfile() {
     })
   }
 
+  const handleBlockUser = async () => {
+    setShowProfileMenu(false)
+    const targetId = resolvedId || id
+    const ok = await dialog.confirm(
+      'Esta persona no podrá enviarte mensajes ni ver tu perfil. También se eliminará el seguimiento entre ambos.',
+      {
+        title: '¿Bloquear a este usuario?',
+        confirmLabel: 'Bloquear',
+        cancelLabel: 'Cancelar',
+        tone: 'danger'
+      }
+    )
+    if (!ok) return
+    try {
+      await api.post(`/social/${targetId}/block`)
+      toast.success('Usuario bloqueado')
+      setFollowStatus((prev) => ({
+        ...prev,
+        isFollowing: false,
+        hasPendingRequest: false,
+        isBlockedByMe: true
+      }))
+      await fetchUser()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo bloquear')
+    }
+  }
+
+  const handleUnblockUser = async () => {
+    setShowProfileMenu(false)
+    const targetId = resolvedId || profileBlocked?.user?._id || profileBlocked?.user?.id || id
+    try {
+      await api.delete(`/social/${targetId}/block`)
+      toast.success('Usuario desbloqueado')
+      setProfileBlocked(null)
+      await fetchUser()
+      await checkFollowStatus(targetId)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo desbloquear')
+    }
+  }
+
+  useEffect(() => {
+    if (!showProfileMenu) return undefined
+    const onPointerDown = (e) => {
+      const inTrigger = profileMenuRef.current?.contains(e.target)
+      const inMenu = profileMenuDropdownRef.current?.contains(e.target)
+      if (!inTrigger && !inMenu) setShowProfileMenu(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [showProfileMenu])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
         <div className="w-8 h-8 border-4 border-dark-100 border-t-primary-500 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (profileBlocked?.isBlockedByThem) {
+    return (
+      <div className="space-y-4 pb-24 sm:pb-8">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 text-app-secondary hover:text-app"
+        >
+          <FiArrowLeft /> Volver
+        </button>
+        <div className="card p-8 text-center">
+          <FiSlash className="mx-auto mb-3 text-red-400" size={36} />
+          <h1 className="font-display text-2xl text-app">Perfil no disponible</h1>
+          <p className="mt-2 text-sm text-app-secondary">
+            No puedes ver este perfil ni enviar mensajes a esta persona.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (profileBlocked?.isBlockedByMe) {
+    const blockedName = profileBlocked.user?.name || 'este usuario'
+    return (
+      <div className="space-y-4 pb-24 sm:pb-8">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 text-app-secondary hover:text-app"
+        >
+          <FiArrowLeft /> Volver
+        </button>
+        <div className="card p-8 text-center">
+          <FiSlash className="mx-auto mb-3 text-red-400" size={36} />
+          <h1 className="font-display text-2xl text-app">Usuario bloqueado</h1>
+          <p className="mt-2 text-sm text-app-secondary">
+            Bloqueaste a {blockedName}. No puede ver tu perfil ni escribirte.
+          </p>
+          <button type="button" onClick={handleUnblockUser} className="btn-primary mt-6 px-6 py-3">
+            Desbloquear
+          </button>
+        </div>
       </div>
     )
   }
@@ -615,6 +749,58 @@ export default function UserProfile() {
               <FiMessageCircle size={18} />
               Mensaje
             </button>
+            {!isQiSiProfile(user) && (
+              <div className="relative shrink-0" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileMenu((v) => !v)}
+                  className="btn-secondary py-2 px-3 flex items-center"
+                  aria-label="Opciones"
+                  aria-expanded={showProfileMenu}
+                >
+                  <FiMoreVertical size={18} />
+                </button>
+                {showProfileMenu &&
+                  createPortal(
+                    <div
+                      ref={profileMenuDropdownRef}
+                      className="fixed z-[200] min-w-[15rem] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] py-1 shadow-[0_16px_40px_var(--shadow-color)]"
+                      style={{
+                        top: profileMenuRef.current
+                          ? profileMenuRef.current.getBoundingClientRect().bottom + 8
+                          : 120,
+                        right: profileMenuRef.current
+                          ? Math.max(
+                              12,
+                              window.innerWidth - profileMenuRef.current.getBoundingClientRect().right
+                            )
+                          : 12
+                      }}
+                    >
+                      {followStatus.isBlockedByMe ? (
+                        <button
+                          type="button"
+                          onClick={handleUnblockUser}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-muted)]"
+                        >
+                          <FiSlash size={16} className="shrink-0 opacity-80" />
+                          Desbloquear usuario
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleBlockUser}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-500 transition hover:bg-[color:var(--bg-muted)]"
+                        >
+                          <FiSlash size={16} className="shrink-0 opacity-80" />
+                          Bloquear a este usuario
+                        </button>
+                      )}
+                    </div>,
+                    document.body
+                  )}
+              </div>
+            )}
             {isQiSiProfile(user) && (
               <>
                 <button
