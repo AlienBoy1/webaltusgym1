@@ -77,13 +77,8 @@ export async function initNativeShell() {
     }
 
     try {
-      const { LocalNotifications } = await import('@capacitor/local-notifications')
-      await LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
-        const url = event?.notification?.extra?.url || '/workouts'
-        if (typeof window !== 'undefined') {
-          window.location.assign(url.startsWith('/') ? url : `/${url}`)
-        }
-      })
+      const { bindNativeWorkoutNotificationActions } = await import('./workoutSession')
+      await bindNativeWorkoutNotificationActions()
     } catch {
       /* optional */
     }

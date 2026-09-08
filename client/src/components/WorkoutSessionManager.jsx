@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
 import {
   getWorkoutSession,
   getElapsedSeconds,
@@ -9,34 +8,34 @@ import {
 } from '../utils/workoutSession'
 import { isNativeApp } from '../utils/appMode'
 
-const NOTIFY_INTERVAL_MS = 5000
+/** Live timer refresh — same notification id + quiet channel = silent in-place update */
+const NATIVE_TICK_MS = 1000
+/** If user dismisses ongoing notif, bring it back after this delay */
+const REDISPLAY_AFTER_DISMISS_MS = 3000
 
 function getExerciseKey(session) {
   if (!session?.activeWorkout) return ''
   const done = session.completedExercises || []
   const next = session.activeWorkout.exercises?.find((e) => !done.includes(e.id))
-  return next?.id || 'done'
+  return `${next?.id || 'done'}|${session.restEndsAt || ''}|${done.length}`
 }
 
 export default function WorkoutSessionManager() {
-  const location = useLocation()
   const lastSession = useRef(getWorkoutSession())
-  const hasSentBackgroundNotification = useRef(Boolean(lastSession.current?.notificationSentAt))
-  const lastNotifyAt = useRef(0)
+  const lastStructureKey = useRef('')
+  const dismissedAt = useRef(0)
 
   useEffect(() => {
     const tick = async () => {
       const session = getWorkoutSession()
-      const isWorkoutsRoute = location.pathname === '/workouts'
-      const hidden = document.visibilityState !== 'visible'
 
       if (!session?.activeWorkout) {
         if (lastSession.current?.activeWorkout) {
           await clearWorkoutNotification()
         }
-        hasSentBackgroundNotification.current = false
-        lastNotifyAt.current = 0
         lastSession.current = session
+        lastStructureKey.current = ''
+        dismissedAt.current = 0
         return
       }
 
@@ -44,63 +43,66 @@ export default function WorkoutSessionManager() {
       const elapsed = getElapsedSeconds(session, now)
       const restRemaining = getRestRemaining(session, now)
       const restActive = restRemaining > 0
-      const restEndsAt = restActive ? session.restEndsAt : null
 
       const updatedSession = {
         ...session,
         workoutTime: elapsed,
         restRemaining,
         restActive,
-        restEndsAt,
+        restEndsAt: restActive ? session.restEndsAt : null,
         savedAt: new Date().toISOString()
       }
 
-      const shouldNotifyInBackground = hidden || !isWorkoutsRoute
-      const exerciseChanged =
-        getExerciseKey(lastSession.current) !== getExerciseKey(updatedSession) ||
-        lastSession.current?.restEndsAt !== updatedSession.restEndsAt
-      const dueForRefresh =
-        !lastNotifyAt.current || now - lastNotifyAt.current >= NOTIFY_INTERVAL_MS || exerciseChanged
+      const structureKey = getExerciseKey(updatedSession)
+      const structuralChange = structureKey !== lastStructureKey.current
 
-      if (shouldNotifyInBackground) {
-        // Native: keep refreshing so the shade shows live timer + current exercise
-        if (!hasSentBackgroundNotification.current || (isNativeApp() && dueForRefresh)) {
-          await sendWorkoutNotification(updatedSession)
-          updatedSession.notificationSentAt = now
-          hasSentBackgroundNotification.current = true
-          lastNotifyAt.current = now
-        }
-      } else {
-        if (lastSession.current?.activeWorkout && hasSentBackgroundNotification.current) {
-          await clearWorkoutNotification()
-        }
-        hasSentBackgroundNotification.current = false
-        lastNotifyAt.current = 0
-        updatedSession.notificationSentAt = null
-      }
-
-      const prev = lastSession.current
-      const structuralChange =
-        prev?.activeWorkout?.id !== updatedSession.activeWorkout?.id ||
-        prev?.restEndsAt !== updatedSession.restEndsAt ||
-        (prev?.completedExercises?.length || 0) !== (updatedSession.completedExercises?.length || 0) ||
-        prev?.notificationSentAt !== updatedSession.notificationSentAt
-
+      // Soft-update time in storage
       try {
         window.localStorage.setItem('qyntra:workout_session', JSON.stringify(updatedSession))
       } catch {
-        // ignore
+        /* ignore */
       }
       if (structuralChange) {
         window.dispatchEvent(new CustomEvent('qyntra:workout-session'))
+        lastStructureKey.current = structureKey
       }
+
+      if (isNativeApp()) {
+        // Keep ONE ongoing notification for the whole session (foreground or background).
+        // Capacitor uses setOnlyAlertOnce + quiet channel → no sound spam.
+        const waitDismiss =
+          dismissedAt.current && now - dismissedAt.current < REDISPLAY_AFTER_DISMISS_MS
+        if (!waitDismiss) {
+          await sendWorkoutNotification(updatedSession)
+          dismissedAt.current = 0
+        }
+      } else {
+        // Web: only when tab hidden
+        const hidden = document.visibilityState !== 'visible'
+        if (hidden) {
+          await sendWorkoutNotification(updatedSession)
+        } else if (lastSession.current?.notificationSentAt) {
+          await clearWorkoutNotification()
+          updatedSession.notificationSentAt = null
+        }
+      }
+
       lastSession.current = updatedSession
     }
 
-    const interval = window.setInterval(tick, 1000)
+    const interval = window.setInterval(tick, isNativeApp() ? NATIVE_TICK_MS : 1000)
     tick()
-    return () => window.clearInterval(interval)
-  }, [location.pathname])
+
+    const onVisibility = () => {
+      // no clear on native when returning to app — notification stays as mini HUD
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
 
   return null
 }

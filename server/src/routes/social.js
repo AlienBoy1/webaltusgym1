@@ -868,7 +868,7 @@ router.get('/:id/images', authenticate, async (req, res) => {
       if (!isPublic) {
         const { data: follow } = await supabaseAdmin
           .from('follows')
-          .select('id')
+          .select('follower_id')
           .eq('follower_id', req.user.id)
           .eq('following_id', post.user_id)
           .maybeSingle()
@@ -907,7 +907,7 @@ router.get('/post/:id', authenticate, async (req, res) => {
       if (!isPublic) {
         const { data: follow } = await supabaseAdmin
           .from('follows')
-          .select('id')
+          .select('follower_id')
           .eq('follower_id', req.user.id)
           .eq('following_id', post.user_id)
           .maybeSingle()
@@ -973,7 +973,7 @@ router.get('/user/:userId/posts', authenticate, async (req, res) => {
       if (!isPublic) {
         const { data: follow } = await supabaseAdmin
           .from('follows')
-          .select('id')
+          .select('follower_id')
           .eq('follower_id', viewerId)
           .eq('following_id', targetId)
           .maybeSingle()
@@ -1669,7 +1669,7 @@ router.post('/:id/follow', authenticate, async (req, res) => {
 
     const { data: existingFollow } = await supabaseAdmin
       .from('follows')
-      .select('id')
+          .select('follower_id')
       .eq('follower_id', currentUserId)
       .eq('following_id', targetUserId)
       .maybeSingle()
@@ -1688,10 +1688,13 @@ router.post('/:id/follow', authenticate, async (req, res) => {
         .eq('from_user_id', currentUserId)
         .eq('to_user_id', targetUserId)
 
-      const { error } = await supabaseAdmin.from('follows').upsert({
-        follower_id: currentUserId,
-        following_id: targetUserId
-      })
+      const { error } = await supabaseAdmin.from('follows').upsert(
+        {
+          follower_id: currentUserId,
+          following_id: targetUserId
+        },
+        { onConflict: 'follower_id,following_id' }
+      )
       if (error) throw error
 
       await notifyUser({
@@ -1773,10 +1776,13 @@ router.post('/:id/accept-follow', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'No hay solicitud pendiente de este usuario' })
     }
 
-    const { error: followError } = await supabaseAdmin.from('follows').upsert({
-      follower_id: requesterId,
-      following_id: currentUserId
-    })
+    const { error: followError } = await supabaseAdmin.from('follows').upsert(
+      {
+        follower_id: requesterId,
+        following_id: currentUserId
+      },
+      { onConflict: 'follower_id,following_id' }
+    )
     if (followError) throw followError
 
     await notifyUser({
@@ -2080,7 +2086,7 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
       await Promise.all([
         supabaseAdmin
           .from('follows')
-          .select('id')
+          .select('follower_id')
           .eq('follower_id', req.user.id)
           .eq('following_id', targetUserId)
           .maybeSingle(),
@@ -2092,11 +2098,11 @@ router.get('/:id/follow-status', authenticate, async (req, res) => {
           .maybeSingle(),
         supabaseAdmin
           .from('follows')
-          .select('id', { count: 'exact', head: true })
+          .select('*', { count: 'exact', head: true })
           .eq('following_id', targetUserId),
         supabaseAdmin
           .from('follows')
-          .select('id', { count: 'exact', head: true })
+          .select('*', { count: 'exact', head: true })
           .eq('follower_id', targetUserId)
       ])
 

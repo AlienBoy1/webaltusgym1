@@ -23,12 +23,11 @@ import { QYSI_AVATAR_SRC } from './QySiAvatar'
 function sortRailPeople(people) {
   const qysi = people.filter((p) => p.isQiSi || isQiSiProfile(p))
   const rest = people.filter((p) => !(p.isQiSi || isQiSiProfile(p)))
-  const following = rest.filter((p) => p.source === 'following')
-  const suggestions = rest.filter((p) => p.source !== 'following')
   const getUpdatedAt = (id) => getUserPresenceEntry(id)?.updatedAt || 0
   const sorter = (a, b) =>
     comparePresencePeople(a, b, getUserStatus, (id) => getUserLastSeen(id), getUpdatedAt)
-  return [...qysi, ...following.sort(sorter), ...suggestions.sort(sorter)]
+  // Menos inactividad → primero; más inactividad → al final (QiSi siempre primero)
+  return [...qysi, ...rest.sort(sorter)]
 }
 
 function BubbleItem({ person, now }) {

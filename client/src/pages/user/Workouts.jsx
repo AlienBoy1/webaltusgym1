@@ -35,7 +35,8 @@ import {
   getCurrentExercise,
   formatTime,
   clearWorkoutNotification,
-  sendWorkoutNotification
+  sendWorkoutNotification,
+  subscribeWorkoutSession
 } from '../../utils/workoutSession'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
@@ -523,6 +524,35 @@ export default function Workouts() {
       savedAt: new Date().toISOString()
     })
   }, [activeWorkout, sessionStart, completedExercises, restEndsAt, restTimerSource, restTotal])
+
+  // Sync when notification actions mutate the session (complete / skip rest)
+  useEffect(() => {
+    return subscribeWorkoutSession((session) => {
+      if (!session?.activeWorkout || !activeWorkout) return
+      if ((session.activeWorkout.id || session.activeWorkout.name) !== (activeWorkout.id || activeWorkout.name)) {
+        return
+      }
+      const nextDone = session.completedExercises || []
+      setCompletedExercises((prev) => {
+        if (prev.length === nextDone.length && prev.every((id, i) => id === nextDone[i])) return prev
+        return nextDone
+      })
+      if (session.restEndsAt) {
+        setRestEndsAt(session.restEndsAt)
+        setRestActive(true)
+        setRestRemaining(getRestRemaining(session))
+        setRestTimerSource(session.restTimerSource || null)
+        if (session.restDuration) setRestTotal(session.restDuration)
+        restStartedAt.current = Date.now()
+      } else if (restEndsAt) {
+        setRestEndsAt(null)
+        setRestActive(false)
+        setRestRemaining(0)
+        setRestTimerSource(null)
+        restStartedAt.current = null
+      }
+    })
+  }, [activeWorkout, restEndsAt])
 
   // Local clock — derived from absolute timestamps
   useEffect(() => {

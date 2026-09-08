@@ -176,7 +176,13 @@ router.get('/presence-rail', authenticate, async (req, res) => {
       })
       .slice(0, 20)
 
-    const people = [...following, ...suggestions].slice(0, limit)
+    const people = [...following, ...suggestions]
+      .sort((a, b) => {
+        const at = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0
+        const bt = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0
+        return bt - at // más reciente (menos inactivo) primero
+      })
+      .slice(0, limit)
     const qisiPerson = await loadQiSiRailPerson({ source: 'system' })
     res.json({ people: pinQiSiFirst(people, qisiPerson).slice(0, limit) })
   } catch (error) {
@@ -929,7 +935,7 @@ router.get('/:id', authenticate, async (req, res) => {
       if (!isPublic) {
         const { data: follow } = await supabaseAdmin
           .from('follows')
-          .select('id')
+          .select('follower_id')
           .eq('follower_id', req.user.id)
           .eq('following_id', profile.id)
           .maybeSingle()
