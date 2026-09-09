@@ -4,6 +4,8 @@
  */
 
 import { getShareThemePalette } from './shareThemePalette'
+import { exportCanvasDataUrl } from './shareImageExport'
+import { loadCorsImage } from './loadCorsImage'
 
 function roundRect(ctx, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2)
@@ -17,13 +19,7 @@ function roundRect(ctx, x, y, width, height, radius) {
 }
 
 function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
+  return loadCorsImage(src)
 }
 
 async function drawCover(ctx, coverUrl, x, y, w, h, P) {
@@ -250,5 +246,5 @@ export async function buildNativeProfileShareImage(user, options = {}) {
   ctx.font = '600 22px Outfit, system-ui, sans-serif'
   ctx.fillText('Qyntra Gym', W / 2, H - 48)
 
-  return canvas.toDataURL('image/png')
+  return exportCanvasDataUrl(canvas)
 }

@@ -5,6 +5,8 @@
  */
 
 import { getShareThemePalette } from './shareThemePalette'
+import { exportCanvasDataUrl } from './shareImageExport'
+import { loadCorsImage } from './loadCorsImage'
 
 const MOODS = {
   happy: { label: 'Feliz', emoji: '😊' },
@@ -90,13 +92,7 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 8) {
 }
 
 function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
+  return loadCorsImage(src)
 }
 
 async function drawAvatar(ctx, user, x, y, size) {
@@ -1346,7 +1342,7 @@ export async function buildNativePostShareImage(post, options = {}) {
   ctx.fillText('Qyntra Gym · Comunidad', w / 2, phoneY + phoneH + 52)
   ctx.textAlign = 'left'
 
-  return canvas.toDataURL('image/png')
+  return exportCanvasDataUrl(canvas)
 }
 
 export async function buildWhatsAppCard(post, options) {

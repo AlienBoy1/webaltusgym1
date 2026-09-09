@@ -6,6 +6,7 @@ import { FaWhatsapp } from 'react-icons/fa'
 import toast from 'react-hot-toast'
 import { buildNativeProfileShareImage } from '../utils/buildNativeProfileShareImage'
 import { getInviteUrl } from '../utils/appLinks'
+import { shareImageFile } from '../utils/shareImageExport'
 
 function profileShareText(user, inviteUrl) {
   const name = user?.name || 'Usuario'
@@ -53,25 +54,21 @@ export default function ShareProfileSheet({ open, onClose, user }) {
     }
   }, [open, user])
 
-  const toFile = async () => {
-    if (!preview) return null
-    const blob = await (await fetch(preview)).blob()
-    return new File([blob], 'qyntra-perfil.png', { type: 'image/png' })
-  }
-
   const shareNative = async () => {
     setSharing(true)
     try {
-      const file = await toFile()
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text,
+      if (preview) {
+        const result = await shareImageFile({
+          dataUrl: preview,
+          filename: 'qyntra-perfil.jpg',
           title: 'Mi perfil · Qyntra Gym',
+          text,
           url: inviteUrl
         })
-        onClose?.()
-        return
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
       if (navigator.share) {
         await navigator.share({ text, title: 'Mi perfil · Qyntra Gym', url: inviteUrl })
@@ -92,16 +89,18 @@ export default function ShareProfileSheet({ open, onClose, user }) {
   const shareWhatsApp = async () => {
     setSharing(true)
     try {
-      const file = await toFile()
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text,
+      if (preview) {
+        const result = await shareImageFile({
+          dataUrl: preview,
+          filename: 'qyntra-perfil.jpg',
           title: 'Mi perfil · Qyntra Gym',
+          text,
           url: inviteUrl
         })
-        onClose?.()
-        return
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
       onClose?.()

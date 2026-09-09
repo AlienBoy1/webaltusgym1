@@ -26,6 +26,8 @@ import { QISI_HANDLE, QISI_MEANING, QISI_NAME, QISI_USERNAME } from '../utils/qi
 import { QYSI_AVATAR_SRC } from './QySiAvatar'
 import { buildQySiSharePayload } from './QySiShareCard'
 import { useHistoryBackLayer } from '../hooks/useHistoryBackLayer'
+import { shareImageFile } from '../utils/shareImageExport'
+import { saveStoryDraft } from '../utils/shareStoryDraft'
 
 /**
  * Native share sheet for QySi profile: community / DMs / WhatsApp / stories / other apps.
@@ -127,12 +129,6 @@ export default function ShareQySiSheet({ open, onClose, qysiUser }) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  const toFile = async (dataUrl, filename = 'qyntra-qysi.png') => {
-    if (!dataUrl) return null
-    const blob = await (await fetch(dataUrl)).blob()
-    return new File([blob], filename, { type: 'image/png' })
-  }
-
   const sendToUsers = async () => {
     if (selected.length === 0) return
     setSending(true)
@@ -199,17 +195,20 @@ export default function ShareQySiSheet({ open, onClose, qysiUser }) {
           sharerName: user?.name,
           avatarSrc: QYSI_AVATAR_SRC
         }))
-      const file = await toFile(dataUrl)
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text: shareText,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-qysi.jpg',
           title: `${QISI_NAME} · Qyntra Gym`,
+          text: shareText,
           url: profileUrl
         })
-      } else {
-        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')
       onClose?.()
     } catch (error) {
       if (error?.name !== 'AbortError') {
@@ -230,16 +229,18 @@ export default function ShareQySiSheet({ open, onClose, qysiUser }) {
           sharerName: user?.name,
           avatarSrc: QYSI_AVATAR_SRC
         }))
-      const file = await toFile(dataUrl)
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text: shareText,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-qysi.jpg',
           title: `${QISI_NAME} · Qyntra Gym`,
+          text: shareText,
           url: profileUrl
         })
-        onClose?.()
-        return
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
       if (navigator.share) {
         await navigator.share({
@@ -271,17 +272,14 @@ export default function ShareQySiSheet({ open, onClose, qysiUser }) {
         toast.error('No se pudo preparar la historia')
         return
       }
-      sessionStorage.setItem(
-        'qyntra:storyDraft',
-        JSON.stringify({
-          mediaUrl,
-          mediaType: 'image',
-          caption: `Conoce a ${QISI_NAME} (@${QISI_HANDLE}) · trainer inteligente en Entrenamientos 🤖`,
-          fromQySi: true,
-          authorName: QISI_NAME,
-          snippet: QISI_MEANING
-        })
-      )
+      await saveStoryDraft({
+        mediaUrl,
+        mediaType: 'image',
+        caption: `Conoce a ${QISI_NAME} (@${QISI_HANDLE}) · trainer inteligente en Entrenamientos 🤖`,
+        fromQySi: true,
+        authorName: QISI_NAME,
+        snippet: QISI_MEANING
+      })
       onClose?.()
       if (!window.location.pathname.includes('/social')) {
         navigate('/social')

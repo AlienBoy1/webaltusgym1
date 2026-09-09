@@ -20,7 +20,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "WorkoutHud")
 public class WorkoutHudPlugin extends Plugin {
-    public static final int NOTIF_ID = 42001;
+    /** Distinct from legacy LocalNotifications id (42001) so cancel() cannot wipe this HUD. */
+    public static final int NOTIF_ID = 42011;
     public static final String CHANNEL_ID = "qyntra_workout_chrono";
 
     private void ensureChannel(Context context) {

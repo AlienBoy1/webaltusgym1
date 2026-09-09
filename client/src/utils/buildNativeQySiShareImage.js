@@ -5,6 +5,8 @@
 
 import { getShareThemePalette } from './shareThemePalette'
 import { QISI_HANDLE, QISI_MEANING, QISI_NAME } from './qisi'
+import { exportCanvasDataUrl } from './shareImageExport'
+import { loadCorsImage } from './loadCorsImage'
 
 function roundRect(ctx, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2)
@@ -51,14 +53,12 @@ function wrapCentered(ctx, text, cx, y, maxWidth, lineHeight, maxLines = 4) {
 }
 
 async function loadAvatar(src) {
-  if (!src || typeof Image === 'undefined') return null
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
-    img.src = src
-  })
+  if (!src) return null
+  try {
+    return await loadCorsImage(src)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -237,7 +237,7 @@ export async function buildNativeQySiShareImage(opts = {}) {
     ctx.fillText('Burbuja en Entrenamientos · siempre contigo', ax, H - 70)
   }
 
-  return canvas.toDataURL('image/png')
+  return exportCanvasDataUrl(canvas)
 }
 
 export function buildQySiShareText({ sharerName, profileUrl, inviteUrl } = {}) {

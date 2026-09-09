@@ -20,6 +20,8 @@ import { buildNativePostShareImage } from '../utils/buildNativePostShareImage'
 import { buildPostShareText, getInviteUrl, getPostPath, getPostUrl } from '../utils/appLinks'
 import { useAuthStore } from '../store/authStore'
 import { isQySiShareData } from './QySiShareCard'
+import { shareImageFile } from '../utils/shareImageExport'
+import { saveStoryDraft } from '../utils/shareStoryDraft'
 
 function postSnippet(post) {
   if (!post) return 'Publicación de Qyntra Gym'
@@ -166,25 +168,31 @@ export default function SharePostSheet({
       postUrl: postUrl || inviteUrl
     })
     try {
-      let file
+      let dataUrl = null
       try {
-        const dataUrl = await buildNativePostShareImage(post)
-        if (dataUrl) {
-          const blob = await (await fetch(dataUrl)).blob()
-          file = new File([blob], 'qyntra-post.png', { type: 'image/png' })
-        }
-      } catch {
-        /* text only */
+        dataUrl = await buildNativePostShareImage(post)
+      } catch (err) {
+        console.warn('buildNativePostShareImage:', err?.message || err)
       }
 
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-post.jpg',
           title: 'Qyntra Gym',
+          text,
           url: postUrl || inviteUrl
         })
-      } else if (navigator.share) {
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
+        if (result.mode === 'text') {
+          toast.error('Tu dispositivo no compartió la imagen; enviando solo el enlace')
+        }
+      }
+
+      if (navigator.share) {
         await navigator.share({ text, title: 'Qyntra Gym', url: postUrl || inviteUrl })
       } else {
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
@@ -207,17 +215,14 @@ export default function SharePostSheet({
         toast.error('No se pudo preparar la miniatura')
         return
       }
-      sessionStorage.setItem(
-        'qyntra:storyDraft',
-        JSON.stringify({
-          mediaUrl,
-          mediaType: 'image',
-          caption: '',
-          fromPostId: post._id || post.id,
-          authorName: postAuthorName(post),
-          snippet: postSnippet(post)
-        })
-      )
+      await saveStoryDraft({
+        mediaUrl,
+        mediaType: 'image',
+        caption: '',
+        fromPostId: post._id || post.id,
+        authorName: postAuthorName(post),
+        snippet: postSnippet(post)
+      })
       onClose?.()
       if (!window.location.pathname.includes('/social')) {
         navigate('/social')
@@ -227,7 +232,8 @@ export default function SharePostSheet({
       } else {
         window.dispatchEvent(new CustomEvent('qyntra:open-story-compose'))
       }
-    } catch {
+    } catch (err) {
+      console.warn('addToStories:', err?.message || err)
       toast.error('No se pudo añadir a historias')
     }
   }

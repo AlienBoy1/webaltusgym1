@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive, FiLink, FiTrash2 } from 'react-icons/fi'
+import { FiBell, FiMoon, FiSun, FiEye, FiActivity, FiSave, FiChevronRight, FiSmartphone, FiMail, FiUser, FiHeart, FiTarget, FiClock, FiCheck, FiHardDrive, FiLink, FiTrash2, FiSlash, FiUserX } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import api from '../../utils/api'
@@ -20,6 +20,7 @@ import GoogleIcon from '../../components/GoogleIcon'
 import { getGoogleLinkedStatus, startGoogleLink } from '../../utils/googleAuth'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
+import { Avatar } from '../../utils/avatarUtils'
 
 const settingsSections = [
   { id: 'account', title: 'Cuenta', icon: FiLink, color: 'primary' },
@@ -73,6 +74,9 @@ export default function UserSettings() {
   })
   const [saving, setSaving] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [blockedUsers, setBlockedUsers] = useState([])
+  const [blockedLoading, setBlockedLoading] = useState(false)
+  const [unblockingId, setUnblockingId] = useState(null)
 
   useEffect(() => {
     const section = searchParams.get('section')
@@ -101,6 +105,25 @@ export default function UserSettings() {
       cancelled = true
     }
   }, [user?._id, activeSection])
+
+  useEffect(() => {
+    if (activeSection !== 'account') return undefined
+    let cancelled = false
+    setBlockedLoading(true)
+    ;(async () => {
+      try {
+        const { data } = await api.get('/social/blocked')
+        if (!cancelled) setBlockedUsers(Array.isArray(data) ? data : [])
+      } catch {
+        if (!cancelled) setBlockedUsers([])
+      } finally {
+        if (!cancelled) setBlockedLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeSection, user?._id])
 
   useEffect(() => {
     if (settings.workout) {
@@ -232,6 +255,29 @@ export default function UserSettings() {
         toast.error(msg)
       }
       setGoogleLoading(false)
+    }
+  }
+
+  const handleUnblockUser = async (entry) => {
+    const id = entry?.id || entry?._id || entry?.user?.id || entry?.user?._id
+    if (!id) return
+    const name = entry?.user?.name || entry?.name || 'este usuario'
+    const ok = await dialog.confirm(`¿Desbloquear a ${name}? Podrá volver a interactuar contigo.`, {
+      title: 'Desbloquear usuario',
+      confirmLabel: 'Desbloquear',
+      cancelLabel: 'Cancelar',
+      tone: 'info'
+    })
+    if (!ok) return
+    setUnblockingId(id)
+    try {
+      await api.delete(`/social/${id}/block`)
+      setBlockedUsers((prev) => prev.filter((row) => (row.id || row._id) !== id))
+      toast.success('Usuario desbloqueado')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'No se pudo desbloquear')
+    } finally {
+      setUnblockingId(null)
     }
   }
 
@@ -374,6 +420,70 @@ export default function UserSettings() {
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Usa el mismo correo de tu cuenta Qyntra. Si Google usa otro email, la vinculación fallará.
                 </p>
+
+                <div
+                  className="rounded-xl border p-4"
+                  style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-muted)' }}
+                >
+                  <div className="mb-3 flex items-center gap-2">
+                    <FiUserX className="text-primary-500" size={18} />
+                    <h3 className="font-medium">Usuarios bloqueados</h3>
+                  </div>
+                  <p className="mb-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    Personas que bloqueaste. No pueden enviarte mensajes ni ver tu actividad privada.
+                  </p>
+                  {blockedLoading ? (
+                    <div className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                      Cargando…
+                    </div>
+                  ) : blockedUsers.length === 0 ? (
+                    <div
+                      className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm"
+                      style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                    >
+                      <FiSlash size={16} />
+                      No tienes usuarios bloqueados
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {blockedUsers.map((row) => {
+                        const id = row.id || row._id
+                        const u = typeof row.user === 'object' ? row.user : null
+                        const name = u?.name || 'Usuario'
+                        const username = u?.username
+                        return (
+                          <li
+                            key={id}
+                            className="flex items-center gap-3 rounded-lg px-3 py-2"
+                            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
+                          >
+                            <Avatar user={u || { name, avatar: null }} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-medium">{name}</div>
+                              {username ? (
+                                <div className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                                  @{username}
+                                </div>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleUnblockUser(row)}
+                              disabled={unblockingId === id}
+                              className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition hover:opacity-90 disabled:opacity-60"
+                              style={{
+                                background: 'rgba(34, 197, 94, 0.15)',
+                                color: '#22C55E'
+                              }}
+                            >
+                              {unblockingId === id ? '…' : 'Desbloquear'}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
 
                 <div
                   className="rounded-xl border p-4"

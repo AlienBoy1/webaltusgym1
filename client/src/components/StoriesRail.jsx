@@ -213,12 +213,10 @@ export default function StoriesRail({
   )
 
   useEffect(() => {
-    const openDraft = () => {
+    const openDraft = async () => {
       try {
-        const raw = sessionStorage.getItem('qyntra:storyDraft')
-        if (!raw) return
-        const draft = JSON.parse(raw)
-        sessionStorage.removeItem('qyntra:storyDraft')
+        const { takeStoryDraft } = await import('../utils/shareStoryDraft')
+        const draft = await takeStoryDraft()
         if (!draft?.mediaUrl) return
         setMediaData(draft.mediaUrl)
         setMediaPreview(draft.mediaUrl)

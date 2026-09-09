@@ -1,8 +1,9 @@
 /**
  * Save / share story media to external apps (IG / FB stories via native share sheet).
- * Web cannot publish directly into IG/FB Stories APIs without native SDKs;
- * navigator.share({ files }) is the supported PWA path.
  */
+
+import { shareImageFile } from './shareImageExport'
+import { isNativeApp } from './appMode'
 
 function extFromMime(mime, mediaType) {
   if (mime?.includes('png')) return 'png'
@@ -32,6 +33,36 @@ export async function fetchStoryBlob(mediaUrl, mediaType = 'image') {
 
 export async function saveStoryMedia(mediaUrl, mediaType = 'image') {
   const { blob, filename } = await fetchStoryBlob(mediaUrl, mediaType)
+
+  if (isNativeApp()) {
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem')
+      const { Share } = await import('@capacitor/share')
+      const reader = new FileReader()
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => {
+          const s = String(reader.result || '')
+          const i = s.indexOf(',')
+          resolve(i >= 0 ? s.slice(i + 1) : s)
+        }
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(blob)
+      })
+      const path = `share/${filename}`
+      await Filesystem.writeFile({ path, data: base64, directory: Directory.Cache })
+      const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache })
+      await Share.share({
+        title: 'Guardar historia Qyntra',
+        files: [uri],
+        dialogTitle: 'Guardar o compartir'
+      })
+      return true
+    } catch (err) {
+      if (/cancel/i.test(err?.message || '')) return true
+      console.warn('native saveStoryMedia:', err?.message || err)
+    }
+  }
+
   const objectUrl = URL.createObjectURL(blob)
   try {
     const a = document.createElement('a')
@@ -47,47 +78,40 @@ export async function saveStoryMedia(mediaUrl, mediaType = 'image') {
   return true
 }
 
-async function shareWithFiles(file, title, text) {
-  if (!navigator.share) return false
-  const payload = { files: [file], title, text }
-  if (navigator.canShare && !navigator.canShare(payload)) {
-    // Some browsers accept share without files
-    try {
-      await navigator.share({ title, text })
-      return true
-    } catch (err) {
-      if (err?.name === 'AbortError') return true
-      return false
-    }
-  }
-  try {
-    await navigator.share(payload)
-    return true
-  } catch (err) {
-    if (err?.name === 'AbortError') return true
-    return false
-  }
-}
-
 /**
  * Prefer native share sheet (user picks Instagram / Facebook Stories).
  * Falls back to download + deep-link / tip.
  */
 export async function shareStoryToNetwork(mediaUrl, mediaType, network) {
   const label = network === 'facebook' ? 'Facebook' : 'Instagram'
-  const { blob, mime, filename } = await fetchStoryBlob(mediaUrl, mediaType)
-  const file = new File([blob], filename, { type: mime })
+  const { blob, filename } = await fetchStoryBlob(mediaUrl, mediaType)
 
-  const shared = await shareWithFiles(
-    file,
-    `Historia Qyntra · ${label}`,
-    `Compartir en historias de ${label}`
-  )
-  if (shared) return { mode: 'native' }
+  if (mediaType !== 'video') {
+    const result = await shareImageFile({
+      blob,
+      filename,
+      title: `Historia Qyntra · ${label}`,
+      text: `Compartir en historias de ${label}`
+    })
+    if (result.shared) return { mode: result.mode }
+  } else if (navigator.share) {
+    const file = new File([blob], filename, { type: blob.type || 'video/mp4' })
+    try {
+      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Historia Qyntra · ${label}`,
+          text: `Compartir en historias de ${label}`
+        })
+        return { mode: 'web' }
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return { mode: 'web' }
+    }
+  }
 
   await saveStoryMedia(mediaUrl, mediaType)
 
-  // Best-effort open create surfaces (may no-op on desktop / restricted browsers)
   try {
     if (network === 'instagram') {
       window.location.href = 'instagram://story-camera'

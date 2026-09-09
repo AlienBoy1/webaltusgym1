@@ -5,6 +5,7 @@
  */
 
 import { getShareThemePalette } from './shareThemePalette'
+import { exportCanvasDataUrl } from './shareImageExport'
 
 function roundRect(ctx, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2)
@@ -431,5 +432,5 @@ export async function buildNativeWelcomeShareImage(payload = {}) {
     ctx.textAlign = 'left'
   }
 
-  return canvas.toDataURL('image/png')
+  return exportCanvasDataUrl(canvas)
 }

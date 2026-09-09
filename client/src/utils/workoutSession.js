@@ -4,7 +4,9 @@ const WORKOUT_SESSION_KEY = 'qyntra:workout_session'
 const WORKOUT_PREFERENCES_KEY = 'qyntra:workout_preferences'
 const WORKOUT_BUBBLE_POS_KEY = 'qyntra:workout_bubble_pos'
 const SESSION_EVENT = 'qyntra:workout-session'
+/** Legacy LocalNotifications id (older builds). WorkoutHud uses 42011 natively. */
 const NATIVE_NOTIF_ID = 42001
+const WORKOUT_HUD_NOTIF_ID = 42011
 /** New channel id — Android won't change importance on an existing channel */
 const NATIVE_CHANNEL_ID = 'qyntra_workout_live'
 const ACTION_TYPE_ID = 'WORKOUT_SESSION_ACTIONS'
@@ -288,32 +290,62 @@ async function sendNativeWorkoutNotification(session) {
   const sessionStartMs = session.sessionStart
     ? new Date(session.sessionStart).getTime()
     : Date.now()
-  const inRest = copy.restRemaining > 0 && !Number.isNaN(restEndsAtMs)
-  const whenMs = inRest ? restEndsAtMs : sessionStartMs
+  const inRest = copy.restRemaining > 0 && Number.isFinite(restEndsAtMs) && restEndsAtMs > 0
+  const whenMs = inRest ? restEndsAtMs : (Number.isFinite(sessionStartMs) ? sessionStartMs : Date.now())
 
   // Structural fingerprint only — never include ticking seconds
   const fingerprint = `${copy.body}|${copy.actionHint}|${whenMs}|${inRest ? 1 : 0}`
   if (fingerprint === lastNativeBody) return true
-  lastNativeBody = fingerprint
 
   const content = `${copy.workoutName} · ${copy.body}`
-  const WorkoutHud = await getWorkoutHud()
-  await WorkoutHud.show({
-    title: copy.title,
-    content,
-    bigText: content,
-    showChronometer: true,
-    countDown: inRest,
-    whenMs
-  })
 
-  // Cancel any leftover LocalNotifications from older builds (same id)
   try {
-    await LocalNotifications.cancel({ notifications: [{ id: NATIVE_NOTIF_ID }] })
-  } catch {
-    /* ignore */
+    const WorkoutHud = await getWorkoutHud()
+    await WorkoutHud.show({
+      title: copy.title,
+      content,
+      bigText: content,
+      showChronometer: true,
+      countDown: inRest,
+      whenMs
+    })
+    lastNativeBody = fingerprint
+    return true
+  } catch (hudErr) {
+    console.warn('WorkoutHud.show failed, falling back:', hudErr?.message || hudErr)
   }
-  return true
+
+  // Fallback: LocalNotifications without live timer text (no per-second reschedule)
+  try {
+    await ensureNativeWorkoutChannel()
+    await ensureNativeWorkoutActions()
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: NATIVE_NOTIF_ID,
+          title: copy.title,
+          body: content,
+          channelId: NATIVE_CHANNEL_ID,
+          largeBody: content,
+          summaryText: copy.exerciseLabel,
+          ongoing: true,
+          autoCancel: false,
+          silent: true,
+          actionTypeId: ACTION_TYPE_ID,
+          extra: {
+            type: 'workout_session',
+            url: `/workouts?focus=${copy.exerciseId || ''}`,
+            actionHint: copy.actionHint
+          }
+        }
+      ]
+    })
+    lastNativeBody = fingerprint
+    return true
+  } catch (err) {
+    console.warn('LocalNotifications workout fallback:', err?.message || err)
+    return false
+  }
 }
 
 async function clearNativeWorkoutNotification() {
@@ -326,7 +358,9 @@ async function clearNativeWorkoutNotification() {
   }
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications')
-    await LocalNotifications.cancel({ notifications: [{ id: NATIVE_NOTIF_ID }] })
+    await LocalNotifications.cancel({
+      notifications: [{ id: NATIVE_NOTIF_ID }, { id: WORKOUT_HUD_NOTIF_ID }]
+    })
   } catch {
     /* ignore */
   }

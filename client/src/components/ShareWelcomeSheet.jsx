@@ -8,6 +8,8 @@ import toast from 'react-hot-toast'
 import { buildNativeWelcomeShareImage } from '../utils/buildNativeWelcomeShareImage'
 import { buildInviteMessage, getInviteUrl } from '../utils/appLinks'
 import { useAuthStore } from '../store/authStore'
+import { shareImageFile } from '../utils/shareImageExport'
+import { saveStoryDraft } from '../utils/shareStoryDraft'
 
 /**
  * Share dashboard welcome card → Historia Qyntra / apps externas.
@@ -75,28 +77,24 @@ export default function ShareWelcomeSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, step, greeting, motivation, motivation2, followers, following, user?.name, user?.username])
 
-  const toFile = async (dataUrl, filename = 'qyntra-bienvenida.png') => {
-    if (!dataUrl) return null
-    const blob = await (await fetch(dataUrl)).blob()
-    return new File([blob], filename, { type: 'image/png' })
-  }
-
   const shareNative = async () => {
     setBusy(true)
     try {
       const dataUrl =
         preview ||
         (await buildNativeWelcomeShareImage({ ...payloadBase, mode: 'external' }))
-      const file = await toFile(dataUrl)
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text: shareText,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-bienvenida.jpg',
           title: 'Qyntra Gym',
+          text: shareText,
           url: inviteUrl
         })
-        onClose?.()
-        return
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
       if (navigator.share) {
         await navigator.share({ text: shareText, title: 'Qyntra Gym', url: inviteUrl })
@@ -118,17 +116,20 @@ export default function ShareWelcomeSheet({
       const dataUrl =
         preview ||
         (await buildNativeWelcomeShareImage({ ...payloadBase, mode: 'external' }))
-      const file = await toFile(dataUrl)
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text: shareText,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-bienvenida.jpg',
           title: 'Qyntra Gym',
+          text: shareText,
           url: inviteUrl
         })
-      } else {
-        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')
       onClose?.()
     } catch (error) {
       if (error?.name !== 'AbortError') {
@@ -150,17 +151,14 @@ export default function ShareWelcomeSheet({
         toast.error('No se pudo preparar la historia')
         return
       }
-      sessionStorage.setItem(
-        'qyntra:storyDraft',
-        JSON.stringify({
-          mediaUrl,
-          mediaType: 'image',
-          caption: '¡Sigámonos y hagamos crecer la comunidad Qyntra! 💪',
-          fromWelcome: true,
-          authorName: user?.name || 'Usuario',
-          snippet: motivation
-        })
-      )
+      await saveStoryDraft({
+        mediaUrl,
+        mediaType: 'image',
+        caption: '¡Sigámonos y hagamos crecer la comunidad Qyntra! 💪',
+        fromWelcome: true,
+        authorName: user?.name || 'Usuario',
+        snippet: motivation
+      })
       onClose?.()
       if (!window.location.pathname.includes('/social')) {
         navigate('/social')

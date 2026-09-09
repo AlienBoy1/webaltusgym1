@@ -15,6 +15,8 @@ import {
 import { useAuthStore } from '../store/authStore'
 import api from '../utils/api'
 import FormattedText from './FormattedText'
+import { shareImageFile } from '../utils/shareImageExport'
+import { saveStoryDraft } from '../utils/shareStoryDraft'
 
 /**
  * Build a synthetic community-post shape so the native share canvas
@@ -87,25 +89,28 @@ export default function ShareChallengeSheet({ open, challenge, onClose }) {
       inviteUrl: challengeUrl || inviteUrl
     })
     try {
-      let file
+      let dataUrl = null
       try {
-        const dataUrl = await buildNativePostShareImage(sharePost)
-        if (dataUrl) {
-          const blob = await (await fetch(dataUrl)).blob()
-          file = new File([blob], 'qyntra-reto.png', { type: 'image/png' })
-        }
+        dataUrl = await buildNativePostShareImage(sharePost)
       } catch {
         /* text-only fallback */
       }
 
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-reto.jpg',
           title: `Reto: ${challenge.title}`,
+          text,
           url: challengeUrl || inviteUrl
         })
-      } else if (navigator.share) {
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
+      }
+
+      if (navigator.share) {
         await navigator.share({
           text,
           title: `Reto: ${challenge.title}`,
@@ -143,31 +148,32 @@ export default function ShareChallengeSheet({ open, challenge, onClose }) {
       inviteUrl: challengeUrl || inviteUrl
     })
     try {
-      let file
+      let dataUrl = null
       try {
-        const dataUrl = await buildNativePostShareImage(sharePost)
-        if (dataUrl) {
-          const blob = await (await fetch(dataUrl)).blob()
-          file = new File([blob], 'qyntra-reto.png', { type: 'image/png' })
-        }
+        dataUrl = await buildNativePostShareImage(sharePost)
       } catch {
         /* ignore */
       }
 
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          text,
+      if (dataUrl) {
+        const result = await shareImageFile({
+          dataUrl,
+          filename: 'qyntra-reto.jpg',
           title: 'Qyntra Gym',
+          text,
           url: challengeUrl || inviteUrl
         })
-      } else {
-        window.open(
-          `https://wa.me/?text=${encodeURIComponent(text)}`,
-          '_blank',
-          'noopener,noreferrer'
-        )
+        if (result.shared && result.mode !== 'text') {
+          onClose?.()
+          return
+        }
       }
+
+      window.open(
+        `https://wa.me/?text=${encodeURIComponent(text)}`,
+        '_blank',
+        'noopener,noreferrer'
+      )
       onClose?.()
     } catch (error) {
       if (error?.name !== 'AbortError') {
@@ -190,17 +196,14 @@ export default function ShareChallengeSheet({ open, challenge, onClose }) {
         toast.error('No se pudo preparar la imagen del reto')
         return
       }
-      sessionStorage.setItem(
-        'qyntra:storyDraft',
-        JSON.stringify({
-          mediaUrl,
-          mediaType: 'image',
-          caption: `¡Únete al reto "${challenge.title}"! 🎯`,
-          fromChallengeId: challenge._id || challenge.id,
-          authorName: user?.name || 'Usuario',
-          snippet: challenge.title
-        })
-      )
+      await saveStoryDraft({
+        mediaUrl,
+        mediaType: 'image',
+        caption: `¡Únete al reto "${challenge.title}"! 🎯`,
+        fromChallengeId: challenge._id || challenge.id,
+        authorName: user?.name || 'Usuario',
+        snippet: challenge.title
+      })
       onClose?.()
       if (!window.location.pathname.includes('/social')) {
         navigate('/social')
