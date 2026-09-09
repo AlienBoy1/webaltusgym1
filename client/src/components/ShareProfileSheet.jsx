@@ -57,29 +57,29 @@ export default function ShareProfileSheet({ open, onClose, user }) {
   const shareNative = async () => {
     setSharing(true)
     try {
-      if (preview) {
-        const result = await shareImageFile({
-          dataUrl: preview,
-          filename: 'qyntra-perfil.jpg',
-          title: 'Mi perfil · Qyntra Gym',
-          text,
-          url: inviteUrl
-        })
-        if (result.shared && result.mode !== 'text') {
-          onClose?.()
-          return
-        }
-      }
-      if (navigator.share) {
-        await navigator.share({ text, title: 'Mi perfil · Qyntra Gym', url: inviteUrl })
-        onClose?.()
+      if (!preview) {
+        toast.error('Espera a que se genere la imagen')
         return
       }
-      await navigator.clipboard.writeText(text)
-      toast.success('Invitación copiada')
+      const result = await shareImageFile({
+        dataUrl: preview,
+        filename: 'qyntra-perfil.jpg',
+        title: 'Mi perfil · Qyntra Gym',
+        text,
+        url: inviteUrl,
+        requireImage: true
+      })
+      if (result.mode === 'text') {
+        toast.error('No se pudo compartir la imagen. Prueba de nuevo.')
+        return
+      }
+      if (result.mode === 'download') {
+        toast.success('Imagen guardada — adjúntala en WhatsApp')
+      }
+      onClose?.()
     } catch (error) {
       if (error?.name !== 'AbortError') {
-        toast.error('No se pudo compartir')
+        toast.error(error?.message || 'No se pudo compartir la imagen')
       }
     } finally {
       setSharing(false)
@@ -89,24 +89,31 @@ export default function ShareProfileSheet({ open, onClose, user }) {
   const shareWhatsApp = async () => {
     setSharing(true)
     try {
-      if (preview) {
-        const result = await shareImageFile({
-          dataUrl: preview,
-          filename: 'qyntra-perfil.jpg',
-          title: 'Mi perfil · Qyntra Gym',
-          text,
-          url: inviteUrl
-        })
-        if (result.shared && result.mode !== 'text') {
-          onClose?.()
-          return
-        }
+      if (!preview) {
+        toast.error('Espera a que se genere la imagen')
+        return
       }
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
+      // Always share the image file via the system sheet (user picks WhatsApp).
+      // Never open wa.me with text-only — that drops the generated image.
+      const result = await shareImageFile({
+        dataUrl: preview,
+        filename: 'qyntra-perfil.jpg',
+        title: 'Mi perfil · Qyntra Gym',
+        text,
+        url: inviteUrl,
+        requireImage: true
+      })
+      if (result.mode === 'text') {
+        toast.error('WhatsApp no recibió la imagen. Usa Compartir y elige WhatsApp.')
+        return
+      }
+      if (result.mode === 'download') {
+        toast.success('Imagen descargada — ábrela y compártela en WhatsApp')
+      }
       onClose?.()
     } catch (error) {
       if (error?.name !== 'AbortError') {
-        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
+        toast.error(error?.message || 'No se pudo compartir la imagen')
       }
     } finally {
       setSharing(false)

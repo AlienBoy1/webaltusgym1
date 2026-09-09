@@ -15,6 +15,7 @@ import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { useAppDialog } from '../../components/AppDialog'
 import ShareChallengeSheet from '../../components/ShareChallengeSheet'
 import FormattedText from '../../components/FormattedText'
+import PullToRefresh from '../../components/PullToRefresh'
 import {
   formatElapsed,
   formatChallengeGoal,
@@ -190,7 +191,7 @@ export default function Challenges() {
       setChallenges(data)
     } catch (error) {
       console.error('Error fetching challenges:', error)
-      toast.error('Error al cargar retos')
+      toast.error(error?.response?.data?.message || 'Error al cargar retos')
     } finally {
       setLoading(false)
     }
@@ -856,6 +857,7 @@ export default function Challenges() {
   }
 
   return (
+    <PullToRefresh onRefresh={async () => { await Promise.all([fetchChallenges(), fetchMyChallenges()]) }}>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -2317,5 +2319,6 @@ export default function Challenges() {
         onClose={() => setShareChallengeTarget(null)}
       />
     </div>
+    </PullToRefresh>
   )
 }

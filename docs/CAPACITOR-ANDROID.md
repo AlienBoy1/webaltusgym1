@@ -6,7 +6,7 @@ La app de Play deja de ser TWA/Bubblewrap y pasa a **Capacitor**: shell Android 
 |----------|--------|
 | Package ID | `gym.qyntra.app` (mismo que en Play) |
 | Proyecto Android | `client/android/` |
-| Versión | `2.2.3` (`versionCode` **8**) — fix pantalla en blanco (SW nativo) |
+| Versión | `2.2.9` (`versionCode` **14**) — workout HUD vía FGS `specialUse` |
 | API en nativo | `https://qyntagymweb.vercel.app/api` |
 
 ---
@@ -127,6 +127,26 @@ La ficha pública usa la misma Store listing que ya llenaste; Production solo pu
 4. Testers: desinstalan app vieja → instalan desde Play.
 5. Activan notificaciones en la app → deben ver diálogo **nativo** Android.
 6. Prueba enviando una notificación (mensaje, like, etc.).
+
+---
+
+## Foreground Service (entreno en vivo) — Play Console
+
+La notificación/burbuja de entrenamiento usa `FOREGROUND_SERVICE_SPECIAL_USE` (no `HEALTH`: ese tipo es para sensores/datos de salud).
+
+En **Policy → App content → Foreground service permissions**:
+
+1. Indica que **sí** usas foreground services.
+2. Marca solo **Special use**.
+3. Descripción (inglés, para el reviewer):
+
+> Keeps an ongoing workout session chronometer notification (and optional overlay HUD) while the user is actively training in the gym, so elapsed time and current exercise remain visible after the user leaves the app or locks the screen. Started when the user taps Start on a workout; stopped when the user finishes or cancels the session.
+
+4. Impacto si se interrumpe:
+
+> Without this service the live workout timer notification is killed when the app is backgrounded, so users lose the on-screen training timer mid-workout.
+
+5. **Video** (YouTube unlisted): abrir app → Entrenamientos → Iniciar → minimizar app → mostrar notificación persistente con chronometer → (opcional) burbuja overlay → volver y Finalizar/Cancelar (la notificación desaparece).
 
 ---
 

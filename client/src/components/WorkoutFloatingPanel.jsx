@@ -13,6 +13,7 @@ import {
   getBubblePosition,
   setBubblePosition
 } from '../utils/workoutSession'
+import { useI18n } from '../hooks/useI18n'
 
 const BUBBLE = 92
 const EXPANDED_W = Math.min(300, typeof window !== 'undefined' ? window.innerWidth - 24 : 300)
@@ -40,6 +41,7 @@ function clampPos(x, y, w, h) {
 export default function WorkoutFloatingPanel() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useI18n()
   const { isAuthenticated } = useAuthStore()
   const constraintsRef = useRef(null)
   const [session, setSession] = useState(() => getWorkoutSession())
@@ -152,7 +154,9 @@ export default function WorkoutFloatingPanel() {
 
           {!expanded ? (
             <div className="relative flex h-full w-full flex-col items-center justify-center">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.28em] text-app-secondary">Live</span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-app-secondary">
+                {t('training')}
+              </span>
               <span className="mt-0.5 font-mono text-base font-bold tabular-nums tracking-tight text-app">
                 {formatTime(elapsed)}
               </span>

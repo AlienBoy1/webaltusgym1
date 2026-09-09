@@ -13,6 +13,7 @@ import BodyGoalsEditor from '../../components/body/BodyGoalsEditor'
 import BodyRoutineGuide from '../../components/body/BodyRoutineGuide'
 import BodyMetricExplainSheet from '../../components/body/BodyMetricExplainSheet'
 import { isPaidEraLive } from '../../utils/membershipLifecycle'
+import PullToRefresh from '../../components/PullToRefresh'
 
 export default function Progress() {
   const { user } = useAuthStore()
@@ -100,6 +101,7 @@ export default function Progress() {
     user.membership.features.accessToBodyHealth === false
 
   return (
+    <PullToRefresh onRefresh={async () => { await load() }}>
     <div className="mx-auto w-full max-w-3xl space-y-4 px-0 pb-24 sm:space-y-6 sm:pb-8">
       <header className="space-y-1">
         <div className="flex items-center gap-2">
@@ -273,5 +275,6 @@ export default function Progress() {
         onClose={() => setExplainId(null)}
       />
     </div>
+    </PullToRefresh>
   )
 }

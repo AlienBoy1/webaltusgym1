@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import ProtectedMedia from '../../components/ProtectedMedia'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
+import PullToRefresh from '../../components/PullToRefresh'
 
 const DAYS = [
   { id: 1, label: 'Lunes' },
@@ -125,6 +126,7 @@ export default function Classes() {
   }
 
   return (
+    <PullToRefresh onRefresh={async () => { await fetchClasses() }}>
     <div className="space-y-6">
       <div className="flex items-center gap-2.5">
         <h1 className="font-display text-3xl">Clases Grupales</h1>
@@ -346,5 +348,6 @@ export default function Classes() {
         )}
       </AnimatePresence>
     </div>
+    </PullToRefresh>
   )
 }

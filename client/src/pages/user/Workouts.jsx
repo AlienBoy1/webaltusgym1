@@ -36,8 +36,10 @@ import {
   formatTime,
   clearWorkoutNotification,
   sendWorkoutNotification,
-  subscribeWorkoutSession
+  subscribeWorkoutSession,
+  requestWorkoutOverlayPermission
 } from '../../utils/workoutSession'
+import PullToRefresh from '../../components/PullToRefresh'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { useAuthStore } from '../../store/authStore'
@@ -686,15 +688,74 @@ export default function Workouts() {
     setRestHistory([])
     setExerciseListFilter('pending')
     clearRestState()
+    // Persist BEFORE notifying so WorkoutSessionManager doesn't clear the HUD
+    const bootSession = {
+      activeWorkout: workout,
+      sessionStart: start,
+      completedExercises: [],
+      workoutTime: 0,
+      restActive: false,
+      restRemaining: 0,
+      restEndsAt: null,
+      savedAt: new Date().toISOString()
+    }
+    setWorkoutSession(bootSession)
     try {
-      await sendWorkoutNotification({
-        activeWorkout: workout,
-        sessionStart: start,
-        completedExercises: [],
-        workoutTime: 0
-      })
+      const ok = await sendWorkoutNotification(bootSession)
+      if (!ok) {
+        const detail =
+          (typeof window !== 'undefined' && window.__qyntraLastHudError) ||
+          'Activa Notificaciones para Qyntra en Ajustes del teléfono'
+        toast.error(String(detail).slice(0, 180), { duration: 8000 })
+        try {
+          const { registerPlugin } = await import('@capacitor/core')
+          const WorkoutHud = registerPlugin('WorkoutHud')
+          await WorkoutHud.openNotificationSettings()
+        } catch {
+          /* ignore */
+        }
+      } else {
+        toast.success('Entrenamiento en curso — mira la notificación', { duration: 3500 })
+        try {
+          const { isNativeApp } = await import('../../utils/appMode')
+          if (isNativeApp()) {
+            const flagKey = 'qyntra:overlay_prompted_v3'
+            if (!window.localStorage.getItem(flagKey)) {
+              window.localStorage.setItem(flagKey, '1')
+              window.setTimeout(() => {
+                toast(
+                  (t) => (
+                    <span className="text-sm">
+                      ¿Burbuja sobre otras apps?{' '}
+                      <button
+                        type="button"
+                        className="underline font-semibold"
+                        onClick={() => {
+                          toast.dismiss(t.id)
+                          requestWorkoutOverlayPermission()
+                        }}
+                      >
+                        Activar
+                      </button>
+                    </span>
+                  ),
+                  { duration: 8000 }
+                )
+              }, 2500)
+            } else {
+              window.setTimeout(() => {
+                requestWorkoutOverlayPermission().then((status) => {
+                  if (status === 'granted') sendWorkoutNotification(bootSession)
+                })
+              }, 800)
+            }
+          }
+        } catch {
+          /* overlay optional */
+        }
+      }
     } catch {
-      /* notification optional */
+      toast.error('No se pudo activar la notificación del entreno')
     }
   }
 
@@ -1507,6 +1568,18 @@ export default function Workouts() {
   }
 
   return (
+    <PullToRefresh
+      onRefresh={async () => {
+        try {
+          const { data } = await api.get('/workouts/routines')
+          if (Array.isArray(data)) {
+            setTemplates((prev) => mergeServerRoutines(prev, data).merged)
+          }
+        } catch {
+          /* ignore */
+        }
+      }}
+    >
     <div className="space-y-6 pb-24 sm:space-y-8 sm:pb-8">
       <AnimatePresence>
         {showSharePrompt && lastSavedWorkout && (
@@ -2062,5 +2135,6 @@ export default function Workouts() {
         }}
       />
     </div>
+    </PullToRefresh>
   )
 }

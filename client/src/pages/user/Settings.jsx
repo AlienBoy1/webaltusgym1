@@ -192,11 +192,16 @@ export default function UserSettings() {
     try {
       await api.put('/users/profile', { settings })
       localStorage.setItem(`settings_${user?._id}`, JSON.stringify(settings))
+      localStorage.setItem('qyntra:settings', JSON.stringify(settings))
       cacheAppearance(settings)
-      toast.success('Configuración guardada')
+      const { notifyLanguageChanged, setDocumentLanguage } = await import('../../i18n')
+      setDocumentLanguage(settings.language === 'en' ? 'en' : 'es')
+      notifyLanguageChanged()
+      toast.success(settings.language === 'en' ? 'Settings saved' : 'Configuración guardada')
     } catch (error) {
       localStorage.setItem(`settings_${user?._id}`, JSON.stringify(settings))
-      toast.success('Configuración guardada localmente')
+      localStorage.setItem('qyntra:settings', JSON.stringify(settings))
+      toast.success(settings.language === 'en' ? 'Saved locally' : 'Configuración guardada localmente')
     } finally {
       setSaving(false)
     }
@@ -208,8 +213,13 @@ export default function UserSettings() {
     
     const timeoutId = setTimeout(() => {
       localStorage.setItem(`settings_${user?._id}`, JSON.stringify(settings))
+      localStorage.setItem('qyntra:settings', JSON.stringify(settings))
       cacheAppearance(settings)
       api.put('/users/profile', { settings }).catch(() => {})
+      import('../../i18n').then(({ notifyLanguageChanged, setDocumentLanguage }) => {
+        setDocumentLanguage(settings.language === 'en' ? 'en' : 'es')
+        notifyLanguageChanged()
+      }).catch(() => {})
     }, 1000)
     
     return () => clearTimeout(timeoutId)
@@ -221,7 +231,7 @@ export default function UserSettings() {
         const { subscribeToPush } = await import('../../utils/push')
         await subscribeToPush()
         updateSetting('notifications', 'push', true)
-        toast.success('Notificaciones push activadas')
+        toast.success('Notificaciones activadas')
       } catch (error) {
         toast.error(error.message || 'Permiso denegado')
       }
@@ -511,7 +521,7 @@ export default function UserSettings() {
                 <h2 className="font-display text-xl flex items-center gap-2"><FiBell className="text-primary-500" /> Notificaciones</h2>
                 <div className="space-y-4">
                   {[
-                    { key: 'push', icon: FiSmartphone, label: 'Notificaciones Push', desc: 'Recibe alertas en tu dispositivo', handler: handlePushToggle, tour: 'tour-settings-notifications-push' },
+                    { key: 'push', icon: FiSmartphone, label: 'Notificaciones', desc: 'Recibe alertas en tu dispositivo', handler: handlePushToggle, tour: 'tour-settings-notifications-push' },
                     { key: 'email', icon: FiMail, label: 'Emails', desc: 'Recibe recordatorios por email' },
                     { key: 'workoutReminders', icon: FiActivity, label: 'Recordatorios de Entrenamiento', desc: 'Notificaciones para entrenar' },
                     { key: 'socialActivity', icon: FiHeart, label: 'Actividad Social', desc: 'Likes, comentarios y seguidores' },
@@ -678,10 +688,34 @@ export default function UserSettings() {
                   </div>
                   
                   <div className="py-3 border-t border-white/5">
-                    <div className="font-medium mb-3">Idioma</div>
-                    <select value={settings.language || 'es'} onChange={(e) => setSettings(prev => ({ ...prev, language: e.target.value }))} className="input-field">
-                      <option value="es">Español</option><option value="en">English</option><option value="pt">Português</option>
+                    <div className="font-medium mb-3">Idioma / Language</div>
+                    <select
+                      value={settings.language || 'es'}
+                      onChange={(e) => {
+                        const language = e.target.value
+                        setSettings((prev) => ({ ...prev, language }))
+                        try {
+                          const next = { ...settings, language }
+                          localStorage.setItem('qyntra:settings', JSON.stringify(next))
+                          if (user?._id) localStorage.setItem(`settings_${user._id}`, JSON.stringify(next))
+                        } catch {
+                          /* ignore */
+                        }
+                        import('../../i18n').then(({ notifyLanguageChanged, setDocumentLanguage }) => {
+                          setDocumentLanguage(language === 'en' ? 'en' : 'es')
+                          notifyLanguageChanged()
+                        })
+                      }}
+                      className="input-field"
+                    >
+                      <option value="es">Español</option>
+                      <option value="en">English</option>
                     </select>
+                    <p className="mt-2 text-xs text-app-secondary">
+                      {(settings.language || 'es') === 'en'
+                        ? 'Navigation and key screens switch to English. More screens follow as translations expand.'
+                        : 'La navegación y pantallas clave cambian de idioma. Se irán ampliando más textos.'}
+                    </p>
                   </div>
                 </div>
               </div>

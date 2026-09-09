@@ -17,11 +17,15 @@
     "StatusBar": {
       "style": "DARK",
       "backgroundColor": "#0A0A0F"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_qyntra",
+      "iconColor": "#FF8A3D"
     }
   },
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#0A0A0F",
-    "webContentsDebuggingEnabled": false
+    "webContentsDebuggingEnabled": true
   }
 }

@@ -30,6 +30,7 @@ import {
   membershipStatusLabel,
   paidEraStartLabel
 } from '../../utils/membershipLifecycle'
+import PullToRefresh from '../../components/PullToRefresh'
 
 const menuItems = [
   { icon: FiActivity, label: 'Mis entrenamientos', to: '/my-workouts' },
@@ -549,7 +550,7 @@ function MyChallengesSection() {
 }
 
 export default function Profile() {
-  const { user, logout, updateUser } = useAuthStore()
+  const { user, logout, updateUser, refreshUser } = useAuthStore()
   const { unreadCount } = useNotificationStore()
   const { openUserStory } = useStoryViewer()
   const [editing, setEditing] = useState(false)
@@ -710,6 +711,7 @@ export default function Profile() {
   }
 
   return (
+    <PullToRefresh onRefresh={async () => { await refreshUser() }}>
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Profile hero: header, stats & level progress */}
       <motion.div
@@ -1193,5 +1195,6 @@ export default function Profile() {
         user={user}
       />
     </div>
+    </PullToRefresh>
   )
 }

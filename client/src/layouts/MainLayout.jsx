@@ -36,13 +36,14 @@ import { getStoredToken, getStoredRefreshToken } from '../utils/tokenStorage'
 import { supabase } from '../lib/supabase'
 import MainNavSlideOutlet from '../components/MainNavSlideOutlet'
 import { useMainNavSwipe } from '../hooks/useMainNavSwipe'
+import { useI18n } from '../hooks/useI18n'
 
-const navItems = [
-  { path: '/dashboard', icon: FiHome, label: 'Inicio', tour: 'nav-dashboard' },
-  { path: '/social', icon: FiUsers, label: 'Social', tour: 'nav-social' },
-  { path: '/workouts', icon: FiActivity, label: 'Entrenos', tour: 'nav-workouts' },
-  { path: '/progress', icon: FiTrendingUp, label: 'Progreso', tour: 'nav-progress' },
-  { path: '/profile', icon: FiUser, label: 'Perfil', tour: 'nav-profile' },
+const navItemDefs = [
+  { path: '/dashboard', icon: FiHome, labelKey: 'nav_home', tour: 'nav-dashboard' },
+  { path: '/social', icon: FiUsers, labelKey: 'nav_social', tour: 'nav-social' },
+  { path: '/workouts', icon: FiActivity, labelKey: 'nav_workouts', tour: 'nav-workouts' },
+  { path: '/progress', icon: FiTrendingUp, labelKey: 'nav_progress', tour: 'nav-progress' },
+  { path: '/profile', icon: FiUser, labelKey: 'nav_profile', tour: 'nav-profile' },
 ]
 
 const headerIcons = [
@@ -56,6 +57,8 @@ const headerIcons = [
 export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useI18n()
+  const navItems = navItemDefs.map((item) => ({ ...item, label: t(item.labelKey) }))
   const { user, logout } = useAuthStore()
   const loadMyMedia = useAuthStore((s) => s.loadMyMedia)
   const { unreadCount, fetchUnreadCount, subscribeRealtime, unsubscribeRealtime } = useNotificationStore()

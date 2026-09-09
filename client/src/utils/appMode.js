@@ -3,8 +3,12 @@ export function isNativeApp() {
   if (typeof window === 'undefined') return false
   try {
     const cap = window.Capacitor
-    if (cap?.isNativePlatform?.()) return true
-    if (cap?.getPlatform?.() === 'android' || cap?.getPlatform?.() === 'ios') return true
+    if (!cap) return false
+    if (cap.isNativePlatform?.()) return true
+    const platform = cap.getPlatform?.()
+    if (platform === 'android' || platform === 'ios') return true
+    // Capacitor bridge present in WebView even if helpers lag
+    if (cap.Plugins || cap.pluginHeaders || cap.isPluginAvailable) return true
   } catch {
     /* ignore */
   }

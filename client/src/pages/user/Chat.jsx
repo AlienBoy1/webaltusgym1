@@ -59,6 +59,7 @@ import { addChatShortcut } from '../../utils/chatShortcuts'
 import { compressImageFile } from '../../utils/compressImage'
 import ChatMessageActionOverlay from '../../components/ChatMessageActionOverlay'
 import { useHistoryBackLayer } from '../../hooks/useHistoryBackLayer'
+import PullToRefresh from '../../components/PullToRefresh'
 import {
   isQiSiProfile,
   QISI_MESSAGING_CODE,
@@ -2026,6 +2027,7 @@ export default function Chat() {
       : selectedPresenceMeta.textClass
 
   return (
+    <PullToRefresh onRefresh={async () => { await fetchConversations() }}>
     <div
       className={
         selectedChat
@@ -3394,6 +3396,7 @@ export default function Chat() {
         busy={msgActionBusy}
       />
     </div>
+    </PullToRefresh>
   )
 }
 

@@ -4,7 +4,8 @@ import {
   getElapsedSeconds,
   getRestRemaining,
   sendWorkoutNotification,
-  clearWorkoutNotification
+  clearWorkoutNotification,
+  invalidateNativeWorkoutHudFingerprint
 } from '../utils/workoutSession'
 import { isNativeApp } from '../utils/appMode'
 
@@ -22,20 +23,26 @@ export default function WorkoutSessionManager() {
   const lastSession = useRef(getWorkoutSession())
   const lastStructureKey = useRef('')
   const nativeHudShown = useRef(false)
+  const emptyTicks = useRef(0)
 
   useEffect(() => {
+    let removeAppListener = null
+
     const tick = async () => {
       const session = getWorkoutSession()
 
       if (!session?.activeWorkout) {
-        if (lastSession.current?.activeWorkout) {
+        emptyTicks.current += 1
+        if (emptyTicks.current >= 5 && lastSession.current?.activeWorkout) {
           await clearWorkoutNotification()
+          lastSession.current = session
+          lastStructureKey.current = ''
+          nativeHudShown.current = false
         }
-        lastSession.current = session
-        lastStructureKey.current = ''
-        nativeHudShown.current = false
         return
       }
+
+      emptyTicks.current = 0
 
       const now = Date.now()
       const elapsed = getElapsedSeconds(session, now)
@@ -50,11 +57,9 @@ export default function WorkoutSessionManager() {
         restEndsAt: restActive ? session.restEndsAt : null,
         savedAt: new Date().toISOString()
       }
-
       const structureKey = getExerciseKey(updatedSession)
       const structuralChange = structureKey !== lastStructureKey.current
 
-      // Soft-update time in storage
       try {
         window.localStorage.setItem('qyntra:workout_session', JSON.stringify(updatedSession))
       } catch {
@@ -66,8 +71,6 @@ export default function WorkoutSessionManager() {
       }
 
       if (isNativeApp()) {
-        // Never reschedule every second — Android chronometer ticks in place.
-        // Refresh HUD only when exercise / rest phase changes (or first show).
         if (structuralChange || !nativeHudShown.current) {
           const ok = await sendWorkoutNotification(updatedSession)
           if (ok) nativeHudShown.current = true
@@ -88,8 +91,30 @@ export default function WorkoutSessionManager() {
     const interval = window.setInterval(tick, TICK_MS)
     tick()
 
+    if (isNativeApp()) {
+      ;(async () => {
+        try {
+          const { App } = await import('@capacitor/app')
+          const handle = await App.addListener('appStateChange', ({ isActive }) => {
+            if (!isActive) return
+            if (getWorkoutSession()?.activeWorkout) {
+              invalidateNativeWorkoutHudFingerprint()
+              nativeHudShown.current = false
+              tick()
+            }
+          })
+          removeAppListener = () => {
+            handle?.remove?.()
+          }
+        } catch {
+          /* optional */
+        }
+      })()
+    }
+
     return () => {
       window.clearInterval(interval)
+      removeAppListener?.()
     }
   }, [])
 

@@ -4,11 +4,10 @@ const WORKOUT_SESSION_KEY = 'qyntra:workout_session'
 const WORKOUT_PREFERENCES_KEY = 'qyntra:workout_preferences'
 const WORKOUT_BUBBLE_POS_KEY = 'qyntra:workout_bubble_pos'
 const SESSION_EVENT = 'qyntra:workout-session'
-/** Legacy LocalNotifications id (older builds). WorkoutHud uses 42011 natively. */
+/** Legacy LocalNotifications ids. Native WorkoutHud uses 99101. */
 const NATIVE_NOTIF_ID = 42001
-const WORKOUT_HUD_NOTIF_ID = 42011
-/** New channel id — Android won't change importance on an existing channel */
-const NATIVE_CHANNEL_ID = 'qyntra_workout_live'
+const WORKOUT_HUD_NOTIF_ID = 99101
+const NATIVE_CHANNEL_ID = 'qyntra_workout_live_v8'
 const ACTION_TYPE_ID = 'WORKOUT_SESSION_ACTIONS'
 const DEFAULT_REST_SECONDS = 60
 
@@ -24,20 +23,147 @@ async function getWorkoutHud() {
   return workoutHudPlugin
 }
 
-export function getWorkoutSession() {
+async function ensureNativeWorkoutChannel() {
   try {
-    const stored = window.localStorage.getItem(WORKOUT_SESSION_KEY)
-    if (!stored) return null
-    const session = JSON.parse(stored)
-    if (!session?.activeWorkout) return null
-    return {
-      ...session,
-      workoutTime: typeof session.workoutTime === 'number' ? session.workoutTime : 0,
-      completedExercises: Array.isArray(session.completedExercises) ? session.completedExercises : []
-    }
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.createChannel({
+      id: NATIVE_CHANNEL_ID,
+      name: 'Entreno en vivo',
+      description: 'Temporizador de sesión',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: false
+    })
+    nativeChannelReady = true
   } catch {
-    return null
+    nativeChannelReady = true
   }
+}
+
+async function ensureNativeWorkoutActions() {
+  if (nativeActionsReady) return
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.registerActionTypes({
+      types: [
+        {
+          id: ACTION_TYPE_ID,
+          actions: [
+            { id: 'complete', title: 'Completar ejercicio', foreground: false },
+            { id: 'skip_rest', title: 'Saltar descanso', foreground: false },
+            { id: 'open', title: 'Abrir entreno', foreground: true }
+          ]
+        }
+      ]
+    })
+    nativeActionsReady = true
+  } catch {
+    nativeActionsReady = true
+  }
+}
+
+/**
+ * Native workout HUD via NotificationManager only (no AlarmManager / LocalNotifications.schedule).
+ * Scheduled LN needs SCHEDULE_EXACT_ALARM and often never fires on Android 13+.
+ */
+async function sendNativeWorkoutNotification(session) {
+  const copy = buildWorkoutNotificationCopy(session, Date.now(), { omitLiveTimers: true })
+  if (!copy) return { ok: false, error: 'Sesión inválida' }
+
+  const restEndsAtMs = session.restEndsAt ? new Date(session.restEndsAt).getTime() : 0
+  const sessionStartMs = session.sessionStart
+    ? new Date(session.sessionStart).getTime()
+    : Date.now()
+  const inRest = copy.restRemaining > 0 && Number.isFinite(restEndsAtMs) && restEndsAtMs > 0
+  const whenMs = inRest ? restEndsAtMs : (Number.isFinite(sessionStartMs) ? sessionStartMs : Date.now())
+
+  const fingerprint = `${copy.body}|${copy.actionHint}|${whenMs}|${inRest ? 1 : 0}`
+
+  const WorkoutHud = await getWorkoutHud()
+
+  // If we think we already showed, confirm it's still in the shade
+  if (fingerprint === lastNativeBody) {
+    try {
+      const status = await WorkoutHud.checkPermissions()
+      if (Number(status?.activeCount) > 0) return { ok: true }
+      lastNativeBody = ''
+    } catch {
+      lastNativeBody = ''
+    }
+  }
+
+  const content = `${copy.workoutName} · ${copy.body}`
+  const bubbleLabel = inRest
+    ? `Descanso · ${copy.exerciseLabel}`
+    : (copy.exerciseLabel || copy.workoutName || 'Entreno')
+
+  // Permission
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    let perm = await LocalNotifications.checkPermissions()
+    if (perm.display !== 'granted') {
+      perm = await LocalNotifications.requestPermissions()
+    }
+    if (perm.display !== 'granted') {
+      try {
+        await WorkoutHud.requestPermissions()
+      } catch {
+        /* ignore */
+      }
+      try {
+        await WorkoutHud.openNotificationSettings()
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, error: 'Activa Notificaciones para Qyntra en Ajustes' }
+    }
+  } catch (e) {
+    console.warn('permission step:', e?.message || e)
+  }
+
+  try {
+    const result = await WorkoutHud.show({
+      title: copy.title,
+      content,
+      bigText: content,
+      bubbleLabel,
+      showChronometer: true,
+      countDown: inRest,
+      whenMs
+    })
+    const active = Number(result?.activeCount)
+    if (result?.ok && (active > 0 || Number.isNaN(active))) {
+      lastNativeBody = fingerprint
+      return { ok: true, activeCount: active, channelId: result?.channelId }
+    }
+    return {
+      ok: false,
+      error: `No visible (active=${active}, blocked=${result?.channelBlocked})`
+    }
+  } catch (hudErr) {
+    const msg = hudErr?.message || String(hudErr)
+    console.warn('WorkoutHud.show:', msg)
+    return { ok: false, error: msg }
+  }
+}
+
+/** Open "display over other apps" settings (bubble outside the app). Call AFTER notif works. */
+export async function requestWorkoutOverlayPermission() {
+  try {
+    const WorkoutHud = await getWorkoutHud()
+    const perms = await WorkoutHud.checkPermissions()
+    if (perms?.overlay === 'granted') return 'granted'
+    await WorkoutHud.requestOverlayPermission()
+    return 'prompt'
+  } catch {
+    return 'denied'
+  }
+}
+
+/** Force next sendNativeWorkoutNotification to re-post (e.g. after app resume). */
+export function invalidateNativeWorkoutHudFingerprint() {
+  lastNativeBody = ''
 }
 
 export function setWorkoutSession(session) {
@@ -232,119 +358,19 @@ export function skipRestInSession() {
   return next
 }
 
-async function ensureNativeWorkoutChannel() {
-  if (nativeChannelReady || !isNativeApp()) return
+export function getWorkoutSession() {
   try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications')
-    // IMPORTANCE_LOW (2): updates in shade without sound / heads-up spam
-    await LocalNotifications.createChannel({
-      id: NATIVE_CHANNEL_ID,
-      name: 'Entreno en vivo',
-      description: 'Temporizador de sesión (sin sonido)',
-      importance: 2,
-      visibility: 1,
-      sound: '',
-      vibration: false,
-      lights: false
-    })
-    nativeChannelReady = true
+    const stored = window.localStorage.getItem(WORKOUT_SESSION_KEY)
+    if (!stored) return null
+    const session = JSON.parse(stored)
+    if (!session?.activeWorkout) return null
+    return {
+      ...session,
+      workoutTime: typeof session.workoutTime === 'number' ? session.workoutTime : 0,
+      completedExercises: Array.isArray(session.completedExercises) ? session.completedExercises : []
+    }
   } catch {
-    nativeChannelReady = true
-  }
-}
-
-async function ensureNativeWorkoutActions() {
-  if (nativeActionsReady || !isNativeApp()) return
-  try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications')
-    await LocalNotifications.registerActionTypes({
-      types: [
-        {
-          id: ACTION_TYPE_ID,
-          actions: [
-            { id: 'complete', title: 'Completar ejercicio', foreground: false },
-            { id: 'skip_rest', title: 'Saltar descanso', foreground: false },
-            { id: 'open', title: 'Abrir entreno', foreground: true }
-          ]
-        }
-      ]
-    })
-    nativeActionsReady = true
-  } catch {
-    nativeActionsReady = true
-  }
-}
-
-async function sendNativeWorkoutNotification(session) {
-  const { LocalNotifications } = await import('@capacitor/local-notifications')
-  let perm = await LocalNotifications.checkPermissions()
-  if (perm.display === 'prompt' || perm.display === 'prompt-with-rationale') {
-    perm = await LocalNotifications.requestPermissions()
-  }
-  if (perm.display !== 'granted') return false
-
-  const copy = buildWorkoutNotificationCopy(session, Date.now(), { omitLiveTimers: true })
-  if (!copy) return false
-
-  const restEndsAtMs = session.restEndsAt ? new Date(session.restEndsAt).getTime() : 0
-  const sessionStartMs = session.sessionStart
-    ? new Date(session.sessionStart).getTime()
-    : Date.now()
-  const inRest = copy.restRemaining > 0 && Number.isFinite(restEndsAtMs) && restEndsAtMs > 0
-  const whenMs = inRest ? restEndsAtMs : (Number.isFinite(sessionStartMs) ? sessionStartMs : Date.now())
-
-  // Structural fingerprint only — never include ticking seconds
-  const fingerprint = `${copy.body}|${copy.actionHint}|${whenMs}|${inRest ? 1 : 0}`
-  if (fingerprint === lastNativeBody) return true
-
-  const content = `${copy.workoutName} · ${copy.body}`
-
-  try {
-    const WorkoutHud = await getWorkoutHud()
-    await WorkoutHud.show({
-      title: copy.title,
-      content,
-      bigText: content,
-      showChronometer: true,
-      countDown: inRest,
-      whenMs
-    })
-    lastNativeBody = fingerprint
-    return true
-  } catch (hudErr) {
-    console.warn('WorkoutHud.show failed, falling back:', hudErr?.message || hudErr)
-  }
-
-  // Fallback: LocalNotifications without live timer text (no per-second reschedule)
-  try {
-    await ensureNativeWorkoutChannel()
-    await ensureNativeWorkoutActions()
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: NATIVE_NOTIF_ID,
-          title: copy.title,
-          body: content,
-          channelId: NATIVE_CHANNEL_ID,
-          largeBody: content,
-          summaryText: copy.exerciseLabel,
-          ongoing: true,
-          autoCancel: false,
-          silent: true,
-          actionTypeId: ACTION_TYPE_ID,
-          extra: {
-            type: 'workout_session',
-            url: `/workouts?focus=${copy.exerciseId || ''}`,
-            actionHint: copy.actionHint
-          }
-        }
-      ]
-    })
-    lastNativeBody = fingerprint
-    return true
-  } catch (err) {
-    console.warn('LocalNotifications workout fallback:', err?.message || err)
-    return false
+    return null
   }
 }
 
@@ -353,14 +379,6 @@ async function clearNativeWorkoutNotification() {
   try {
     const WorkoutHud = await getWorkoutHud()
     await WorkoutHud.clear()
-  } catch {
-    /* ignore */
-  }
-  try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications')
-    await LocalNotifications.cancel({
-      notifications: [{ id: NATIVE_NOTIF_ID }, { id: WORKOUT_HUD_NOTIF_ID }]
-    })
   } catch {
     /* ignore */
   }
@@ -393,11 +411,33 @@ async function sendWebWorkoutNotification(session) {
 
 export async function sendWorkoutNotification(session) {
   if (!session?.activeWorkout) return false
-  if (isNativeApp()) {
+  const hasCapacitor =
+    isNativeApp() ||
+    (typeof window !== 'undefined' && Boolean(window.Capacitor?.isNativePlatform?.() || window.Capacitor?.getPlatform?.()))
+
+  if (hasCapacitor) {
     try {
-      return await sendNativeWorkoutNotification(session)
+      const result = await sendNativeWorkoutNotification(session)
+      if (result && typeof result === 'object') {
+        if (!result.ok && result.error) {
+          console.warn('workout HUD:', result.error)
+          // Stash last error for UI toasts
+          try {
+            window.__qyntraLastHudError = result.error
+          } catch {
+            /* ignore */
+          }
+        }
+        return Boolean(result.ok)
+      }
+      return Boolean(result)
     } catch (err) {
       console.warn('native workout notification:', err?.message || err)
+      try {
+        window.__qyntraLastHudError = err?.message || String(err)
+      } catch {
+        /* ignore */
+      }
       return false
     }
   }
@@ -420,7 +460,7 @@ export async function clearWorkoutNotification() {
   notifications.forEach((notification) => notification.close())
 }
 
-/** Wire notification action buttons (call once from native shell). */
+/** Wire notification action buttons + native workout notification actions. */
 export async function bindNativeWorkoutNotificationActions() {
   if (!isNativeApp()) return
   try {
@@ -442,12 +482,29 @@ export async function bindNativeWorkoutNotificationActions() {
         if (next) await sendWorkoutNotification(next)
         return
       }
-      // tap / open
       const url = extra.url || '/workouts'
       window.location.assign(url.startsWith('/') ? url : `/${url}`)
     })
   } catch (err) {
     console.warn('bindNativeWorkoutNotificationActions:', err?.message || err)
+  }
+
+  // Native WorkoutHud action buttons (MainActivity → custom event)
+  try {
+    window.addEventListener('qyntra:workout-action', async (event) => {
+      const action = event?.detail?.action
+      if (action === 'complete') {
+        const next = completeCurrentExerciseInSession()
+        if (next) await sendWorkoutNotification(next)
+        return
+      }
+      if (action === 'skip_rest') {
+        const next = skipRestInSession()
+        if (next) await sendWorkoutNotification(next)
+      }
+    })
+  } catch {
+    /* ignore */
   }
 }
 

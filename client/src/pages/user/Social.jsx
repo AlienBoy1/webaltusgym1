@@ -33,6 +33,7 @@ import { TUTORIAL_IDS } from '../../tutorials/registry'
 import { countComments } from '../../utils/commentTree'
 import { compressImageFile } from '../../utils/compressImage'
 import { adoptRoutineToWorkouts } from '../../utils/adoptRoutine'
+import PullToRefresh from '../../components/PullToRefresh'
 
 const moods = [
   { id: 'happy', label: 'Feliz', emoji: '😊', color: 'from-yellow-400 to-orange-500' },
@@ -278,7 +279,14 @@ export default function Social() {
     if (opening) ensureCommentsLoaded(post)
   }
 
-  const handleImageSelect = (e) => {
+  const handleImageSelect = async (e) => {
+    const { getStorageAccessGranted } = await import('../../utils/storageAccess')
+    if (!getStorageAccessGranted()) {
+      e.target.value = ''
+      toast.error('Activa el acceso a multimedia en Ajustes → Permisos')
+      window.location.assign('/settings?section=permissions')
+      return
+    }
     const files = Array.from(e.target.files || [])
     if (files.length + selectedImages.length > 4) {
       toast.error('Máximo 4 imágenes por publicación')
@@ -590,6 +598,7 @@ export default function Social() {
   }
 
   return (
+    <PullToRefresh onRefresh={async () => { await fetchPosts({ append: false }) }}>
     <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
@@ -690,7 +699,15 @@ export default function Social() {
                   className="hidden"
                 />
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={async () => {
+                    const { getStorageAccessGranted } = await import('../../utils/storageAccess')
+                    if (!getStorageAccessGranted()) {
+                      toast.error('Activa el acceso a multimedia en Ajustes → Permisos')
+                      window.location.assign('/settings?section=permissions')
+                      return
+                    }
+                    fileInputRef.current?.click()
+                  }}
                   className="btn-secondary w-full flex items-center justify-center gap-2 mb-3"
                 >
                   <FiImage size={20} />
@@ -1442,5 +1459,6 @@ export default function Social() {
         }}
       />
     </div>
+    </PullToRefresh>
   )
 }

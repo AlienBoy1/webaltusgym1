@@ -7,6 +7,7 @@ import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
+import PullToRefresh from '../../components/PullToRefresh'
 
 const typeIcons = {
   welcome: '🎉',
@@ -160,6 +161,7 @@ export default function Notifications() {
   }
 
   return (
+    <PullToRefresh onRefresh={async () => { await fetchNotifications() }}>
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -334,5 +336,6 @@ export default function Notifications() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   )
 }

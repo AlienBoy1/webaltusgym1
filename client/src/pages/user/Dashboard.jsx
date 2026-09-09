@@ -17,6 +17,7 @@ import ChatShortcutsRail from '../../components/ChatShortcutsRail'
 import ShareWelcomeSheet from '../../components/ShareWelcomeSheet'
 import PresenceBubblesRail from '../../components/PresenceBubblesRail'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
+import PullToRefresh from '../../components/PullToRefresh'
 
 const MOTIVATIONAL_MESSAGES = [
   'Cada serie cuenta. Hoy sumas un paso más hacia tu mejor versión.',
@@ -181,6 +182,7 @@ export default function Dashboard() {
   ]
 
   return (
+    <PullToRefresh onRefresh={loadData}>
     <div className="space-y-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -466,5 +468,6 @@ export default function Dashboard() {
 
       <ChatShortcutsRail />
     </div>
+    </PullToRefresh>
   )
 }

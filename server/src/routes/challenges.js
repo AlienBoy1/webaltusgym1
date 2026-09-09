@@ -431,11 +431,23 @@ router.get('/', authenticate, async (req, res) => {
       .order('start_date', { ascending: true })
       .limit(80)
 
-    if (active === 'true' || active === true) {
+        if (active === 'true' || active === true) {
       query = query.gte('end_date', new Date().toISOString())
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+    // Fallback when goal_mode / exercises columns are not migrated yet
+    if (error && /goal_mode|exercises/i.test(String(error.message || ''))) {
+      query = supabaseAdmin
+        .from('challenges')
+        .select('id, title, description, type, goal, unit, image, start_date, end_date, reward, created_by, created_at')
+        .order('start_date', { ascending: true })
+        .limit(80)
+      if (active === 'true' || active === true) {
+        query = query.gte('end_date', new Date().toISOString())
+      }
+      ;({ data, error } = await query)
+    }
     if (error) throw error
 
     let rows = data || []

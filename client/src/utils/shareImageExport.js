@@ -1,6 +1,7 @@
 /**
  * Reliable canvas → image export + native/web file sharing.
- * Avoids huge PNG dataURLs (OOM) and WebView file-share gaps on Android.
+ * On Android, never fall back to text+URL when an image exists —
+ * WhatsApp ignores files if a bare `url` is also passed.
  */
 
 import { isNativeApp } from './appMode'
@@ -58,7 +59,6 @@ export async function exportCanvasDataUrl(canvas, { quality = 0.88 } = {}) {
       const blob = await canvasToBlob(canvas, 'image/png')
       return await blobToDataUrl(blob)
     } catch (pngErr) {
-      // Last resort — may throw SecurityError if canvas is tainted
       try {
         return canvas.toDataURL('image/jpeg', quality)
       } catch {
@@ -92,7 +92,9 @@ export async function shareImageFile({
   filename = 'qyntra-share.jpg',
   title = 'Qyntra Gym',
   text = '',
-  url = ''
+  url = '',
+  /** If true, never fall back to text-only share when image exists */
+  requireImage = true
 } = {}) {
   let fileBlob = blob
   if (!fileBlob && dataUrl) fileBlob = await dataUrlToBlob(dataUrl)
@@ -106,6 +108,10 @@ export async function shareImageFile({
         ? filename.replace(/\.png$/i, '.jpg')
         : filename
 
+  // Caption can include the invite link — do NOT pass `url` separately with files
+  // (Android WhatsApp often drops the image and only shares the link).
+  const caption = [text, url].filter(Boolean).join('\n\n').trim()
+
   if (isNativeApp()) {
     try {
       const { Filesystem, Directory } = await import('@capacitor/filesystem')
@@ -115,16 +121,17 @@ export async function shareImageFile({
       await Filesystem.writeFile({
         path,
         data: base64,
-        directory: Directory.Cache
+        directory: Directory.Cache,
+        recursive: true
       })
       const { uri } = await Filesystem.getUri({
         path,
         directory: Directory.Cache
       })
+      // Image-first share: files + optional text caption, never bare url
       await Share.share({
         title,
-        text: text || undefined,
-        url: url || undefined,
+        text: caption || undefined,
         files: [uri],
         dialogTitle: title
       })
@@ -143,13 +150,27 @@ export async function shareImageFile({
       await navigator.share({
         files: [file],
         title,
-        text: text || undefined,
-        url: url || undefined
+        text: caption || undefined
       })
       return { mode: 'web', shared: true }
     } catch (err) {
       if (err?.name === 'AbortError') return { mode: 'web', shared: true }
-      throw err
+      console.warn('Web Share files failed:', err?.message || err)
+    }
+  }
+
+  if (requireImage) {
+    // Force download so user can still send the image manually — never silent text fallback
+    try {
+      const objectUrl = URL.createObjectURL(fileBlob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = safeName
+      a.click()
+      URL.revokeObjectURL(objectUrl)
+      return { mode: 'download', shared: true }
+    } catch (err) {
+      throw new Error(err?.message || 'No se pudo compartir la imagen')
     }
   }
 
@@ -157,7 +178,7 @@ export async function shareImageFile({
     try {
       await navigator.share({
         title,
-        text: text || undefined,
+        text: caption || undefined,
         url: url || undefined
       })
       return { mode: 'text', shared: true }
