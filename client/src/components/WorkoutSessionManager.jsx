@@ -9,7 +9,6 @@ import {
 } from '../utils/workoutSession'
 import { isNativeApp } from '../utils/appMode'
 
-/** Soft-update session timers in storage; native HUD is updated only on structural changes */
 const TICK_MS = 1000
 
 function getExerciseKey(session) {
@@ -33,7 +32,8 @@ export default function WorkoutSessionManager() {
 
       if (!session?.activeWorkout) {
         emptyTicks.current += 1
-        if (emptyTicks.current >= 5 && lastSession.current?.activeWorkout) {
+        // Only clear HUD after a long empty streak — never wipe on nav remount races
+        if (emptyTicks.current >= 15 && lastSession.current?.activeWorkout) {
           await clearWorkoutNotification()
           lastSession.current = session
           lastStructureKey.current = ''
@@ -101,6 +101,19 @@ export default function WorkoutSessionManager() {
               invalidateNativeWorkoutHudFingerprint()
               nativeHudShown.current = false
               tick()
+              // Re-attach system overlay after returning from "draw over apps" settings
+              ;(async () => {
+                try {
+                  const { registerPlugin } = await import('@capacitor/core')
+                  const WorkoutHud = registerPlugin('WorkoutHud')
+                  const perms = await WorkoutHud.checkPermissions()
+                  if (perms?.overlay === 'granted') {
+                    await WorkoutHud.startOverlay()
+                  }
+                } catch {
+                  /* optional */
+                }
+              })()
             }
           })
           removeAppListener = () => {

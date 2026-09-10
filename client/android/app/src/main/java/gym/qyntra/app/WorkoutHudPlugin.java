@@ -55,10 +55,11 @@ public class WorkoutHudPlugin extends Plugin {
             ed.putString("title", call.getString("title", "Entrenamiento en curso"));
             ed.putString("content", call.getString("content", ""));
             ed.putString("bigText", call.getString("bigText", call.getString("content", "")));
-            ed.putString("bubbleLabel", call.getString("bubbleLabel", "Entreno"));
+            ed.putString("bubbleLabel", call.getString("bubbleLabel", "Entrenando"));
             ed.putBoolean("showChronometer", Boolean.TRUE.equals(call.getBoolean("showChronometer", true)));
-            ed.putBoolean("countDown", Boolean.TRUE.equals(call.getBoolean("countDown", false)));
-            ed.putBoolean("inRest", Boolean.TRUE.equals(call.getBoolean("countDown", false)));
+            boolean countDown = Boolean.TRUE.equals(call.getBoolean("countDown", false));
+            ed.putBoolean("countDown", countDown);
+            ed.putBoolean("inRest", countDown);
             Double whenDouble = call.getDouble("whenMs");
             long whenMs = whenDouble != null && whenDouble > 0
                 ? whenDouble.longValue()
@@ -78,7 +79,7 @@ public class WorkoutHudPlugin extends Plugin {
         );
         extras.putExtra(
             WorkoutHudService.EXTRA_BUBBLE_LABEL,
-            call.getString("bubbleLabel", call.getString("content", "Entreno"))
+            call.getString("bubbleLabel", "Entrenando")
         );
         extras.putExtra(
             WorkoutHudService.EXTRA_SHOW_CHRONO,
@@ -100,95 +101,59 @@ public class WorkoutHudPlugin extends Plugin {
         ret.put("ok", ok);
         ret.put("posted", posted);
         ret.put("activeCount", active);
-        ret.put("channelBlocked", WorkoutHudNotifier.channelBlocked(getContext()));
         ret.put("notifications", notificationsAllowed() ? "granted" : "denied");
-        ret.put(
-            "overlay",
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(getContext())
-                ? "granted"
-                : "denied"
-        );
+        ret.put("overlay", WorkoutHudOverlay.canDraw(getContext()) ? "granted" : "denied");
         ret.put("notifId", WorkoutHudNotifier.NOTIF_ID);
         ret.put("channelId", WorkoutHudNotifier.CHANNEL_ID);
         return ret;
     }
 
-    /**
-     * 1) Post with NotificationManager only (visible immediately).
-     * 2) Verify activeCount.
-     * 3) Then optionally promote to FGS — FGS must never wipe a working shade notification.
-     */
+    private void applyHud(Intent extras) {
+        // Critical path: NotificationManager + SYSTEM_ALERT_WINDOW only.
+        // Do NOT start WorkoutHudService here — failed specialUse FGS after
+        // startForegroundService crashes the process and wipes the shade notif.
+        Notification notification = WorkoutHudNotifier.buildFromIntent(getContext(), extras);
+        WorkoutHudNotifier.notifyNow(getContext(), notification);
+
+        String bubble = extras.getStringExtra(WorkoutHudService.EXTRA_BUBBLE_LABEL);
+        long whenMs = extras.getLongExtra(WorkoutHudService.EXTRA_WHEN_MS, System.currentTimeMillis());
+        boolean countDown = extras.getBooleanExtra(WorkoutHudService.EXTRA_COUNT_DOWN, false);
+
+        if (WorkoutHudOverlay.canDraw(getContext())) {
+            WorkoutHudOverlay.show(getContext(), bubble, whenMs, countDown);
+        }
+    }
+
     private void doShow(PluginCall call) {
         final PluginCall saved = call;
         Runnable work = () -> {
             try {
                 if (!notificationsAllowed()) {
-                    saved.reject("Permiso de notificaciones denegado o apagado en Ajustes");
-                    return;
-                }
-                if (WorkoutHudNotifier.channelBlocked(getContext())) {
-                    saved.reject("Canal 'Entreno en vivo' está bloqueado en Ajustes de notificaciones");
+                    saved.reject("Activa Notificaciones para Qyntra en Ajustes");
                     return;
                 }
 
                 Intent extras = extrasFromCall(saved);
-                Notification notification = WorkoutHudNotifier.buildFromIntent(getContext(), extras);
-
-                boolean posted = WorkoutHudNotifier.notifyNow(getContext(), notification);
                 persistActive(saved, true);
+                applyHud(extras);
 
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
                     int active = WorkoutHudNotifier.countActive(getContext());
-                    Log.i(TAG, "after notify active=" + active + " posted=" + posted);
-
-                    if (active <= 0 && posted) {
-                        Notification plain = WorkoutHudNotifier.build(
+                    if (active <= 0) {
+                        // Hard retry without FGS
+                        WorkoutHudNotifier.notifyNow(
                             getContext(),
-                            saved.getString("title", "Entrenamiento en curso"),
-                            saved.getString("content", "Sesión activa"),
-                            saved.getString("content", "Sesión activa"),
-                            false,
-                            false,
-                            System.currentTimeMillis(),
-                            false
+                            WorkoutHudNotifier.buildFromIntent(getContext(), extras)
                         );
-                        WorkoutHudNotifier.notifyNow(getContext(), plain);
                         active = WorkoutHudNotifier.countActive(getContext());
                     }
-
-                    final int finalActive = active;
-                    boolean visible = finalActive > 0 || (finalActive < 0 && posted);
-                    if (!visible) {
-                        saved.reject(
-                            "Android no muestra la notificación (activeCount="
-                                + finalActive
-                                + ", enabled="
-                                + notificationsAllowed()
-                                + ", channelBlocked="
-                                + WorkoutHudNotifier.channelBlocked(getContext())
-                                + ")"
-                        );
-                        return;
+                    boolean ok = active > 0 || active < 0;
+                    if (ok) {
+                        saved.resolve(statusPayload(true, true, active));
+                    } else {
+                        saved.reject("Android no muestra la notificación (activeCount=0). Revisa Ajustes → Notificaciones → Entreno en vivo");
                     }
-
-                    // Overlay bubble needs FGS; only start when overlay permission is already granted
-                    boolean canOverlay =
-                        Build.VERSION.SDK_INT < Build.VERSION_CODES.M
-                            || Settings.canDrawOverlays(getContext());
-                    if (canOverlay) {
-                        try {
-                            WorkoutHudService.startOrUpdate(getContext(), extras);
-                        } catch (Exception e) {
-                            Log.e(TAG, "FGS/overlay start failed (notif kept)", e);
-                            WorkoutHudNotifier.notifyNow(
-                                getContext(),
-                                WorkoutHudNotifier.buildFromIntent(getContext(), extras)
-                            );
-                        }
-                    }
-
-                    saved.resolve(statusPayload(true, posted, finalActive));
-                }, 250);
+                }, 400);
             } catch (Exception e) {
                 Log.e(TAG, "doShow failed", e);
                 saved.reject("doShow failed: " + e.getMessage(), e);
@@ -246,7 +211,7 @@ public class WorkoutHudPlugin extends Plugin {
 
     @PluginMethod
     public void requestOverlayPermission(PluginCall call) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(getContext())) {
+        if (WorkoutHudOverlay.canDraw(getContext())) {
             call.resolve(new JSObject().put("overlay", "granted"));
             return;
         }
@@ -286,46 +251,47 @@ public class WorkoutHudPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void startOverlay(PluginCall call) {
+        try {
+            SharedPreferences sp = prefs();
+            if (!sp.getBoolean("active", false)) {
+                call.reject("No active workout");
+                return;
+            }
+            if (!WorkoutHudOverlay.canDraw(getContext())) {
+                call.resolve(new JSObject().put("ok", false).put("overlay", "denied"));
+                return;
+            }
+            Intent extras = new Intent();
+            extras.putExtra(WorkoutHudService.EXTRA_TITLE, sp.getString("title", "Entrenamiento en curso"));
+            extras.putExtra(WorkoutHudService.EXTRA_CONTENT, sp.getString("content", ""));
+            extras.putExtra(WorkoutHudService.EXTRA_BIG_TEXT, sp.getString("bigText", ""));
+            extras.putExtra(WorkoutHudService.EXTRA_BUBBLE_LABEL, sp.getString("bubbleLabel", "Entrenando"));
+            extras.putExtra(WorkoutHudService.EXTRA_SHOW_CHRONO, sp.getBoolean("showChronometer", true));
+            extras.putExtra(WorkoutHudService.EXTRA_COUNT_DOWN, sp.getBoolean("countDown", false));
+            extras.putExtra(WorkoutHudService.EXTRA_IN_REST, sp.getBoolean("inRest", false));
+            extras.putExtra(WorkoutHudService.EXTRA_WHEN_MS, sp.getLong("whenMs", System.currentTimeMillis()));
+            applyHud(extras);
+            call.resolve(new JSObject().put("ok", true).put("overlay", "granted"));
+        } catch (Exception e) {
+            call.reject("startOverlay failed", e);
+        }
+    }
+
+    @PluginMethod
     public void clear(PluginCall call) {
         try {
             prefs().edit().putBoolean("active", false).apply();
-            WorkoutHudService.stop(getContext());
+            WorkoutHudOverlay.remove(getContext());
+            try {
+                WorkoutHudService.stop(getContext());
+            } catch (Exception ignored) {
+                /* ignore */
+            }
             WorkoutHudNotifier.cancel(getContext());
             call.resolve(new JSObject().put("ok", true));
         } catch (Exception e) {
             call.reject("clear failed", e);
-        }
-    }
-
-    /** Immediate test notification (debug). Prefer show() for production. */
-    @PluginMethod
-    public void ping(PluginCall call) {
-        try {
-            if (!notificationsAllowed()) {
-                call.reject("notifications denied");
-                return;
-            }
-            Notification n = WorkoutHudNotifier.build(
-                getContext(),
-                "Entrenamiento en curso",
-                "Sesión activa",
-                "Sesión activa",
-                true,
-                false,
-                System.currentTimeMillis(),
-                false
-            );
-            boolean posted = WorkoutHudNotifier.notifyNow(getContext(), n);
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                int active = WorkoutHudNotifier.countActive(getContext());
-                if (active > 0 || (active < 0 && posted)) {
-                    call.resolve(statusPayload(true, posted, active));
-                } else {
-                    call.reject("ping not visible activeCount=" + active);
-                }
-            }, 200);
-        } catch (Exception e) {
-            call.reject("ping failed", e);
         }
     }
 
@@ -337,19 +303,19 @@ public class WorkoutHudPlugin extends Plugin {
             extras.putExtra(WorkoutHudService.EXTRA_TITLE, sp.getString("title", "Entrenamiento en curso"));
             extras.putExtra(WorkoutHudService.EXTRA_CONTENT, sp.getString("content", ""));
             extras.putExtra(WorkoutHudService.EXTRA_BIG_TEXT, sp.getString("bigText", ""));
-            extras.putExtra(WorkoutHudService.EXTRA_BUBBLE_LABEL, sp.getString("bubbleLabel", "Entreno"));
+            extras.putExtra(WorkoutHudService.EXTRA_BUBBLE_LABEL, sp.getString("bubbleLabel", "Entrenando"));
             extras.putExtra(WorkoutHudService.EXTRA_SHOW_CHRONO, sp.getBoolean("showChronometer", true));
             extras.putExtra(WorkoutHudService.EXTRA_COUNT_DOWN, sp.getBoolean("countDown", false));
             extras.putExtra(WorkoutHudService.EXTRA_IN_REST, sp.getBoolean("inRest", false));
             extras.putExtra(WorkoutHudService.EXTRA_WHEN_MS, sp.getLong("whenMs", System.currentTimeMillis()));
-            Notification n = WorkoutHudNotifier.buildFromIntent(context, extras);
-            WorkoutHudNotifier.notifyNow(context, n);
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)) {
-                try {
-                    WorkoutHudService.startOrUpdate(context, extras);
-                } catch (Exception ignored) {
-                    /* keep shade notification */
-                }
+            WorkoutHudNotifier.notifyNow(context, WorkoutHudNotifier.buildFromIntent(context, extras));
+            if (WorkoutHudOverlay.canDraw(context)) {
+                WorkoutHudOverlay.show(
+                    context,
+                    sp.getString("bubbleLabel", "Entrenando"),
+                    sp.getLong("whenMs", System.currentTimeMillis()),
+                    sp.getBoolean("countDown", false)
+                );
             }
         } catch (Exception e) {
             Log.e(TAG, "restoreIfNeeded failed", e);

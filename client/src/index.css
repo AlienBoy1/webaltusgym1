@@ -335,11 +335,20 @@ html.dark {
     padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
   }
 
+  .app-bottom-sheet-panel.flex {
+    overflow: hidden;
+  }
+
   @media (max-width: 767px) {
     .app-bottom-sheet-panel,
     .app-modal-panel {
       max-height: calc(100svh - env(safe-area-inset-bottom, 0px));
       padding-bottom: max(5.75rem, calc(4.5rem + env(safe-area-inset-bottom, 0px)));
+    }
+
+    .app-bottom-sheet-panel.flex {
+      padding-bottom: 0;
+      max-height: min(94svh, calc(100svh - 0.5rem));
     }
 
     /* Optional scroll area that keeps last rows above the nav footprint */

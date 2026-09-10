@@ -508,7 +508,8 @@ export default function Workouts() {
   useEffect(() => {
     if (!hydrated.current) return
     if (!activeWorkout) {
-      clearWorkoutSession()
+      // Do NOT clearWorkoutSession() here — it races remounts/nav and kills the live HUD.
+      // cancelWorkout / finishWorkout clear explicitly.
       return
     }
 
@@ -701,6 +702,13 @@ export default function Workouts() {
     }
     setWorkoutSession(bootSession)
     try {
+      // Force a fresh native post every start
+      try {
+        const { invalidateNativeWorkoutHudFingerprint } = await import('../../utils/workoutSession')
+        invalidateNativeWorkoutHudFingerprint()
+      } catch {
+        /* ignore */
+      }
       const ok = await sendWorkoutNotification(bootSession)
       if (!ok) {
         const detail =
@@ -719,36 +727,22 @@ export default function Workouts() {
         try {
           const { isNativeApp } = await import('../../utils/appMode')
           if (isNativeApp()) {
-            const flagKey = 'qyntra:overlay_prompted_v3'
-            if (!window.localStorage.getItem(flagKey)) {
-              window.localStorage.setItem(flagKey, '1')
-              window.setTimeout(() => {
-                toast(
-                  (t) => (
-                    <span className="text-sm">
-                      ¿Burbuja sobre otras apps?{' '}
-                      <button
-                        type="button"
-                        className="underline font-semibold"
-                        onClick={() => {
-                          toast.dismiss(t.id)
-                          requestWorkoutOverlayPermission()
-                        }}
-                      >
-                        Activar
-                      </button>
-                    </span>
-                  ),
-                  { duration: 8000 }
-                )
-              }, 2500)
-            } else {
-              window.setTimeout(() => {
-                requestWorkoutOverlayPermission().then((status) => {
-                  if (status === 'granted') sendWorkoutNotification(bootSession)
-                })
-              }, 800)
-            }
+            // Burbuja sobre otras apps: obligatorio pedir permiso hasta que esté granted
+            window.setTimeout(async () => {
+              try {
+                const status = await requestWorkoutOverlayPermission()
+                if (status === 'granted') {
+                  toast.success('Burbuja de entreno activa', { duration: 2500 })
+                } else {
+                  toast(
+                    'Activa “Mostrar sobre otras apps” para Qyntra y vuelve a la app',
+                    { duration: 9000 }
+                  )
+                }
+              } catch {
+                toast.error('No se pudo pedir permiso de burbuja')
+              }
+            }, 600)
           }
         } catch {
           /* overlay optional */
@@ -767,6 +761,7 @@ export default function Workouts() {
     setRestHistory([])
     clearRestState()
     await clearWorkoutNotification()
+    clearWorkoutSession()
   }
 
   const finishWorkout = async () => {
@@ -834,6 +829,7 @@ export default function Workouts() {
       setRestHistory([])
       skipRest()
       await clearWorkoutNotification()
+      clearWorkoutSession()
     }
   }
 
@@ -1962,14 +1958,14 @@ export default function Workouts() {
 
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 sm:px-6 sm:py-8">
+          <div className="app-overlay-sheet fixed inset-0 z-[130] flex items-end justify-center bg-black/75 sm:items-center sm:p-4">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 28 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="app-modal-panel card w-full max-w-3xl p-5 sm:p-6"
+              exit={{ opacity: 0, y: 28 }}
+              className="app-bottom-sheet-panel flex w-full max-w-3xl flex-col rounded-t-3xl border border-app bg-elevated sm:rounded-3xl"
             >
-              <div className="mb-6 flex items-center justify-between gap-3">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-app px-5 py-4 sm:px-6">
                 <div>
                   <p className="text-sm text-app-secondary">{editingId ? 'Editar rutina' : 'Nueva rutina'}</p>
                   <h2 className="font-display text-2xl text-app">
@@ -1982,13 +1978,13 @@ export default function Workouts() {
                     setShowCreateModal(false)
                     setEditingId(null)
                   }}
-                  className="text-app-secondary hover:text-app"
+                  className="rounded-lg p-2 text-app-secondary hover:bg-[color:var(--bg-muted)] hover:text-app"
                 >
                   <FiX size={24} />
                 </button>
               </div>
 
-              <div className="space-y-5">
+              <div className="app-sheet-scroll space-y-5 overflow-y-auto px-5 py-4 sm:px-6">
                 <div>
                   <label className="mb-2 block text-sm text-app-secondary">Nombre</label>
                   <input
@@ -2092,21 +2088,22 @@ export default function Workouts() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateModal(false)
-                      setEditingId(null)
-                    }}
-                    className="btn-secondary w-full py-3"
-                  >
-                    Cancelar
-                  </button>
-                  <button type="button" onClick={saveNewRoutine} className="btn-primary w-full py-3">
-                    {editingId ? 'Guardar cambios' : 'Guardar'}
-                  </button>
-                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-col gap-3 border-t border-app px-5 py-4 sm:flex-row sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false)
+                    setEditingId(null)
+                  }}
+                  className="btn-secondary w-full py-3"
+                >
+                  Cancelar
+                </button>
+                <button type="button" onClick={saveNewRoutine} className="btn-primary w-full py-3">
+                  {editingId ? 'Guardar cambios' : 'Guardar'}
+                </button>
               </div>
             </motion.div>
           </div>

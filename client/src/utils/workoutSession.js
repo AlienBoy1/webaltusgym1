@@ -7,7 +7,7 @@ const SESSION_EVENT = 'qyntra:workout-session'
 /** Legacy LocalNotifications ids. Native WorkoutHud uses 99101. */
 const NATIVE_NOTIF_ID = 42001
 const WORKOUT_HUD_NOTIF_ID = 99101
-const NATIVE_CHANNEL_ID = 'qyntra_workout_live_v8'
+const NATIVE_CHANNEL_ID = 'qyntra_workout_live_v11'
 const ACTION_TYPE_ID = 'WORKOUT_SESSION_ACTIONS'
 const DEFAULT_REST_SECONDS = 60
 
@@ -133,18 +133,41 @@ async function sendNativeWorkoutNotification(session) {
       whenMs
     })
     const active = Number(result?.activeCount)
-    if (result?.ok && (active > 0 || Number.isNaN(active))) {
+    if (result?.ok && (active > 0 || Number.isNaN(active) || active < 0)) {
       lastNativeBody = fingerprint
-      return { ok: true, activeCount: active, channelId: result?.channelId }
+      // Do not schedule LocalNotifications backup — it races exact alarms and can
+      // fight NotificationManager on the same channel after a successful native post.
+      return { ok: true, activeCount: active, channelId: result?.channelId, overlay: result?.overlay }
     }
     return {
       ok: false,
-      error: `No visible (active=${active}, blocked=${result?.channelBlocked})`
+      error: `No visible (active=${active})`
     }
   } catch (hudErr) {
     const msg = hudErr?.message || String(hudErr)
     console.warn('WorkoutHud.show:', msg)
-    return { ok: false, error: msg }
+    // Last resort: LocalNotifications alone
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications')
+      await ensureNativeWorkoutChannel()
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: NATIVE_NOTIF_ID,
+            title: copy.title,
+            body: content,
+            channelId: NATIVE_CHANNEL_ID,
+            ongoing: true,
+            autoCancel: false,
+            schedule: { at: new Date(Date.now() + 400) }
+          }
+        ]
+      })
+      lastNativeBody = fingerprint
+      return { ok: true, fallback: 'local-notifications' }
+    } catch (lnErr) {
+      return { ok: false, error: msg }
+    }
   }
 }
 
@@ -153,7 +176,14 @@ export async function requestWorkoutOverlayPermission() {
   try {
     const WorkoutHud = await getWorkoutHud()
     const perms = await WorkoutHud.checkPermissions()
-    if (perms?.overlay === 'granted') return 'granted'
+    if (perms?.overlay === 'granted') {
+      try {
+        await WorkoutHud.startOverlay()
+      } catch {
+        /* optional */
+      }
+      return 'granted'
+    }
     await WorkoutHud.requestOverlayPermission()
     return 'prompt'
   } catch {

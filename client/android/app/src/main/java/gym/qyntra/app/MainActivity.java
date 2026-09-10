@@ -56,15 +56,27 @@ public class MainActivity extends BridgeActivity {
 
     private void createDefaultNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        NotificationChannel channel = new NotificationChannel(
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+
+        NotificationChannel defaults = new NotificationChannel(
             "qyntra_default",
             "Qyntra",
             NotificationManager.IMPORTANCE_HIGH
         );
-        channel.setDescription("Notificaciones de Qyntra Gym");
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager != null) {
-            manager.createNotificationChannel(channel);
-        }
+        defaults.setDescription("Notificaciones de Qyntra Gym");
+        manager.createNotificationChannel(defaults);
+
+        // Ensure workout live channel exists even before first WorkoutHud.show
+        NotificationChannel workout = new NotificationChannel(
+            WorkoutHudNotifier.CHANNEL_ID,
+            "Entreno en vivo",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        workout.setDescription("Temporizador de entrenamiento");
+        workout.setShowBadge(true);
+        workout.enableVibration(true);
+        workout.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(workout);
     }
 }
