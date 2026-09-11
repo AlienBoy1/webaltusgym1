@@ -102,12 +102,10 @@ public class WorkoutHudService extends Service {
 
         if (intent != null) {
             String bubble = intent.getStringExtra(EXTRA_BUBBLE_LABEL);
-            if (bubble == null || bubble.isEmpty()) bubble = "Entrenando";
+            if (bubble == null || bubble.isEmpty()) bubble = "entrenando";
             long whenMs = intent.getLongExtra(EXTRA_WHEN_MS, System.currentTimeMillis());
             boolean countDown = intent.getBooleanExtra(EXTRA_COUNT_DOWN, false);
-            if (WorkoutHudOverlay.canDraw(this)) {
-                WorkoutHudOverlay.show(this, bubble, whenMs, countDown);
-            }
+            WorkoutHudOverlay.updateCached(bubble, whenMs, countDown);
         }
 
         if (!fgsOk) {

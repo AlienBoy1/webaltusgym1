@@ -8,7 +8,9 @@ import {
   getStoredRefreshToken,
   setAuthTokens,
   clearAuthTokens,
-  isRememberMeEnabled
+  isRememberMeEnabled,
+  hydrateNativeTokenStorage,
+  getNativePersistedTokens
 } from '../utils/tokenStorage'
 
 const CACHED_USER_KEY = 'qyntra:cachedUser'
@@ -124,7 +126,7 @@ export const useAuthStore = create((set, get) => ({
     }
     set({ loading: true, authIntent: 'login' })
     try {
-      setAuthTokens(token, refreshToken, remember)
+      await setAuthTokens(token, refreshToken, remember)
       await syncSupabaseSession(token, refreshToken)
       const user = withIdAlias(userPayload)
       persistCachedUser(user)
@@ -150,7 +152,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true, authIntent: 'login' })
     try {
       const { data } = await api.post('/auth/google', { accessToken, refreshToken })
-      setAuthTokens(data.token, data.refreshToken, remember)
+      await setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       persistCachedUser(user)
@@ -185,7 +187,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true, authIntent: 'login' })
     try {
       const { data } = await api.post('/auth/login', { email, password })
-      setAuthTokens(data.token, data.refreshToken, remember)
+      await setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       persistCachedUser(user)
@@ -230,7 +232,7 @@ export const useAuthStore = create((set, get) => ({
         { name, email, password, username },
         { headers }
       )
-      setAuthTokens(data.token, data.refreshToken, true)
+      await setAuthTokens(data.token, data.refreshToken, true)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       persistCachedUser(user)
@@ -267,7 +269,7 @@ export const useAuthStore = create((set, get) => ({
     } catch {
       /* ignore */
     }
-    clearAuthTokens()
+    await clearAuthTokens()
     persistCachedUser(null)
     set({
       user: null,
@@ -294,7 +296,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const { data } = await api.post('/auth/refresh', { refreshToken })
       const remember = isRememberMeEnabled()
-      setAuthTokens(data.token, data.refreshToken, remember)
+      await setAuthTokens(data.token, data.refreshToken, remember)
       await syncSupabaseSession(data.token, data.refreshToken)
       const user = withIdAlias(data.user)
       persistCachedUser(user)
@@ -323,7 +325,7 @@ export const useAuthStore = create((set, get) => ({
         return { success: false, transient: true }
       }
 
-      clearAuthTokens()
+      await clearAuthTokens()
       persistCachedUser(null)
       set({
         user: null,
@@ -413,19 +415,52 @@ export const useAuthStore = create((set, get) => ({
   },
 
   checkAuth: async () => {
-    const token = getStoredToken()
-    const refreshToken = getStoredRefreshToken()
-    const cached = loadCachedUser()
+    set({ initializing: true, loading: true })
 
-    set({
-      initializing: true,
-      loading: true,
-      ...(token && cached ? { user: cached, isAuthenticated: true, token, refreshToken } : {})
-    })
+    // Native: Preferences survive WebView wipes / process kill — hydrate BEFORE reading tokens
+    try {
+      await hydrateNativeTokenStorage()
+    } catch {
+      /* ignore */
+    }
+
+    let token = getStoredToken()
+    let refreshToken = getStoredRefreshToken()
+
+    // Last chance: read Preferences directly if WebView storage is still empty
+    if (!token || !refreshToken) {
+      try {
+        const native = await getNativePersistedTokens()
+        if (native.remember && (native.token || native.refreshToken)) {
+          await setAuthTokens(native.token, native.refreshToken, true)
+          token = getStoredToken() || native.token
+          refreshToken = getStoredRefreshToken() || native.refreshToken
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const cached = loadCachedUser()
+    const remember = isRememberMeEnabled()
+
+    if (token && cached) {
+      set({ user: cached, isAuthenticated: true, token, refreshToken, rememberMe: remember })
+    }
 
     if (!token) {
-      clearAuthTokens()
-      persistCachedUser(null)
+      // ONLY clear when Preferences also has nothing — never wipe durable session on hydrate race
+      let nativeHasSession = false
+      try {
+        const native = await getNativePersistedTokens()
+        nativeHasSession = Boolean(native.remember && (native.token || native.refreshToken))
+      } catch {
+        /* ignore */
+      }
+      if (!nativeHasSession) {
+        await clearAuthTokens()
+        persistCachedUser(null)
+      }
       set({
         isAuthenticated: false,
         user: null,
@@ -446,6 +481,7 @@ export const useAuthStore = create((set, get) => ({
       set({
         user,
         isAuthenticated: true,
+        rememberMe: isRememberMeEnabled(),
         token: getStoredToken() || token,
         refreshToken: getStoredRefreshToken() || refreshToken,
         membershipNotice: data.membershipNotice || null,
@@ -467,7 +503,8 @@ export const useAuthStore = create((set, get) => ({
           isAuthenticated: true,
           token,
           refreshToken,
-          user: get().user || cached
+          user: get().user || cached,
+          rememberMe: isRememberMeEnabled()
         })
         return true
       }
@@ -478,7 +515,7 @@ export const useAuthStore = create((set, get) => ({
         }
         return false
       }
-      clearAuthTokens()
+      await clearAuthTokens()
       persistCachedUser(null)
       set({
         user: null,

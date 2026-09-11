@@ -55,27 +55,45 @@ async function sendFcm(token, notification) {
   }
 
   const url = notification.data?.url || '/notifications'
-  const message = {
-    token,
-    notification: {
-      title: notification.title,
-      body: notification.body
-    },
-    data: {
-      url: String(url),
-      notificationId: String(notification.data?.notificationId || notification.id || ''),
-      type: String(notification.data?.type || ''),
-      fromUserId: String(notification.data?.fromUserId || ''),
-      tag: String(notification.tag || notification.data?.tag || '')
-    },
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'qyntra_default',
-        sound: 'default'
-      }
-    }
+  const type = String(notification.data?.type || '')
+  const isMessage = type === 'message'
+
+  const data = {
+    url: String(url),
+    notificationId: String(notification.data?.notificationId || notification.id || ''),
+    type,
+    fromUserId: String(notification.data?.fromUserId || ''),
+    tag: String(notification.tag || notification.data?.tag || ''),
+    title: String(notification.title || ''),
+    body: String(notification.body || ''),
+    fromName: String(notification.data?.fromName || notification.title || '')
   }
+
+  // Chat messages: data-only so QyntraMessagingService runs in background
+  // (notification+data payloads are swallowed by the system tray and never reach onMessageReceived).
+  const message = isMessage
+    ? {
+        token,
+        data,
+        android: {
+          priority: 'high'
+        }
+      }
+    : {
+        token,
+        notification: {
+          title: notification.title,
+          body: notification.body
+        },
+        data,
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'qyntra_default',
+            sound: 'default'
+          }
+        }
+      }
 
   await admin.messaging().send(message)
   return true

@@ -60,7 +60,7 @@ const processQueue = (error, token = null) => {
 }
 
 function hardLogoutToLogin() {
-  clearAuthTokens()
+  void clearAuthTokens()
   const path = window.location.pathname
   if (path !== '/login' && path !== '/register' && path !== '/' && !path.startsWith('/auth/')) {
     const redirect = encodeURIComponent(window.location.pathname + window.location.search)
@@ -136,7 +136,7 @@ api.interceptors.response.use(
         const token = response.data.token
         const nextRefreshToken = response.data.refreshToken
         const remember = isRememberMeEnabled() || Boolean(localStorage.getItem('token'))
-        setAuthTokens(token, nextRefreshToken, remember)
+        await setAuthTokens(token, nextRefreshToken, remember)
         processQueue(null, token)
         originalRequest.headers.Authorization = `Bearer ${token}`
         return api(originalRequest)

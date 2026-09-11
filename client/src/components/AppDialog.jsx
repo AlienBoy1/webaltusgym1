@@ -10,15 +10,27 @@ const DialogContext = createContext(null)
 export function AppDialogProvider({ children }) {
   const [dialog, setDialog] = useState(null)
   const resolverRef = useRef(null)
+  const queueRef = useRef([])
 
   const close = useCallback((result) => {
     resolverRef.current?.(result)
     resolverRef.current = null
-    setDialog(null)
+    const next = queueRef.current.shift()
+    if (next) {
+      resolverRef.current = next.resolve
+      setDialog(next.config)
+    } else {
+      setDialog(null)
+    }
   }, [])
 
   const open = useCallback((config) => {
     return new Promise((resolve) => {
+      // Queue if another dialog is already open — never drop confirmations
+      if (resolverRef.current) {
+        queueRef.current.push({ config, resolve })
+        return
+      }
       resolverRef.current = resolve
       setDialog(config)
     })
@@ -32,7 +44,8 @@ export function AppDialogProvider({ children }) {
           title: options.title || 'Qyntra Gym',
           message,
           confirmLabel: options.confirmLabel || 'Entendido',
-          tone: options.tone || 'info'
+          tone: options.tone || 'info',
+          dismissible: options.dismissible !== false
         }).then(() => true),
       confirm: (message, options = {}) =>
         open({
@@ -41,7 +54,8 @@ export function AppDialogProvider({ children }) {
           message,
           confirmLabel: options.confirmLabel || 'Confirmar',
           cancelLabel: options.cancelLabel || 'Cancelar',
-          tone: options.tone || 'danger'
+          tone: options.tone || 'danger',
+          dismissible: options.dismissible !== false
         }),
       prompt: (message, options = {}) =>
         open({
@@ -52,7 +66,8 @@ export function AppDialogProvider({ children }) {
           placeholder: options.placeholder || '',
           confirmLabel: options.confirmLabel || 'Continuar',
           cancelLabel: options.cancelLabel || 'Cancelar',
-          tone: options.tone || 'info'
+          tone: options.tone || 'info',
+          dismissible: options.dismissible !== false
         })
     }),
     [open]
@@ -73,7 +88,10 @@ export function AppDialogProvider({ children }) {
               type="button"
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               aria-label="Cerrar"
-              onClick={() => close(dialog.type === 'confirm' ? false : dialog.type === 'prompt' ? null : true)}
+              onClick={() => {
+                if (dialog.dismissible === false) return
+                close(dialog.type === 'confirm' ? false : dialog.type === 'prompt' ? null : true)
+              }}
             />
             <motion.div
               role="dialog"

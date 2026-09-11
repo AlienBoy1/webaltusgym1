@@ -15,6 +15,7 @@ function inboxUrl(notificationId) {
 
 /**
  * Insert in-app notification and send native Web Push (best-effort).
+ * Pass skipInbox:true for device-only alerts (chat messages).
  */
 export async function notifyUser({
   userId,
@@ -26,45 +27,54 @@ export async function notifyUser({
   relatedData = null,
   priority = 'normal',
   pushTag = null,
-  pushUrl = null
+  pushUrl = null,
+  skipInbox = false
 }) {
   if (!userId) return null
 
-  const { data, error } = await supabaseAdmin
-    .from('notifications')
-    .insert({
-      user_id: userId,
-      type,
-      title,
-      body,
-      icon,
-      related_user_id: relatedUserId,
-      related_data: relatedData,
-      priority
-    })
-    .select('*')
-    .single()
+  let mapped = null
+  let notificationId = null
 
-  if (error) {
-    console.error('notifyUser insert error:', error.message)
-    return null
+  if (!skipInbox) {
+    const { data, error } = await supabaseAdmin
+      .from('notifications')
+      .insert({
+        user_id: userId,
+        type,
+        title,
+        body,
+        icon,
+        related_user_id: relatedUserId,
+        related_data: relatedData,
+        priority
+      })
+      .select('*')
+      .single()
+
+    if (error) {
+      console.error('notifyUser insert error:', error.message)
+      return null
+    }
+
+    mapped = mapNotification(data)
+    notificationId = data.id
   }
 
-  const mapped = mapNotification(data)
-  const url = pushUrl || inboxUrl(data.id)
+  const url = pushUrl || (notificationId ? inboxUrl(notificationId) : '/notifications')
 
   // Non-blocking push
   sendPushNotification(userId, {
-    id: data.id,
+    id: notificationId,
     title,
     body,
     icon: '/pwa-192x192.png',
     data: {
       url,
-      notificationId: data.id,
+      notificationId,
       type,
       tag: pushTag || undefined,
-      fromUserId: relatedUserId || relatedData?.fromUserId || null
+      fromUserId: relatedUserId || relatedData?.fromUserId || null,
+      fromName: title
     },
     tag: pushTag || undefined,
     renotify: Boolean(pushTag)
@@ -97,7 +107,7 @@ export async function notifyAllUsers(payload, { excludeId = null } = {}) {
 }
 
 /**
- * Chat: keep a single unread message notification per sender + push with unread count.
+ * Chat: device push only (no in-app notification inbox rows).
  */
 export async function notifyNewMessage({ toUserId, fromUserId, fromName, content }) {
   const { count } = await supabaseAdmin
@@ -112,14 +122,13 @@ export async function notifyNewMessage({ toUserId, fromUserId, fromName, content
   const body =
     unread > 1 ? `${preview} · ${unread} mensajes sin leer` : preview
 
-  // Replace previous unread message notifs from this sender
+  // Collapse any legacy unread message inbox rows from this sender
   await supabaseAdmin
     .from('notifications')
     .delete()
     .eq('user_id', toUserId)
     .eq('type', 'message')
     .eq('related_user_id', fromUserId)
-    .eq('read', false)
 
   return notifyUser({
     userId: toUserId,
@@ -131,7 +140,8 @@ export async function notifyNewMessage({ toUserId, fromUserId, fromName, content
     relatedData: { unreadCount: unread, fromUserId },
     priority: 'high',
     pushTag: `msg-${fromUserId}`,
-    pushUrl: '/chat'
+    pushUrl: `/chat?peer=${fromUserId}`,
+    skipInbox: true
   })
 }
 

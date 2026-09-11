@@ -145,7 +145,7 @@ export default function WorkoutFloatingPanel() {
             }
             navigate(`/workouts?focus=${currentExercise?.id || ''}`)
           }}
-          className={`relative h-full w-full cursor-pointer overflow-hidden border border-app bg-elevated/95 text-left shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl ${
+          className={`relative h-full w-full cursor-pointer overflow-hidden border border-white/20 bg-elevated/70 text-left shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl ${
             expanded ? 'rounded-[1.75rem]' : 'rounded-full'
           }`}
           aria-label="Entrenamiento en curso"

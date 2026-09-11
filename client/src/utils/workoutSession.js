@@ -7,7 +7,7 @@ const SESSION_EVENT = 'qyntra:workout-session'
 /** Legacy LocalNotifications ids. Native WorkoutHud uses 99101. */
 const NATIVE_NOTIF_ID = 42001
 const WORKOUT_HUD_NOTIF_ID = 99101
-const NATIVE_CHANNEL_ID = 'qyntra_workout_live_v11'
+const NATIVE_CHANNEL_ID = 'qyntra_workout_live_v17'
 const ACTION_TYPE_ID = 'WORKOUT_SESSION_ACTIONS'
 const DEFAULT_REST_SECONDS = 60
 
@@ -50,9 +50,10 @@ async function ensureNativeWorkoutActions() {
         {
           id: ACTION_TYPE_ID,
           actions: [
-            { id: 'complete', title: 'Completar ejercicio', foreground: false },
+            { id: 'complete', title: 'Ejercicio completado', foreground: false },
             { id: 'skip_rest', title: 'Saltar descanso', foreground: false },
-            { id: 'open', title: 'Abrir entreno', foreground: true }
+            { id: 'open', title: 'Abrir', foreground: true },
+            { id: 'cancel', title: 'Cancelar', foreground: true }
           ]
         }
       ]
@@ -64,8 +65,10 @@ async function ensureNativeWorkoutActions() {
 }
 
 /**
- * Native workout HUD via NotificationManager only (no AlarmManager / LocalNotifications.schedule).
- * Scheduled LN needs SCHEDULE_EXACT_ALARM and often never fires on Android 13+.
+ * Native workout HUD — triple path:
+ * 1) window.QyntraNative (JavascriptInterface — bypasses Capacitor)
+ * 2) Capacitor WorkoutHud plugin
+ * 3) LocalNotifications with isExactNotification:false (no exact-alarm trap)
  */
 async function sendNativeWorkoutNotification(session) {
   const copy = buildWorkoutNotificationCopy(session, Date.now(), { omitLiveTimers: true })
@@ -79,26 +82,20 @@ async function sendNativeWorkoutNotification(session) {
   const whenMs = inRest ? restEndsAtMs : (Number.isFinite(sessionStartMs) ? sessionStartMs : Date.now())
 
   const fingerprint = `${copy.body}|${copy.actionHint}|${whenMs}|${inRest ? 1 : 0}`
-
-  const WorkoutHud = await getWorkoutHud()
-
-  // If we think we already showed, confirm it's still in the shade
   if (fingerprint === lastNativeBody) {
-    try {
-      const status = await WorkoutHud.checkPermissions()
-      if (Number(status?.activeCount) > 0) return { ok: true }
-      lastNativeBody = ''
-    } catch {
-      lastNativeBody = ''
-    }
+    return { ok: true, cached: true }
   }
 
   const content = `${copy.workoutName} · ${copy.body}`
   const bubbleLabel = inRest
     ? `Descanso · ${copy.exerciseLabel}`
-    : (copy.exerciseLabel || copy.workoutName || 'Entreno')
+    : (copy.exerciseLabel || copy.workoutName || 'Entrenando')
+  const progress =
+    copy.total > 0 ? Math.max(0.08, Math.min(1, (copy.done || 0) / copy.total)) : 0.08
 
-  // Permission
+  const errors = []
+
+  // 0) Ask permission via LocalNotifications (reliable system dialog) + native bridge
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications')
     let perm = await LocalNotifications.checkPermissions()
@@ -107,22 +104,52 @@ async function sendNativeWorkoutNotification(session) {
     }
     if (perm.display !== 'granted') {
       try {
-        await WorkoutHud.requestPermissions()
+        window.QyntraNative?.requestNotificationPermission?.()
       } catch {
         /* ignore */
       }
-      try {
-        await WorkoutHud.openNotificationSettings()
-      } catch {
-        /* ignore */
-      }
-      return { ok: false, error: 'Activa Notificaciones para Qyntra en Ajustes' }
     }
   } catch (e) {
-    console.warn('permission step:', e?.message || e)
+    errors.push(`LN.perm:${e?.message || e}`)
+    try {
+      window.QyntraNative?.requestNotificationPermission?.()
+    } catch {
+      /* ignore */
+    }
   }
 
+  // 1) Direct JavascriptInterface (does not depend on Capacitor plugin registry)
   try {
+    if (typeof window !== 'undefined' && window.QyntraNative?.showWorkout) {
+      const raw = window.QyntraNative.showWorkout(
+        copy.title,
+        content,
+        bubbleLabel,
+        inRest,
+        whenMs,
+        progress
+      )
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+      if (parsed?.ok) {
+        lastNativeBody = fingerprint
+        return { ok: true, via: 'QyntraNative', ...parsed }
+      }
+      errors.push(`bridge:${parsed?.error || 'not-ok'}`)
+    } else {
+      errors.push('bridge:missing')
+    }
+  } catch (e) {
+    errors.push(`bridge:${e?.message || e}`)
+  }
+
+  // 2) Capacitor plugin fallback
+  try {
+    const WorkoutHud = await getWorkoutHud()
+    try {
+      await WorkoutHud.requestPermissions()
+    } catch {
+      /* continue */
+    }
     const result = await WorkoutHud.show({
       title: copy.title,
       content,
@@ -135,53 +162,225 @@ async function sendNativeWorkoutNotification(session) {
     const active = Number(result?.activeCount)
     if (result?.ok && (active > 0 || Number.isNaN(active) || active < 0)) {
       lastNativeBody = fingerprint
-      // Do not schedule LocalNotifications backup — it races exact alarms and can
-      // fight NotificationManager on the same channel after a successful native post.
-      return { ok: true, activeCount: active, channelId: result?.channelId, overlay: result?.overlay }
+      return { ok: true, via: 'WorkoutHud', activeCount: active }
     }
-    return {
-      ok: false,
-      error: `No visible (active=${active})`
-    }
-  } catch (hudErr) {
-    const msg = hudErr?.message || String(hudErr)
-    console.warn('WorkoutHud.show:', msg)
-    // Last resort: LocalNotifications alone
-    try {
-      const { LocalNotifications } = await import('@capacitor/local-notifications')
-      await ensureNativeWorkoutChannel()
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: NATIVE_NOTIF_ID,
-            title: copy.title,
-            body: content,
-            channelId: NATIVE_CHANNEL_ID,
-            ongoing: true,
-            autoCancel: false,
-            schedule: { at: new Date(Date.now() + 400) }
-          }
-        ]
-      })
-      lastNativeBody = fingerprint
-      return { ok: true, fallback: 'local-notifications' }
-    } catch (lnErr) {
-      return { ok: false, error: msg }
-    }
+    errors.push(`plugin:active=${active}`)
+  } catch (e) {
+    errors.push(`plugin:${e?.message || e}`)
   }
+
+  // 3) LocalNotifications inexact schedule (Capacitor 8.3+ — avoid exact-alarm settings trap)
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await ensureNativeWorkoutChannel()
+    await ensureNativeWorkoutActions()
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: WORKOUT_HUD_NOTIF_ID,
+          title: copy.title,
+          body: content,
+          largeBody: content,
+          channelId: NATIVE_CHANNEL_ID,
+          ongoing: true,
+          autoCancel: false,
+          smallIcon: 'ic_stat_qyntra_q',
+          actionTypeId: ACTION_TYPE_ID,
+          extra: { type: 'workout_session' },
+          schedule: {
+            at: new Date(Date.now() + 800),
+            allowWhileIdle: true,
+            isExactNotification: false
+          }
+        }
+      ]
+    })
+    // Still mark HUD prefs so onPause can show the system bubble after overlay grant
+    try {
+      if (typeof window !== 'undefined' && window.QyntraNative?.showWorkout) {
+        window.QyntraNative.showWorkout(
+          copy.title,
+          content,
+          bubbleLabel,
+          inRest,
+          whenMs,
+          progress
+        )
+      }
+    } catch {
+      /* bridge optional */
+    }
+    lastNativeBody = fingerprint
+    return { ok: true, via: 'LocalNotifications' }
+  } catch (e) {
+    errors.push(`LN:${e?.message || e}`)
+  }
+
+  return { ok: false, error: errors.join(' | ') || 'No se pudo publicar la notificación' }
 }
 
 /** Open "display over other apps" settings (bubble outside the app). Call AFTER notif works. */
+export async function checkWorkoutOverlayPermission() {
+  try {
+    if (typeof window !== 'undefined' && window.QyntraNative?.checkStatus) {
+      const statusRaw = window.QyntraNative.checkStatus()
+      const status = typeof statusRaw === 'string' ? JSON.parse(statusRaw) : statusRaw
+      return status?.overlay === 'granted' ? 'granted' : 'denied'
+    }
+    const WorkoutHud = await getWorkoutHud()
+    const perms = await WorkoutHud.checkPermissions()
+    return perms?.overlay === 'granted' ? 'granted' : 'denied'
+  } catch {
+    return 'denied'
+  }
+}
+
+const PENDING_OVERLAY_KEY = 'qyntra:pending-workout-overlay'
+
+export function markPendingWorkoutOverlayPrompt() {
+  try {
+    window.localStorage.setItem(PENDING_OVERLAY_KEY, '1')
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearPendingWorkoutOverlayPrompt() {
+  try {
+    window.localStorage.removeItem(PENDING_OVERLAY_KEY)
+    window.sessionStorage.removeItem(PENDING_OVERLAY_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function hasPendingWorkoutOverlayPrompt() {
+  try {
+    return (
+      window.localStorage.getItem(PENDING_OVERLAY_KEY) === '1' ||
+      window.sessionStorage.getItem(PENDING_OVERLAY_KEY) === '1'
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * After notifications: ALWAYS show “Activar burbuja” if overlay is not granted.
+ * Never draws the system overlay while the app is in the foreground.
+ */
+export async function promptWorkoutBubblePermission(dialog) {
+  // Wait until activity is foreground again (after system permission sheets)
+  for (let i = 0; i < 30; i++) {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') break
+    await new Promise((r) => window.setTimeout(r, 200))
+  }
+  // Extra beat so system sheets / toasts settle and AppDialog can mount cleanly
+  await new Promise((r) => window.setTimeout(r, 900))
+
+  let overlayStatus = 'denied'
+  try {
+    overlayStatus = await checkWorkoutOverlayPermission()
+  } catch {
+    overlayStatus = 'denied'
+  }
+
+  // Already allowed → keep native overlay hidden in-app; React bubble is enough
+  if (overlayStatus === 'granted') {
+    clearPendingWorkoutOverlayPrompt()
+    await hideWorkoutOverlay()
+    return 'granted'
+  }
+
+  if (!dialog?.confirm) {
+    markPendingWorkoutOverlayPrompt()
+    return 'denied'
+  }
+
+  // Force the permission dialog (same copy as Settings)
+  const enableBubble = await dialog.confirm(
+    'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
+    {
+      title: 'Activar burbuja',
+      confirmLabel: 'Configurar',
+      cancelLabel: 'Cancelar',
+      tone: 'info',
+      dismissible: false
+    }
+  )
+
+  if (!enableBubble) {
+    markPendingWorkoutOverlayPrompt()
+    return 'denied'
+  }
+
+  markPendingWorkoutOverlayPrompt()
+  await requestWorkoutOverlayPermission()
+  return 'prompted'
+}
+
+/**
+ * Call on app resume: if user just granted overlay, keep in-app unified (hide native).
+ * Native bubble appears automatically on the next onPause (leaving the app).
+ */
+export async function maybeShowWorkoutOverlayAfterSettingsReturn() {
+  try {
+    if (!hasPendingWorkoutOverlayPrompt()) return false
+    if (!getWorkoutSession()?.activeWorkout) return false
+    const status = await checkWorkoutOverlayPermission()
+    if (status !== 'granted') return false
+    clearPendingWorkoutOverlayPrompt()
+    await hideWorkoutOverlay()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Hide system overlay while using the app (React bubble stays). */
+export async function hideWorkoutOverlay() {
+  try {
+    if (typeof window !== 'undefined' && window.QyntraNative?.hideOverlay) {
+      window.QyntraNative.hideOverlay()
+      return true
+    }
+    if (typeof window !== 'undefined' && window.QyntraNative?.forceShowOverlay) {
+      // forceShowOverlay now only hides + warms cache
+      window.QyntraNative.forceShowOverlay()
+      return true
+    }
+  } catch {
+    /* ignore */
+  }
+  return false
+}
+
+export async function forceShowWorkoutOverlay() {
+  // Intentionally does NOT draw over the app — only hides native + warms cache.
+  return hideWorkoutOverlay()
+}
+
 export async function requestWorkoutOverlayPermission() {
   try {
+    // Prefer direct bridge
+    if (typeof window !== 'undefined' && window.QyntraNative) {
+      try {
+        const statusRaw = window.QyntraNative.checkStatus?.()
+        const status = typeof statusRaw === 'string' ? JSON.parse(statusRaw) : statusRaw
+        if (status?.overlay === 'granted') {
+          window.QyntraNative.hideOverlay?.()
+          return 'granted'
+        }
+        window.QyntraNative.openOverlaySettings?.()
+        return 'prompt'
+      } catch {
+        /* fall through */
+      }
+    }
     const WorkoutHud = await getWorkoutHud()
     const perms = await WorkoutHud.checkPermissions()
     if (perms?.overlay === 'granted') {
-      try {
-        await WorkoutHud.startOverlay()
-      } catch {
-        /* optional */
-      }
+      await hideWorkoutOverlay()
       return 'granted'
     }
     await WorkoutHud.requestOverlayPermission()
@@ -308,7 +507,7 @@ function buildWorkoutNotificationCopy(session, now = Date.now(), opts = {}) {
   const exerciseLabel = nextExercise?.name || 'Sesión completa'
   const omitLiveTimers = Boolean(opts.omitLiveTimers)
 
-  const title = 'Entrenamiento en curso'
+  const title = 'Entrenamiento en vivo'
   let body
   let actionHint = 'complete'
   if (restRemaining > 0) {
@@ -388,6 +587,12 @@ export function skipRestInSession() {
   return next
 }
 
+/** Cancel active workout from notification / overlay actions. */
+export function cancelWorkoutInSession() {
+  clearWorkoutSession()
+  return null
+}
+
 export function getWorkoutSession() {
   try {
     const stored = window.localStorage.getItem(WORKOUT_SESSION_KEY)
@@ -407,8 +612,19 @@ export function getWorkoutSession() {
 async function clearNativeWorkoutNotification() {
   lastNativeBody = ''
   try {
+    window.QyntraNative?.clearWorkout?.()
+  } catch {
+    /* ignore */
+  }
+  try {
     const WorkoutHud = await getWorkoutHud()
     await WorkoutHud.clear()
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.cancel({ notifications: [{ id: WORKOUT_HUD_NOTIF_ID }, { id: NATIVE_NOTIF_ID }] })
   } catch {
     /* ignore */
   }
@@ -500,7 +716,7 @@ export async function bindNativeWorkoutNotificationActions() {
       const actionId = event?.actionId
       const notifId = Number(event?.notification?.id)
       const extra = event?.notification?.extra || {}
-      if (notifId !== NATIVE_NOTIF_ID && extra.type !== 'workout_session') return
+      if (notifId !== NATIVE_NOTIF_ID && notifId !== WORKOUT_HUD_NOTIF_ID && extra.type !== 'workout_session') return
 
       if (actionId === 'complete') {
         const next = completeCurrentExerciseInSession()
@@ -510,6 +726,19 @@ export async function bindNativeWorkoutNotificationActions() {
       if (actionId === 'skip_rest') {
         const next = skipRestInSession()
         if (next) await sendWorkoutNotification(next)
+        return
+      }
+      if (actionId === 'cancel') {
+        try {
+          window.sessionStorage.setItem('qyntra:pending_cancel', '1')
+        } catch {
+          /* ignore */
+        }
+        window.dispatchEvent(new CustomEvent('qyntra:workout-cancel-request'))
+        const url = extra.url || '/workouts'
+        if (window.location.pathname !== '/workouts') {
+          window.location.assign(url.startsWith('/') ? url : `/${url}`)
+        }
         return
       }
       const url = extra.url || '/workouts'
@@ -531,6 +760,17 @@ export async function bindNativeWorkoutNotificationActions() {
       if (action === 'skip_rest') {
         const next = skipRestInSession()
         if (next) await sendWorkoutNotification(next)
+        return
+      }
+      if (action === 'cancel') {
+        try {
+          window.sessionStorage.setItem('qyntra:pending_cancel', '1')
+        } catch {
+          /* ignore */
+        }
+        // Open workouts UI and ask for confirmation — never cancel silently
+        window.dispatchEvent(new CustomEvent('qyntra:workout-cancel-request'))
+        return
       }
     })
   } catch {

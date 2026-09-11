@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -50,6 +51,26 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Ongoing gym workout session: keeps a live training chronometer notification (and optional overlay HUD) while the user is actively exercising, so the timer and current exercise remain visible after leaving the app." />
         </service>
+
+        <!-- Replace Capacitor FCM service so chat heads + delivery ACK work when killed -->
+        <service
+            android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
+            tools:node="remove" />
+        <service
+            android:name=".QyntraMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".ChatBubbleActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="gym.qyntra.app.CHAT_MARK_READ" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

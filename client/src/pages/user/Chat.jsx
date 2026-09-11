@@ -17,10 +17,11 @@ import {
   FiTrash2,
   FiBookmark,
   FiFile,
+  FiSlash,
   FiActivity,
   FiCornerUpLeft,
   FiLink,
-  FiSlash
+  FiMessageSquare
 } from 'react-icons/fi'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -29,7 +30,16 @@ import { fetchAvatarsByIds } from '../../utils/userAvatars'
 import { onChatEvent, sendTyping, sendReceipt, showNotification, requestNotificationPermission } from '../../utils/socket'
 import { Avatar } from '../../utils/avatarUtils'
 import toast from 'react-hot-toast'
-import { mergeReceipt } from '../../utils/chatReceipts'
+import {
+  isChatBubbleEnabled,
+  setChatBubbleEnabled,
+  cacheMessageThread,
+  loadCachedMessageThread,
+  dismissChatNotification,
+  hideNativeChatBubble,
+  syncChatBubblesToNative
+} from '../../utils/chatBubbles'
+import { isNativeApp } from '../../utils/appMode'
 import { useStoryViewer } from '../../components/StoryViewerContext'
 import PresenceDot from '../../components/PresenceDot'
 import { formatActivePresenceLabel, getPresenceMeta, getUserLastSeen, PRESENCE_STATUS, usePresenceStatus } from '../../utils/presence'
@@ -509,6 +519,8 @@ export default function Chat() {
   const prefetchConversations = useChatStore((s) => s.prefetch)
   const [selectedChat, setSelectedChat] = useState(null)
   const [messages, setMessages] = useState([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+  const [chatBubbleOn, setChatBubbleOn] = useState(false)
   const [newMessage, setNewMessage] = useState('')
   const [search, setSearch] = useState('')
   const [storyUsers, setStoryUsers] = useState(() => new Set())
@@ -991,13 +1003,22 @@ export default function Chat() {
   }
 
   const fetchMessages = async (otherId) => {
+    if (!otherId) return
+    const cached = loadCachedMessageThread(otherId)
+    if (cached?.length) {
+      setMessages(cached)
+      setMessagesLoading(false)
+    } else {
+      setMessagesLoading(true)
+    }
     try {
-      const { data } = await api.get(`/chat/messages/${otherId}`, { timeout: 45000 })
+      const { data } = await api.get(`/chat/messages/${otherId}`, { timeout: 20000 })
       if (!Array.isArray(data)) {
         toast.error('No se pudieron cargar los mensajes')
         return
       }
       setMessages(data)
+      cacheMessageThread(otherId, data)
       setConversations((convs) =>
         convs.map((c) => (c.otherId === otherId ? { ...c, unread: 0 } : c))
       )
@@ -1028,7 +1049,11 @@ export default function Chat() {
             content: pending.text || '',
             attachment: pending.attachment
           })
-          setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]))
+          setMessages((prev) => {
+            const next = prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]
+            cacheMessageThread(otherId, next)
+            return next
+          })
           setConversations((convs) =>
             convs.map((c) =>
               c.otherId === otherId
@@ -1046,7 +1071,11 @@ export default function Chat() {
       }
     } catch (error) {
       console.error('Error fetching messages:', error)
-      toast.error(error.response?.data?.message || 'No se pudieron cargar los mensajes')
+      if (!cached?.length) {
+        toast.error(error.response?.data?.message || 'No se pudieron cargar los mensajes')
+      }
+    } finally {
+      setMessagesLoading(false)
     }
   }
 
@@ -1059,6 +1088,9 @@ export default function Chat() {
     setPeerTyping(false)
     const next = { ...conv, otherId: conv.otherId || conv.oderId }
     setSelectedChat(next)
+    setChatBubbleOn(isChatBubbleEnabled(next.otherId))
+    void dismissChatNotification(next.otherId)
+    void hideNativeChatBubble(next.otherId)
     // Hydrate full profile photo if the list had a slim / missing avatar
     if (next.otherId && !isRenderableAvatar(next.avatar)) {
       ;(async () => {
@@ -1965,8 +1997,46 @@ export default function Chat() {
     })()
   }
 
+  useEffect(() => {
+    if (!selectedChat?.otherId || !conversations?.length) return
+    const hit = conversations.find((c) => String(c.otherId) === String(selectedChat.otherId))
+    if (!hit) return
+    if (selectedChat.name && selectedChat.name !== 'Chat' && selectedChat.avatar) return
+    setSelectedChat((prev) =>
+      prev?.otherId === hit.otherId
+        ? {
+            ...prev,
+            name: hit.name || prev.name,
+            avatar: hit.avatar || prev.avatar,
+            username: hit.username || prev.username
+          }
+        : prev
+    )
+  }, [conversations, selectedChat?.otherId, selectedChat?.name, selectedChat?.avatar])
+
   // Open chat from profile "Mensaje" button or story reply
   useEffect(() => {
+    const params = new URLSearchParams(location.search || '')
+    const peerFromQuery = params.get('peer')
+    if (peerFromQuery) {
+      const existing = conversations.find((c) => String(c.otherId) === String(peerFromQuery))
+      if (existing) {
+        void handleSelectChat(existing)
+      } else {
+        setSelectedChat({
+          otherId: peerFromQuery,
+          name: 'Chat',
+          avatar: null,
+          unread: 0
+        })
+        setChatBubbleOn(isChatBubbleEnabled(peerFromQuery))
+        void dismissChatNotification(peerFromQuery)
+        void hideNativeChatBubble(peerFromQuery)
+      }
+      navigate('/chat', { replace: true, state: {} })
+      return
+    }
+
     const startWith = location.state?.startWith
     const prefill = location.state?.prefill
     const storyReply = location.state?.storyReply
@@ -2381,6 +2451,45 @@ export default function Chat() {
                         { icon: FiActivity, label: 'Ver entrenamientos', action: openRoutinesSheet },
                         { icon: FiUser, label: 'Estilo del chat', action: openWallpaperSheet },
                         {
+                          icon: FiMessageSquare,
+                          label: chatBubbleOn ? 'Desactivar burbuja de chat' : 'Activar burbuja de chat',
+                          action: async () => {
+                            setShowThreadMenu(false)
+                            if (!isNativeApp()) {
+                              toast('La burbuja de chat está disponible en la app Android')
+                              return
+                            }
+                            const next = !chatBubbleOn
+                            if (next) {
+                              const { checkWorkoutOverlayPermission, requestWorkoutOverlayPermission, markPendingWorkoutOverlayPrompt } =
+                                await import('../../utils/workoutSession')
+                              const overlay = await checkWorkoutOverlayPermission()
+                              if (overlay !== 'granted') {
+                                const ok = await dialog.confirm(
+                                  'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa. Así la burbuja podrá mostrarse al recibir mensajes.',
+                                  {
+                                    title: 'Activar burbuja de chat',
+                                    confirmLabel: 'Configurar',
+                                    cancelLabel: 'Cancelar',
+                                    tone: 'info'
+                                  }
+                                )
+                                if (!ok) return
+                                markPendingWorkoutOverlayPrompt()
+                                await requestWorkoutOverlayPermission()
+                              }
+                            }
+                            setChatBubbleEnabled(selectedChat.otherId, next)
+                            setChatBubbleOn(next)
+                            await syncChatBubblesToNative()
+                            toast.success(
+                              next
+                                ? 'Burbuja activa: verás una cabeza flotante al recibir mensajes fuera de la app'
+                                : 'Burbuja desactivada para este chat'
+                            )
+                          }
+                        },
+                        {
                           icon: FiSlash,
                           label: 'Bloquear a este usuario',
                           action: handleBlockPeer,
@@ -2411,7 +2520,15 @@ export default function Chat() {
               ref={messagesScrollRef}
               className="relative z-10 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5 sm:py-5"
             >
-              {messages.length === 0 ? (
+              {messagesLoading && messages.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                  <div
+                    className="h-8 w-8 animate-spin rounded-full border-2 border-[color:var(--border-subtle)]"
+                    style={{ borderTopColor: 'var(--color-primary)' }}
+                  />
+                  <p className="mt-3 text-sm text-[color:var(--text-secondary)]">Cargando mensajes…</p>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-6 text-center">
                   <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-3xl bg-[rgba(var(--color-primary-rgb),0.12)] text-3xl">
                     💬

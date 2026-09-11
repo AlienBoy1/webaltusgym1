@@ -83,7 +83,8 @@ export async function saveStoryMedia(mediaUrl, mediaType = 'image') {
  * Falls back to download + deep-link / tip.
  */
 export async function shareStoryToNetwork(mediaUrl, mediaType, network) {
-  const label = network === 'facebook' ? 'Facebook' : 'Instagram'
+  const label =
+    network === 'facebook' ? 'Facebook' : network === 'whatsapp' ? 'WhatsApp' : 'Instagram'
   const { blob, filename } = await fetchStoryBlob(mediaUrl, mediaType)
 
   if (mediaType !== 'video') {
@@ -91,7 +92,7 @@ export async function shareStoryToNetwork(mediaUrl, mediaType, network) {
       blob,
       filename,
       title: `Historia Qyntra · ${label}`,
-      text: `Compartir en historias de ${label}`
+      text: network === 'whatsapp' ? 'Historia de Qyntra Gym' : `Compartir en historias de ${label}`
     })
     if (result.shared) return { mode: result.mode }
   } else if (navigator.share) {
@@ -101,7 +102,7 @@ export async function shareStoryToNetwork(mediaUrl, mediaType, network) {
         await navigator.share({
           files: [file],
           title: `Historia Qyntra · ${label}`,
-          text: `Compartir en historias de ${label}`
+          text: network === 'whatsapp' ? 'Historia de Qyntra Gym' : `Compartir en historias de ${label}`
         })
         return { mode: 'web' }
       }
@@ -117,6 +118,8 @@ export async function shareStoryToNetwork(mediaUrl, mediaType, network) {
       window.location.href = 'instagram://story-camera'
     } else if (network === 'facebook') {
       window.open('https://www.facebook.com/stories/create', '_blank', 'noopener,noreferrer')
+    } else if (network === 'whatsapp') {
+      window.open('https://wa.me/', '_blank', 'noopener,noreferrer')
     }
   } catch {
     /* ignore */

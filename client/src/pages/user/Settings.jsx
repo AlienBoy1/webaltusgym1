@@ -13,8 +13,9 @@ import {
   bindSystemThemeListener,
   loadCachedSettings
 } from '../../utils/theme'
-import { setWorkoutPreferences } from '../../utils/workoutSession'
+import { setWorkoutPreferences, checkWorkoutOverlayPermission, requestWorkoutOverlayPermission, forceShowWorkoutOverlay, getWorkoutSession } from '../../utils/workoutSession'
 import { getStorageAccessGranted, setStorageAccessGranted } from '../../utils/storageAccess'
+import { isNativeApp } from '../../utils/appMode'
 import { useAppDialog } from '../../components/AppDialog'
 import GoogleIcon from '../../components/GoogleIcon'
 import { getGoogleLinkedStatus, startGoogleLink } from '../../utils/googleAuth'
@@ -64,6 +65,7 @@ export default function UserSettings() {
   const [searchParams] = useSearchParams()
   const [activeSection, setActiveSection] = useState(() => searchParams.get('section') || 'notifications')
   const [storageAccess, setStorageAccess] = useState(() => getStorageAccessGranted())
+  const [overlayAccess, setOverlayAccess] = useState(false)
   const [googleLinked, setGoogleLinked] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
@@ -90,6 +92,38 @@ export default function UserSettings() {
       }
     }
   }, [searchParams])
+
+  useEffect(() => {
+    let cancelled = false
+    const refreshOverlay = async () => {
+      if (!isNativeApp()) {
+        if (!cancelled) setOverlayAccess(false)
+        return
+      }
+      try {
+        const status = await checkWorkoutOverlayPermission()
+        const granted = status === 'granted'
+        if (!cancelled) setOverlayAccess(granted)
+        // When user returns from Android settings with permission on + workout active → show bubble now
+        if (granted && getWorkoutSession()?.activeWorkout) {
+          await forceShowWorkoutOverlay()
+        }
+      } catch {
+        if (!cancelled) setOverlayAccess(false)
+      }
+    }
+    refreshOverlay()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshOverlay()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', refreshOverlay)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', refreshOverlay)
+    }
+  }, [activeSection])
 
   useEffect(() => {
     let cancelled = false
@@ -613,6 +647,43 @@ export default function UserSettings() {
                       Sin este permiso no podrás subir historias. Actívalo aquí cuando quieras compartir en comunidad.
                     </p>
                   )}
+                  {isNativeApp() && (
+                    <div className="flex items-center justify-between border-b border-white/5 py-3">
+                      <div>
+                        <div className="font-medium">Burbuja sobre otras apps</div>
+                        <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          Muestra la burbuja «entrenando» encima de WhatsApp u otras apps mientras tu sesión está activa.
+                        </div>
+                      </div>
+                      <Toggle
+                        enabled={overlayAccess}
+                        onChange={async (v) => {
+                          if (!v) {
+                            await dialog.alert(
+                              'Para desactivar la burbuja, apaga “Aparecer encima de otras apps” en Ajustes del sistema para Qyntra.',
+                              { title: 'Burbuja de entreno' }
+                            )
+                            await requestWorkoutOverlayPermission()
+                            return
+                          }
+                          const ok = await dialog.confirm(
+                            'Android abrirá la pantalla de permisos. Activa Qyntra en “Aparecer encima de otras apps” y vuelve aquí.',
+                            {
+                              title: 'Activar burbuja',
+                              confirmLabel: 'Abrir ajustes',
+                              cancelLabel: 'Cancelar',
+                              tone: 'info'
+                            }
+                          )
+                          if (!ok) return
+                          const { markPendingWorkoutOverlayPrompt } = await import('../../utils/workoutSession')
+                          markPendingWorkoutOverlayPrompt()
+                          await requestWorkoutOverlayPermission()
+                          toast('Activa el permiso y vuelve a Qyntra', { duration: 7000 })
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -621,6 +692,47 @@ export default function UserSettings() {
               <div className="space-y-6">
                 <h2 className="font-display text-xl flex items-center gap-2"><FiActivity className="text-accent-green" /> Entrenamiento</h2>
                 <div className="space-y-4">
+                  {isNativeApp() && (
+                    <div className="flex items-center justify-between border-b border-white/5 py-3">
+                      <div>
+                        <div className="font-medium">Burbuja «entrenando»</div>
+                        <div className="text-sm text-gray-400">
+                          Permiso para mantener la burbuja visible al cambiar de app. {overlayAccess ? 'Activada.' : 'No activada.'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary shrink-0 px-3 py-2 text-sm"
+                        onClick={async () => {
+                          if (overlayAccess) {
+                            toast.success('La burbuja ya está permitida')
+                            if (getWorkoutSession()?.activeWorkout) {
+                              await forceShowWorkoutOverlay()
+                            }
+                            return
+                          }
+                          const ok = await dialog.confirm(
+                            'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
+                            {
+                              title: 'Activar burbuja',
+                              confirmLabel: 'Configurar',
+                              cancelLabel: 'Cancelar',
+                              tone: 'info'
+                            }
+                          )
+                          if (!ok) return
+                          const { markPendingWorkoutOverlayPrompt } = await import('../../utils/workoutSession')
+                          markPendingWorkoutOverlayPrompt()
+                          await requestWorkoutOverlayPermission()
+                          toast('Activa el permiso y vuelve a Qyntra — la burbuja aparecerá al instante', {
+                            duration: 7000
+                          })
+                        }}
+                      >
+                        {overlayAccess ? 'Activa' : 'Activar'}
+                      </button>
+                    </div>
+                  )}
                   <div data-tour="tour-settings-rest-timer" className="py-3 border-b border-white/5">
                     <div className="flex items-center gap-3 mb-3"><FiClock className="text-gray-400" /><div><div className="font-medium">Timer de Descanso (segundos)</div></div></div>
                     <input type="range" min="15" max="180" step="15" value={settings.workout?.restTimerDefault || 60} onChange={(e) => updateSetting('workout', 'restTimerDefault', parseInt(e.target.value))} className="w-full" />

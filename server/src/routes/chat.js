@@ -117,19 +117,24 @@ const THREAD_SELECTS = [
   'id, from_user_id, to_user_id, content, created_at, read'
 ]
 
-async function selectThreadMessages({ myId, otherId, limit = 300 }) {
+async function selectThreadMessages({ myId, otherId, limit = 80 }) {
   const filter = `and(from_user_id.eq.${myId},to_user_id.eq.${otherId}),and(from_user_id.eq.${otherId},to_user_id.eq.${myId})`
   let lastError = null
-  const limits = [...new Set([limit, 80, 40])]
+  const limits = [...new Set([limit, 50, 30])]
   for (const cols of THREAD_SELECTS) {
     for (const cap of limits) {
+      // Newest first so long threads always include the latest messages, then reverse for UI
       const { data, error } = await supabaseAdmin
         .from('messages')
         .select(cols)
         .or(filter)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(cap)
-      if (!error) return { data: data || [], error: null }
+      if (!error) {
+        const rows = data || []
+        rows.reverse()
+        return { data: rows, error: null }
+      }
       lastError = error
     }
   }
@@ -316,17 +321,13 @@ router.get('/messages/:userId', authenticate, async (req, res) => {
       console.warn('getChatClear:', clearErr?.message || clearErr)
     }
 
-    const { data: messages, error } = await selectThreadMessages({ myId, otherId, limit: 300 })
+    const { data: messages, error } = await selectThreadMessages({ myId, otherId, limit: 80 })
 
     if (error) throw error
 
-    let remainingMigrates = 6
-    const hydrated = []
-    for (const row of messages || []) {
-      const next = await migrateMessageMedia(row, remainingMigrates > 0)
-      if (next !== row && remainingMigrates > 0) remainingMigrates -= 1
-      hydrated.push(next)
-    }
+    // Skip synchronous media migration on open — was the main latency source.
+    // Inline data URLs still render; migration can happen lazily elsewhere.
+    const hydrated = messages || []
 
     const visible = hydrated.filter((m) => {
       if (!isAfterClear(m, clearedAt)) return false

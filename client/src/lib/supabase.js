@@ -23,7 +23,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   // Only sync if we already have an app session (avoid writing guest browser sessions)
   if (!getStoredToken() && event === 'SIGNED_IN') return
   const remember = isRememberMeEnabled() || Boolean(localStorage.getItem('token'))
-  setAuthTokens(session.access_token, session.refresh_token, remember)
+  void setAuthTokens(session.access_token, session.refresh_token, remember)
 })
 
 export default supabase

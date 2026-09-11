@@ -52,7 +52,7 @@ public class WorkoutHudPlugin extends Plugin {
     private void persistActive(PluginCall call, boolean active) {
         SharedPreferences.Editor ed = prefs().edit().putBoolean("active", active);
         if (active) {
-            ed.putString("title", call.getString("title", "Entrenamiento en curso"));
+            ed.putString("title", call.getString("title", "Entrenamiento en vivo"));
             ed.putString("content", call.getString("content", ""));
             ed.putString("bigText", call.getString("bigText", call.getString("content", "")));
             ed.putString("bubbleLabel", call.getString("bubbleLabel", "Entrenando"));
@@ -120,7 +120,7 @@ public class WorkoutHudPlugin extends Plugin {
         boolean countDown = extras.getBooleanExtra(WorkoutHudService.EXTRA_COUNT_DOWN, false);
 
         if (WorkoutHudOverlay.canDraw(getContext())) {
-            WorkoutHudOverlay.show(getContext(), bubble, whenMs, countDown);
+            WorkoutHudOverlay.updateCached(bubble, whenMs, countDown);
         }
     }
 
@@ -310,9 +310,8 @@ public class WorkoutHudPlugin extends Plugin {
             extras.putExtra(WorkoutHudService.EXTRA_WHEN_MS, sp.getLong("whenMs", System.currentTimeMillis()));
             WorkoutHudNotifier.notifyNow(context, WorkoutHudNotifier.buildFromIntent(context, extras));
             if (WorkoutHudOverlay.canDraw(context)) {
-                WorkoutHudOverlay.show(
-                    context,
-                    sp.getString("bubbleLabel", "Entrenando"),
+                WorkoutHudOverlay.updateCached(
+                    sp.getString("bubbleLabel", "entrenando"),
                     sp.getLong("whenMs", System.currentTimeMillis()),
                     sp.getBoolean("countDown", false)
                 );

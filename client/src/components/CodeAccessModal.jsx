@@ -105,7 +105,7 @@ export default function CodeAccessModal({ isOpen, onClose, onSuccess, initialEma
 
       await new Promise((resolve) => setTimeout(resolve, 3000))
 
-      setAuthTokens(data.token, data.refreshToken, true)
+      await setAuthTokens(data.token, data.refreshToken, true)
       try {
         if (data.token && data.refreshToken) {
           await supabase.auth.setSession({

@@ -65,11 +65,41 @@ async function subscribeNativeFcm() {
 
   if (!token) throw new Error('No se obtuvo token FCM')
 
-  await PushNotifications.addListener('pushNotificationReceived', () => {
-    /* foreground — la lista in-app se actualiza por API/realtime */
+  await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+    try {
+      const data = notification?.data || {}
+      const type = data.type || data.pushType
+      const fromUserId = data.fromUserId || data.from_user_id
+      if (type === 'message' && fromUserId) {
+        window.dispatchEvent(
+          new CustomEvent('qyntra:native-chat-push', {
+            detail: {
+              fromUserId,
+              title: notification?.title || data.title || data.fromName,
+              body: notification?.body || data.body,
+              tag: data.tag || `msg-${fromUserId}`
+            }
+          })
+        )
+      }
+    } catch {
+      /* ignore */
+    }
   })
   await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-    const url = action?.notification?.data?.url
+    const data = action?.notification?.data || {}
+    const actionId = action?.actionId
+    const fromUserId = data.fromUserId || data.from_user_id
+    if (actionId === 'mark-read' && fromUserId) {
+      window.dispatchEvent(
+        new CustomEvent('qyntra:chat-mark-read', { detail: { fromUserId } })
+      )
+      return
+    }
+    const url =
+      data.url ||
+      (fromUserId ? `/chat?peer=${fromUserId}` : null) ||
+      action?.notification?.data?.url
     if (url && typeof window !== 'undefined') {
       window.location.assign(url.startsWith('/') ? url : `/${url}`)
     }

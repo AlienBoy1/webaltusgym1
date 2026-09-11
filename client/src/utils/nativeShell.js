@@ -4,7 +4,7 @@
  */
 import { isNativeApp } from './appMode'
 
-const BOOT_TIMEOUT_MS = 2500
+const BOOT_TIMEOUT_MS = 4000
 
 async function withTimeout(promise, ms) {
   let timer
@@ -47,8 +47,12 @@ export async function initNativeShell() {
   try {
     await withTimeout(disableNativeServiceWorkers(), 1500)
 
+    // Preferences → WebView MUST complete before React/authStore reads tokens
     const { hydrateNativeTokenStorage } = await import('./tokenStorage')
-    await withTimeout(hydrateNativeTokenStorage(), 1500)
+    const hydrated = await withTimeout(hydrateNativeTokenStorage(), 3000)
+    if (hydrated === '__timeout__') {
+      console.warn('hydrateNativeTokenStorage timed out — checkAuth will retry')
+    }
 
     const { ensureNativeOAuthListener } = await import('./googleAuth')
     await withTimeout(ensureNativeOAuthListener(), 1000)

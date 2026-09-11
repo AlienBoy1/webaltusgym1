@@ -219,10 +219,28 @@ export default function MainLayout() {
       if (recentPushTags.has(tag)) return
       recentPushTags.add(tag)
       window.setTimeout(() => recentPushTags.delete(tag), 3500)
-      showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
-        tag,
-        onClick: () => navigate('/chat')
-      })
+
+      // Device notification only — no in-app inbox rows for messages
+      const hidden = document.visibilityState === 'hidden'
+      if (hidden) {
+        showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
+          tag,
+          onClick: () => navigate(`/chat?peer=${encodeURIComponent(data.from || '')}`)
+        })
+        import('../utils/chatBubbles')
+          .then(({ isChatBubbleEnabled, showNativeChatBubble }) => {
+            if (!isChatBubbleEnabled(data.from)) return
+            return showNativeChatBubble({
+              peerId: data.from,
+              name: data.fromName || 'Mensaje',
+              preview: data.message || '',
+              avatarUrl: ''
+            })
+          })
+          .catch(() => {})
+        return
+      }
+      // App visible but not on /chat: light toast (not inbox)
       toast.success(`${data.fromName || 'Mensaje'}: ${data.message || 'Nuevo mensaje'}`, {
         duration: 4000
       })
@@ -233,6 +251,18 @@ export default function MainLayout() {
     const onSwMessage = (event) => {
       if (event.data?.type === 'CHAT_DELIVERED_ACK' && event.data.fromUserId) {
         ackDelivered(event.data.fromUserId)
+        return
+      }
+      if (event.data?.type === 'CHAT_MARK_READ' && event.data.fromUserId) {
+        api
+          .post(`/chat/read/${event.data.fromUserId}`)
+          .then(() => {
+            import('../utils/chatBubbles').then(({ dismissChatNotification, hideNativeChatBubble }) => {
+              dismissChatNotification(event.data.fromUserId)
+              hideNativeChatBubble(event.data.fromUserId)
+            })
+          })
+          .catch(() => {})
         return
       }
       if (event.data?.type !== 'PUSH_INBOX') return
@@ -251,14 +281,43 @@ export default function MainLayout() {
     }
     navigator.serviceWorker?.addEventListener('message', onSwMessage)
 
+    const onNativeChatPush = (ev) => {
+      const d = ev?.detail || {}
+      alertMessage({
+        from: d.fromUserId,
+        fromName: d.title,
+        message: d.body,
+        tag: d.tag
+      })
+    }
+    const onMarkRead = (ev) => {
+      const fromUserId = ev?.detail?.fromUserId
+      if (!fromUserId) return
+      api.post(`/chat/read/${fromUserId}`).catch(() => {})
+      import('../utils/chatBubbles')
+        .then(({ dismissChatNotification, hideNativeChatBubble }) => {
+          dismissChatNotification(fromUserId)
+          hideNativeChatBubble(fromUserId)
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('qyntra:native-chat-push', onNativeChatPush)
+    window.addEventListener('qyntra:chat-mark-read', onMarkRead)
+
     // Realtime INSERT handles live delivery; this is only a safety net
     sweepUndelivered()
     const sweepTimer = window.setInterval(sweepUndelivered, 60000)
+
+    import('../utils/chatBubbles')
+      .then(({ syncChatBubblesToNative }) => syncChatBubblesToNative())
+      .catch(() => {})
 
     return () => {
       unsub()
       window.clearInterval(sweepTimer)
       navigator.serviceWorker?.removeEventListener('message', onSwMessage)
+      window.removeEventListener('qyntra:native-chat-push', onNativeChatPush)
+      window.removeEventListener('qyntra:chat-mark-read', onMarkRead)
     }
   }, [user?.id, user?._id, navigate])
 

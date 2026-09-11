@@ -189,10 +189,15 @@ self.addEventListener('push', (event) => {
       type,
       fromUserId
     },
-    actions: [
-      { action: 'open', title: 'Abrir' },
-      { action: 'close', title: 'Cerrar' }
-    ]
+    actions: type === 'message'
+      ? [
+          { action: 'open', title: 'Abrir' },
+          { action: 'mark-read', title: 'Marcar como leído' }
+        ]
+      : [
+          { action: 'open', title: 'Abrir' },
+          { action: 'close', title: 'Cerrar' }
+        ]
   }
 
   event.waitUntil(
@@ -234,18 +239,33 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   if (event.action === 'close') return
 
-  const rawUrl = event.notification.data?.url || '/notifications'
-  const absoluteUrl = new URL(rawUrl, self.location.origin).href
+  const fromUserId = event.notification.data?.fromUserId || null
+  const rawUrl =
+    event.action === 'mark-read'
+      ? null
+      : event.notification.data?.url ||
+        (fromUserId ? `/chat?peer=${fromUserId}` : '/notifications')
 
   event.waitUntil(
     (async () => {
       const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+      if (event.action === 'mark-read' && fromUserId) {
+        for (const client of allClients) {
+          client.postMessage({ type: 'CHAT_MARK_READ', fromUserId })
+          if ('focus' in client) return client.focus()
+        }
+        return
+      }
+
+      const absoluteUrl = new URL(rawUrl || '/chat', self.location.origin).href
       for (const client of allClients) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
           client.postMessage({
             type: 'NOTIFICATION_CLICK',
             url: rawUrl,
-            notificationId: event.notification.data?.notificationId || null
+            notificationId: event.notification.data?.notificationId || null,
+            fromUserId
           })
           return client.focus()
         }

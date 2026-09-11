@@ -5,7 +5,8 @@ import {
   getRestRemaining,
   sendWorkoutNotification,
   clearWorkoutNotification,
-  invalidateNativeWorkoutHudFingerprint
+  invalidateNativeWorkoutHudFingerprint,
+  WORKOUT_SESSION_KEY
 } from '../utils/workoutSession'
 import { isNativeApp } from '../utils/appMode'
 
@@ -23,6 +24,7 @@ export default function WorkoutSessionManager() {
   const lastStructureKey = useRef('')
   const nativeHudShown = useRef(false)
   const emptyTicks = useRef(0)
+  const failStreak = useRef(0)
 
   useEffect(() => {
     let removeAppListener = null
@@ -32,12 +34,13 @@ export default function WorkoutSessionManager() {
 
       if (!session?.activeWorkout) {
         emptyTicks.current += 1
-        // Only clear HUD after a long empty streak — never wipe on nav remount races
-        if (emptyTicks.current >= 15 && lastSession.current?.activeWorkout) {
+        // Immediate cleanup after cancel — do not wait 15s
+        if (lastSession.current?.activeWorkout) {
           await clearWorkoutNotification()
           lastSession.current = session
           lastStructureKey.current = ''
           nativeHudShown.current = false
+          failStreak.current = 0
         }
         return
       }
@@ -60,8 +63,25 @@ export default function WorkoutSessionManager() {
       const structureKey = getExerciseKey(updatedSession)
       const structuralChange = structureKey !== lastStructureKey.current
 
+      // Never revive a cancelled session: re-check before write
+      const stillActive = getWorkoutSession()
+      if (
+        !stillActive?.activeWorkout ||
+        (stillActive.activeWorkout.id || stillActive.activeWorkout.name || stillActive.sessionStart) !==
+          (session.activeWorkout.id || session.activeWorkout.name || session.sessionStart)
+      ) {
+        return
+      }
+
       try {
-        window.localStorage.setItem('qyntra:workout_session', JSON.stringify(updatedSession))
+        window.localStorage.setItem(WORKOUT_SESSION_KEY, JSON.stringify({
+          ...stillActive,
+          workoutTime: elapsed,
+          restRemaining,
+          restActive,
+          restEndsAt: restActive ? stillActive.restEndsAt : null,
+          savedAt: updatedSession.savedAt
+        }))
       } catch {
         /* ignore */
       }
@@ -71,9 +91,20 @@ export default function WorkoutSessionManager() {
       }
 
       if (isNativeApp()) {
-        if (structuralChange || !nativeHudShown.current) {
-          const ok = await sendWorkoutNotification(updatedSession)
-          if (ok) nativeHudShown.current = true
+        if ((structuralChange || !nativeHudShown.current) && failStreak.current < 3) {
+          // Bail if cancelled while awaiting permission / notify
+          if (!getWorkoutSession()?.activeWorkout) return
+          const ok = await sendWorkoutNotification(getWorkoutSession() || updatedSession)
+          if (!getWorkoutSession()?.activeWorkout) {
+            await clearWorkoutNotification()
+            return
+          }
+          if (ok) {
+            nativeHudShown.current = true
+            failStreak.current = 0
+          } else {
+            failStreak.current += 1
+          }
         }
       } else {
         const hidden = document.visibilityState !== 'visible'
@@ -85,7 +116,9 @@ export default function WorkoutSessionManager() {
         }
       }
 
-      lastSession.current = updatedSession
+      if (getWorkoutSession()?.activeWorkout) {
+        lastSession.current = updatedSession
+      }
     }
 
     const interval = window.setInterval(tick, TICK_MS)
@@ -100,15 +133,17 @@ export default function WorkoutSessionManager() {
             if (getWorkoutSession()?.activeWorkout) {
               invalidateNativeWorkoutHudFingerprint()
               nativeHudShown.current = false
+              failStreak.current = 0
               tick()
-              // Re-attach system overlay after returning from "draw over apps" settings
               ;(async () => {
                 try {
-                  const { registerPlugin } = await import('@capacitor/core')
-                  const WorkoutHud = registerPlugin('WorkoutHud')
-                  const perms = await WorkoutHud.checkPermissions()
-                  if (perms?.overlay === 'granted') {
-                    await WorkoutHud.startOverlay()
+                  const { hideWorkoutOverlay, maybeShowWorkoutOverlayAfterSettingsReturn } =
+                    await import('../utils/workoutSession')
+                  await hideWorkoutOverlay()
+                  const justGranted = await maybeShowWorkoutOverlayAfterSettingsReturn()
+                  if (justGranted) {
+                    const { default: toast } = await import('react-hot-toast')
+                    toast.success('Burbuja lista. Se verá al salir de Qyntra.', { duration: 4000 })
                   }
                 } catch {
                   /* optional */

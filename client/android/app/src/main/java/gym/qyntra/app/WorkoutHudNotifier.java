@@ -6,6 +6,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
@@ -13,13 +15,12 @@ import androidx.core.app.NotificationCompat;
 
 /**
  * Shade notification for active workouts.
- * Proven path: NotificationManager.notify with a system smallIcon.
  */
 public final class WorkoutHudNotifier {
     private static final String TAG = "WorkoutHudNotifier";
 
     public static final int NOTIF_ID = 99101;
-    public static final String CHANNEL_ID = "qyntra_workout_live_v11";
+    public static final String CHANNEL_ID = "qyntra_workout_live_v17";
 
     private WorkoutHudNotifier() {}
 
@@ -36,7 +37,8 @@ public final class WorkoutHudNotifier {
         );
         channel.setDescription("Temporizador de entrenamiento");
         channel.setShowBadge(true);
-        channel.enableVibration(true);
+        channel.enableVibration(false);
+        channel.setSound(null, null);
         channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(channel);
     }
@@ -76,26 +78,37 @@ public final class WorkoutHudNotifier {
         boolean inRest
     ) {
         ensureChannel(context);
-        if (title == null || title.isEmpty()) title = "Entrenamiento en curso";
+        if (title == null || title.isEmpty()) title = "Entrenamiento en vivo";
         if (content == null || content.isEmpty()) content = "Sesión activa";
         if (bigText == null || bigText.isEmpty()) bigText = content;
         if (whenMs <= 0) whenMs = System.currentTimeMillis();
 
-        // System drawable — custom vectors have made notifications invisible on some OEMs
+        // smallIcon MUST be a white glyph on transparent (not the full launcher bitmap —
+        // that becomes an opaque white square). Large icon keeps the real app mark.
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.drawable.ic_stat_qyntra_q)
             .setContentTitle(title)
             .setContentText(content)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(bigText))
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(contentIntent(context))
-            .setColor(0xFFFF8A3D)
-            .setDefaults(NotificationCompat.DEFAULT_SOUND | NotificationCompat.DEFAULT_VIBRATE);
+            .setColor(0xFFFF6B35);
+
+        try {
+            Bitmap large = BitmapFactory.decodeResource(context.getResources(), R.mipmap.ic_launcher);
+            if (large == null) {
+                large = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_notification_app);
+            }
+            if (large != null) builder.setLargeIcon(large);
+        } catch (Exception e) {
+            Log.w(TAG, "largeIcon skipped", e);
+        }
 
         if (showChrono) {
             builder.setUsesChronometer(true);
@@ -107,9 +120,10 @@ public final class WorkoutHudNotifier {
         if (inRest) {
             builder.addAction(0, "Saltar descanso", actionIntent(context, "skip_rest", NOTIF_ID + 2));
         } else {
-            builder.addAction(0, "Completar", actionIntent(context, "complete", NOTIF_ID + 1));
+            builder.addAction(0, "Ejercicio completado", actionIntent(context, "complete", NOTIF_ID + 1));
         }
         builder.addAction(0, "Abrir", actionIntent(context, "open", NOTIF_ID + 3));
+        builder.addAction(0, "Cancelar", actionIntent(context, "cancel", NOTIF_ID + 4));
 
         return builder.build();
     }

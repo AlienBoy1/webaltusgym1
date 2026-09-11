@@ -19,7 +19,7 @@ import {
   FiDownload,
   FiMessageSquare
 } from 'react-icons/fi'
-import { FaFacebook, FaInstagram } from 'react-icons/fa'
+import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
 import api from '../utils/api'
 import { formatDistanceToNow, isToday, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -119,6 +119,7 @@ export default function StoriesRail({
   const [viewersOpen, setViewersOpen] = useState(false)
   const [viewers, setViewers] = useState([])
   const [loadingViewers, setLoadingViewers] = useState(false)
+  const [holding, setHolding] = useState(false)
   const imageInputRef = useRef(null)
   const videoInputRef = useRef(null)
   const timerRef = useRef(null)
@@ -126,7 +127,14 @@ export default function StoriesRail({
   const remainingMsRef = useRef(null)
   const openStoryHandled = useRef(null)
   const viewerWasOpenRef = useRef(false)
-  const paused = menuOpen || shareOpen || favoritesOpen || viewersOpen || replyFocused || Boolean(reply.trim())
+  const paused =
+    menuOpen ||
+    shareOpen ||
+    favoritesOpen ||
+    viewersOpen ||
+    replyFocused ||
+    Boolean(reply.trim()) ||
+    holding
   const [progressPct, setProgressPct] = useState(0)
   const [mediaReady, setMediaReady] = useState(false)
   const progressRafRef = useRef(null)
@@ -570,6 +578,7 @@ export default function StoriesRail({
 
   const closeViewer = useCallback(() => {
     setViewer(null)
+    setHolding(false)
     setMenuOpen(false)
     setShareOpen(false)
     setFavoritesOpen(false)
@@ -1043,7 +1052,9 @@ export default function StoriesRail({
         toast(
           network === 'facebook'
             ? 'Archivo guardado. Ábrelo en Facebook → Crear historia'
-            : 'Archivo guardado. Ábrelo en Instagram → Tu historia',
+            : network === 'whatsapp'
+              ? 'Archivo listo. Ábrelo desde WhatsApp para enviarlo'
+              : 'Archivo guardado. Ábrelo en Instagram → Tu historia',
           { duration: 5200 }
         )
       }
@@ -1051,7 +1062,9 @@ export default function StoriesRail({
       toast.error(
         network === 'facebook'
           ? 'No se pudo compartir en Facebook'
-          : 'No se pudo compartir en Instagram'
+          : network === 'whatsapp'
+            ? 'No se pudo compartir en WhatsApp'
+            : 'No se pudo compartir en Instagram'
       )
     }
   }
@@ -1678,6 +1691,14 @@ export default function StoriesRail({
                       </button>
                       <button
                         type="button"
+                        onClick={() => shareCurrentToNetwork('whatsapp')}
+                        className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm transition-colors hover:bg-[color:var(--bg-muted)]"
+                        style={{ color: 'var(--text-primary)', borderColor: 'var(--border-subtle)' }}
+                      >
+                        <FaWhatsapp className="text-[#25D366]" /> Compartir en WhatsApp
+                      </button>
+                      <button
+                        type="button"
                         onClick={openFavorites}
                         className="flex w-full items-center gap-3 border-t px-4 py-3.5 text-left text-sm transition-colors hover:bg-[color:var(--bg-muted)]"
                         style={{ color: 'var(--text-primary)', borderColor: 'var(--border-subtle)' }}
@@ -1698,7 +1719,23 @@ export default function StoriesRail({
                 )}
               </AnimatePresence>
 
-              <div className="relative flex flex-1 items-center justify-center">
+              <div
+                className="relative flex flex-1 items-center justify-center touch-none"
+                onPointerDown={(e) => {
+                  if (e.button != null && e.button !== 0) return
+                  // Don't pause while typing / using chrome marked opt-out
+                  if (e.target?.closest?.('input, textarea, [data-no-hold-pause]')) return
+                  try {
+                    e.currentTarget.setPointerCapture?.(e.pointerId)
+                  } catch {
+                    /* ignore */
+                  }
+                  setHolding(true)
+                }}
+                onPointerUp={() => setHolding(false)}
+                onPointerCancel={() => setHolding(false)}
+                onPointerLeave={() => setHolding(false)}
+              >
                 <button
                   type="button"
                   className="absolute inset-y-0 left-0 z-10 w-1/3"
@@ -1830,6 +1867,14 @@ export default function StoriesRail({
                         aria-label="Compartir en Instagram"
                       >
                         <FaInstagram size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => shareCurrentToNetwork('whatsapp')}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm ring-1 ring-white/20 hover:bg-white/20"
+                        aria-label="Compartir en WhatsApp"
+                      >
+                        <FaWhatsapp size={18} />
                       </button>
                     </div>
                   </div>
@@ -2055,6 +2100,15 @@ export default function StoriesRail({
                           style={{ color: 'var(--text-primary)' }}
                         >
                           <FaInstagram size={18} className="text-[#E4405F]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => shareCurrentToNetwork('whatsapp')}
+                          className="rounded-full p-2 transition-colors hover:bg-[color:var(--bg-muted)]"
+                          aria-label="Compartir en WhatsApp"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          <FaWhatsapp size={18} className="text-[#25D366]" />
                         </button>
                         <button
                           type="button"

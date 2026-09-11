@@ -37,8 +37,9 @@ import {
   clearWorkoutNotification,
   sendWorkoutNotification,
   subscribeWorkoutSession,
-  requestWorkoutOverlayPermission
+  promptWorkoutBubblePermission
 } from '../../utils/workoutSession'
+import { isNativeApp } from '../../utils/appMode'
 import PullToRefresh from '../../components/PullToRefresh'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
 import { TUTORIAL_IDS } from '../../tutorials/registry'
@@ -528,10 +529,21 @@ export default function Workouts() {
     })
   }, [activeWorkout, sessionStart, completedExercises, restEndsAt, restTimerSource, restTotal])
 
-  // Sync when notification actions mutate the session (complete / skip rest)
+  // Sync when notification actions mutate or cancel the session
   useEffect(() => {
     return subscribeWorkoutSession((session) => {
-      if (!session?.activeWorkout || !activeWorkout) return
+      if (!session?.activeWorkout) {
+        if (activeWorkout) {
+          setActiveWorkout(null)
+          setSessionStart(null)
+          setCompletedExercises([])
+          setWorkoutTime(0)
+          setRestHistory([])
+          clearRestState()
+        }
+        return
+      }
+      if (!activeWorkout) return
       if ((session.activeWorkout.id || session.activeWorkout.name) !== (activeWorkout.id || activeWorkout.name)) {
         return
       }
@@ -713,56 +725,101 @@ export default function Workouts() {
       if (!ok) {
         const detail =
           (typeof window !== 'undefined' && window.__qyntraLastHudError) ||
-          'Activa Notificaciones para Qyntra en Ajustes del teléfono'
+          'Necesitas permitir notificaciones para el temporizador en vivo'
         toast.error(String(detail).slice(0, 180), { duration: 8000 })
-        try {
-          const { registerPlugin } = await import('@capacitor/core')
-          const WorkoutHud = registerPlugin('WorkoutHud')
-          await WorkoutHud.openNotificationSettings()
-        } catch {
-          /* ignore */
+        const openSettings = await dialog.confirm(
+          'Sin notificaciones no verás el cronómetro ni los botones de ejercicio fuera de la app. ¿Abrir ajustes de notificaciones?',
+          {
+            title: 'Activar notificaciones',
+            confirmLabel: 'Abrir ajustes',
+            cancelLabel: 'Ahora no',
+            tone: 'info'
+          }
+        )
+        if (openSettings) {
+          try {
+            const { registerPlugin } = await import('@capacitor/core')
+            const WorkoutHud = registerPlugin('WorkoutHud')
+            await WorkoutHud.openNotificationSettings()
+          } catch {
+            /* ignore */
+          }
         }
       } else {
-        toast.success('Entrenamiento en curso — mira la notificación', { duration: 3500 })
-        try {
-          const { isNativeApp } = await import('../../utils/appMode')
-          if (isNativeApp()) {
-            // Burbuja sobre otras apps: obligatorio pedir permiso hasta que esté granted
-            window.setTimeout(async () => {
-              try {
-                const status = await requestWorkoutOverlayPermission()
-                if (status === 'granted') {
-                  toast.success('Burbuja de entreno activa', { duration: 2500 })
-                } else {
-                  toast(
-                    'Activa “Mostrar sobre otras apps” para Qyntra y vuelve a la app',
-                    { duration: 9000 }
-                  )
-                }
-              } catch {
-                toast.error('No se pudo pedir permiso de burbuja')
-              }
-            }, 600)
-          }
-        } catch {
-          /* overlay optional */
-        }
+        toast.success('Temporizador en vivo activo', { duration: 2200 })
       }
     } catch {
       toast.error('No se pudo activar la notificación del entreno')
     }
+
+    // After notifications: ALWAYS ask for overlay bubble if the OS permission is missing
+    // (detect system “aparecer encima”, not an in-app toggle). Same dialog as Configuración.
+    if (isNativeApp()) {
+      try {
+        const status = await promptWorkoutBubblePermission(dialog)
+        if (status === 'prompted') {
+          toast(
+            'Activa el permiso y vuelve a Qyntra. Al salir de la app verás la burbuja.',
+            { duration: 9000 }
+          )
+        } else if (status === 'denied') {
+          toast('Puedes activarla luego en Configuración → Entrenamiento', {
+            duration: 5000
+          })
+        }
+      } catch (err) {
+        console.warn('overlay prompt:', err?.message || err)
+      }
+    }
   }
 
   const cancelWorkout = async () => {
+    const ok = await dialog.confirm(
+      'Se perderá el progreso de esta sesión. ¿Cancelar el entrenamiento?',
+      {
+        title: 'Cancelar entrenamiento',
+        confirmLabel: 'Cancelar entreno',
+        cancelLabel: 'Seguir entrenando',
+        tone: 'danger'
+      }
+    )
+    if (!ok) return
+
+    // Clear session first so WorkoutSessionManager / floating bubble cannot revive it
+    clearWorkoutSession()
     setActiveWorkout(null)
     setSessionStart(null)
     setCompletedExercises([])
     setWorkoutTime(0)
     setRestHistory([])
     clearRestState()
-    await clearWorkoutNotification()
-    clearWorkoutSession()
+    try {
+      await clearWorkoutNotification()
+    } catch {
+      /* ignore */
+    }
+    toast('Entrenamiento cancelado')
   }
+
+  // Cancel from notification → confirm in-app (never silent cancel)
+  useEffect(() => {
+    const runConfirm = () => {
+      if (!getWorkoutSession()?.activeWorkout && !activeWorkout) return
+      cancelWorkout()
+    }
+    const onCancelRequest = () => runConfirm()
+    window.addEventListener('qyntra:workout-cancel-request', onCancelRequest)
+    try {
+      if (window.sessionStorage.getItem('qyntra:pending_cancel') === '1') {
+        window.sessionStorage.removeItem('qyntra:pending_cancel')
+        // Defer so dialog mounts cleanly after navigation from notification
+        window.setTimeout(runConfirm, 350)
+      }
+    } catch {
+      /* ignore */
+    }
+    return () => window.removeEventListener('qyntra:workout-cancel-request', onCancelRequest)
+  }, [activeWorkout])
 
   const finishWorkout = async () => {
     if (!activeWorkout) return
@@ -1252,9 +1309,9 @@ export default function Workouts() {
             <button
               type="button"
               onClick={cancelWorkout}
-              className="shrink-0 rounded-xl px-2.5 py-2 text-xs text-app-secondary transition-colors hover:bg-[color:var(--bg-muted)] hover:text-app sm:px-3 sm:text-sm"
+              className="shrink-0 rounded-xl px-2.5 py-2 text-xs text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 sm:px-3 sm:text-sm"
             >
-              Salir
+              Cancelar
             </button>
             <button
               type="button"

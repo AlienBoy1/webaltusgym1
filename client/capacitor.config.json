@@ -19,8 +19,8 @@
       "backgroundColor": "#0A0A0F"
     },
     "LocalNotifications": {
-      "smallIcon": "ic_stat_qyntra",
-      "iconColor": "#FF8A3D"
+      "smallIcon": "ic_stat_qyntra_q",
+      "iconColor": "#FF6B35"
     }
   },
   "android": {
