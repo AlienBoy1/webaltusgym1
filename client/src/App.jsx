@@ -123,7 +123,8 @@ function PushNavigationBridge() {
       const d = event?.detail || {}
       const peerId = d.chatPeerId
       if (peerId) {
-        const url = `/chat?peer=${encodeURIComponent(peerId)}`
+        const action = d.chatAction ? `&action=${encodeURIComponent(d.chatAction)}` : ''
+        const url = `/chat?peer=${encodeURIComponent(peerId)}${action}`
         if (isAuthenticated) {
           navigate(url)
           import('./utils/api')

@@ -62,6 +62,7 @@ import ChatImageComposer from '../../components/ChatImageComposer'
 import { ViewOnceAttachmentBubble } from '../../components/ViewOnceMedia'
 import SwipeToReply from '../../components/SwipeToReply'
 import { buildReplyPayload, formatChatBubbleTime, messageBubbleTime } from '../../utils/chatMessage'
+import { mergeReceipt } from '../../utils/chatReceipts'
 import { isEmojiOnlyText, emojiOnlySizeClass, summarizeMessageReactions } from '../../utils/chatEmoji'
 import { useChatStore } from '../../store/chatStore'
 import TutorialHelpButton from '../../components/TutorialHelpButton'
@@ -2039,6 +2040,7 @@ export default function Chat() {
     const params = new URLSearchParams(location.search || '')
     const peerFromQuery = params.get('peer')
     if (peerFromQuery) {
+      const actionFromQuery = params.get('action')
       const existing = conversations.find((c) => String(c.otherId) === String(peerFromQuery))
       if (existing) {
         void handleSelectChat(existing)
@@ -2055,6 +2057,25 @@ export default function Chat() {
         void hideNativeChatBubble(peerFromQuery)
       }
       api.post(`/chat/read/${peerFromQuery}`).catch(() => {})
+      // Deep-link actions from floating menu
+      if (actionFromQuery === 'shared') {
+        window.setTimeout(() => {
+          setSharedFilter('posts')
+          setShowSharedSheet(true)
+          loadSharedItems()
+        }, 400)
+      } else if (actionFromQuery === 'routines') {
+        window.setTimeout(() => {
+          setShowRoutinesSheet(true)
+          loadPublicRoutines()
+        }, 400)
+      } else if (actionFromQuery === 'wallpaper') {
+        window.setTimeout(() => setShowWallpaperSheet(true), 400)
+      } else if (actionFromQuery === 'block') {
+        window.setTimeout(() => {
+          void handleBlockPeer()
+        }, 500)
+      }
       navigate('/chat', { replace: true, state: {} })
       return
     }

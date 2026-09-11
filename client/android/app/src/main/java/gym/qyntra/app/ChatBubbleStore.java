@@ -115,6 +115,37 @@ public final class ChatBubbleStore {
         return false;
     }
 
+    /** Enable/disable a single peer bubble from the floating panel menu. */
+    public static void setPeerEnabled(Context context, String peerId, boolean enabled) {
+        if (peerId == null || peerId.isEmpty()) return;
+        SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        Set<String> set = new HashSet<>();
+        Set<String> prev = sp.getStringSet(KEY_PEERS, null);
+        if (prev != null) set.addAll(prev);
+        String csv = sp.getString(KEY_PEERS + "_csv", "");
+        if (csv != null && !csv.isEmpty()) {
+            for (String part : csv.split(",")) {
+                String p = part.trim();
+                if (!p.isEmpty()) set.add(p);
+            }
+        }
+        if (enabled) set.add(peerId);
+        else set.remove(peerId);
+        StringBuilder out = new StringBuilder();
+        for (String id : set) {
+            if (out.length() > 0) out.append(',');
+            out.append(id);
+        }
+        SharedPreferences.Editor ed = sp.edit();
+        ed.putStringSet(KEY_PEERS, new HashSet<>(set));
+        ed.putString(KEY_PEERS + "_csv", out.toString());
+        ed.commit();
+        if (!enabled) {
+            cancelNotification(context, peerId);
+            ChatBubbleOverlay.hide(context, peerId);
+        }
+    }
+
     public static String apiBase(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_API, "");
     }

@@ -95,6 +95,7 @@ public class MainActivity extends BridgeActivity {
         String action = intent.getStringExtra("workout_action");
         String chatPeerId = intent.getStringExtra("chat_peer_id");
         String chatPeerName = intent.getStringExtra("chat_peer_name");
+        String chatAction = intent.getStringExtra("chat_action");
         if ((path == null || path.isEmpty())
             && (action == null || action.isEmpty())
             && (chatPeerId == null || chatPeerId.isEmpty())) {
@@ -108,9 +109,13 @@ public class MainActivity extends BridgeActivity {
         final String peerName = chatPeerName != null
             ? chatPeerName.replace("\\", "\\\\").replace("'", "\\'")
             : "";
+        final String chatAct = chatAction != null
+            ? chatAction.replace("\\", "\\\\").replace("'", "\\'")
+            : "";
         if (!peer.isEmpty()) {
             ChatBubbleStore.cancelNotification(this, peer);
             ChatBubbleOverlay.hide(this, peer);
+            ChatPanelOverlay.hide(this, false);
             ChatBubbleStore.postChatReceipt(this, peer, "read");
         }
         getWindow().getDecorView().postDelayed(() -> {
@@ -119,7 +124,7 @@ public class MainActivity extends BridgeActivity {
                 // Prefer React Router via CustomEvent — avoid window.location.assign (blank WebView)
                 String js =
                     "(function(){try{" +
-                    "window.dispatchEvent(new CustomEvent('qyntra:native-open',{detail:{path:'" + target + "',action:'" + act + "',chatPeerId:'" + peer + "',chatPeerName:'" + peerName + "'}}));" +
+                    "window.dispatchEvent(new CustomEvent('qyntra:native-open',{detail:{path:'" + target + "',action:'" + act + "',chatPeerId:'" + peer + "',chatPeerName:'" + peerName + "',chatAction:'" + chatAct + "'}}));" +
                     "window.dispatchEvent(new CustomEvent('qyntra:workout-action',{detail:{action:'" + act + "'}}));" +
                     "}catch(e){}})();";
                 getBridge().getWebView().evaluateJavascript(js, null);
