@@ -110,23 +110,22 @@ public class MainActivity extends BridgeActivity {
         if (!peer.isEmpty()) {
             ChatBubbleStore.cancelNotification(this, peer);
             ChatBubbleOverlay.hide(this, peer);
+            ChatBubbleStore.postChatReceipt(this, peer, "read");
         }
         getWindow().getDecorView().postDelayed(() -> {
             try {
                 if (getBridge() == null || getBridge().getWebView() == null) return;
+                // Prefer React Router via CustomEvent — avoid window.location.assign (blank WebView)
                 String js =
                     "(function(){try{" +
                     "window.dispatchEvent(new CustomEvent('qyntra:native-open',{detail:{path:'" + target + "',action:'" + act + "',chatPeerId:'" + peer + "',chatPeerName:'" + peerName + "'}}));" +
                     "window.dispatchEvent(new CustomEvent('qyntra:workout-action',{detail:{action:'" + act + "'}}));" +
-                    (peer.isEmpty()
-                        ? ("if(window.location.pathname!=='" + target + "'){window.location.assign('" + target + "');}")
-                        : ("window.location.assign('/chat?peer=" + peer + "');")) +
                     "}catch(e){}})();";
                 getBridge().getWebView().evaluateJavascript(js, null);
             } catch (Exception ignored) {
                 /* bridge not ready */
             }
-        }, 500);
+        }, 400);
     }
 
     private void createDefaultNotificationChannel() {
@@ -153,5 +152,7 @@ public class MainActivity extends BridgeActivity {
         workout.setSound(null, null);
         workout.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(workout);
+
+        ChatBubbleStore.ensureChannel(this);
     }
 }

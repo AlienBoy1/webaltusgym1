@@ -33,6 +33,7 @@ public final class QyntraMessagingService extends FirebaseMessagingService {
                 body = remoteMessage.getNotification().getBody();
             }
             if (peerId != null && !peerId.isEmpty()) {
+                // Always show tray notification with sender name + message text
                 ChatBubbleStore.showMessageNotification(
                     this,
                     peerId,
@@ -40,7 +41,9 @@ public final class QyntraMessagingService extends FirebaseMessagingService {
                     body != null ? body : ""
                 );
                 ChatBubbleStore.postChatReceipt(this, peerId, "delivered");
-                if (ChatBubbleStore.isEnabled(this, peerId) && ChatBubbleOverlay.canDraw(this)) {
+                if (!MainActivity.isInForeground()
+                    && ChatBubbleStore.isEnabled(this, peerId)
+                    && ChatBubbleOverlay.canDraw(this)) {
                     ChatBubbleOverlay.show(
                         this,
                         peerId,

@@ -118,6 +118,41 @@ function PushNavigationBridge() {
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
   }, [navigate, isAuthenticated])
 
+  useEffect(() => {
+    const onNativeOpen = (event) => {
+      const d = event?.detail || {}
+      const peerId = d.chatPeerId
+      if (peerId) {
+        const url = `/chat?peer=${encodeURIComponent(peerId)}`
+        if (isAuthenticated) {
+          navigate(url)
+          import('./utils/api')
+            .then(({ default: api }) => api.post(`/chat/read/${peerId}`))
+            .catch(() => {})
+          import('./utils/chatBubbles')
+            .then(({ dismissChatNotification, hideNativeChatBubble }) => {
+              dismissChatNotification(peerId)
+              hideNativeChatBubble(peerId)
+            })
+            .catch(() => {})
+        } else {
+          sessionStorage.setItem('pendingPushNav', url)
+          navigate(`/login?redirect=${encodeURIComponent(url)}`)
+        }
+        return
+      }
+      const path = d.path
+      if (!path) return
+      if (isAuthenticated) navigate(path.startsWith('/') ? path : `/${path}`)
+      else {
+        sessionStorage.setItem('pendingPushNav', path)
+        navigate(`/login?redirect=${encodeURIComponent(path)}`)
+      }
+    }
+    window.addEventListener('qyntra:native-open', onNativeOpen)
+    return () => window.removeEventListener('qyntra:native-open', onNativeOpen)
+  }, [navigate, isAuthenticated])
+
   return null
 }
 
@@ -136,7 +171,7 @@ function App() {
       if (!state.initializing) return
       console.warn('App boot watchdog: clearing initializing')
       useAuthStore.setState({ initializing: false, loading: false })
-    }, 12000)
+    }, 5000)
     return () => window.clearTimeout(t)
   }, [initializing])
 

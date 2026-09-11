@@ -84,85 +84,70 @@ public final class WorkoutHudBridge {
         final long when = whenMs > 0 ? (long) whenMs : System.currentTimeMillis();
         final float prog = (float) Math.max(0, Math.min(1, progress));
 
-        final String[] resultHolder = new String[]{"{\"ok\":false,\"error\":\"pending\"}"};
-        final Object lock = new Object();
-
-        activity.runOnUiThread(() -> {
-            try {
-                if (!notificationsAllowed()) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        ActivityCompat.requestPermissions(
-                            activity,
-                            new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
-                            REQ_POST
-                        );
-                    }
-                    synchronized (lock) {
-                        resultHolder[0] = "{\"ok\":false,\"error\":\"permission\",\"notifications\":\"denied\"}";
-                        lock.notifyAll();
-                    }
-                    return;
-                }
-
-                Intent extras = new Intent();
-                extras.putExtra(WorkoutHudService.EXTRA_TITLE, t);
-                extras.putExtra(WorkoutHudService.EXTRA_CONTENT, c);
-                extras.putExtra(WorkoutHudService.EXTRA_BIG_TEXT, c);
-                extras.putExtra(WorkoutHudService.EXTRA_BUBBLE_LABEL, bubble);
-                extras.putExtra(WorkoutHudService.EXTRA_SHOW_CHRONO, true);
-                extras.putExtra(WorkoutHudService.EXTRA_COUNT_DOWN, countDown);
-                extras.putExtra(WorkoutHudService.EXTRA_IN_REST, countDown);
-                extras.putExtra(WorkoutHudService.EXTRA_WHEN_MS, when);
-
-                Notification notification = WorkoutHudNotifier.buildFromIntent(activity, extras);
-                boolean posted = WorkoutHudNotifier.notifyNow(activity, notification);
-                int active = WorkoutHudNotifier.countActive(activity);
-
-                SharedPreferences.Editor ed = activity
-                    .getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
-                    .edit();
-                ed.putBoolean("active", true);
-                ed.putString("title", t);
-                ed.putString("content", c);
-                ed.putString("bigText", c);
-                ed.putString("bubbleLabel", bubble);
-                ed.putBoolean("showChronometer", true);
-                ed.putBoolean("countDown", countDown);
-                ed.putBoolean("inRest", countDown);
-                ed.putLong("whenMs", when);
-                ed.putFloat("progress", prog);
-                ed.apply();
-
-                WorkoutHudOverlay.updateCached(bubble, when, countDown, prog);
-
-                Log.i(TAG, "showWorkout posted=" + posted + " active=" + active);
-
-                synchronized (lock) {
-                    resultHolder[0] =
-                        "{\"ok\":" + (posted || active > 0 || active < 0) +
-                        ",\"posted\":" + posted +
-                        ",\"activeCount\":" + active +
-                        ",\"notifications\":\"granted\"" +
-                        ",\"overlay\":\"" + (WorkoutHudOverlay.canDraw(activity) ? "granted" : "denied") + "\"}";
-                    lock.notifyAll();
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "showWorkout failed", e);
-                synchronized (lock) {
-                    resultHolder[0] = "{\"ok\":false,\"error\":\"" + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
-                    lock.notifyAll();
-                }
-            }
-        });
-
+        // Never block the WebView bridge thread (lock.wait froze the UI / skipped overlay prompts)
         try {
-            synchronized (lock) {
-                lock.wait(2500);
+            if (!notificationsAllowed()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    activity.runOnUiThread(() -> {
+                        try {
+                            ActivityCompat.requestPermissions(
+                                activity,
+                                new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                                REQ_POST
+                            );
+                        } catch (Exception ignored) {}
+                    });
+                }
+                return "{\"ok\":false,\"error\":\"permission\",\"notifications\":\"denied\"}";
             }
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
+
+            Intent extras = new Intent();
+            extras.putExtra(WorkoutHudService.EXTRA_TITLE, t);
+            extras.putExtra(WorkoutHudService.EXTRA_CONTENT, c);
+            extras.putExtra(WorkoutHudService.EXTRA_BIG_TEXT, c);
+            extras.putExtra(WorkoutHudService.EXTRA_BUBBLE_LABEL, bubble);
+            extras.putExtra(WorkoutHudService.EXTRA_SHOW_CHRONO, true);
+            extras.putExtra(WorkoutHudService.EXTRA_COUNT_DOWN, countDown);
+            extras.putExtra(WorkoutHudService.EXTRA_IN_REST, countDown);
+            extras.putExtra(WorkoutHudService.EXTRA_WHEN_MS, when);
+
+            Notification notification = WorkoutHudNotifier.buildFromIntent(activity, extras);
+            boolean posted = WorkoutHudNotifier.notifyNow(activity, notification);
+            int active = WorkoutHudNotifier.countActive(activity);
+
+            SharedPreferences.Editor ed = activity
+                .getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+                .edit();
+            ed.putBoolean("active", true);
+            ed.putString("title", t);
+            ed.putString("content", c);
+            ed.putString("bigText", c);
+            ed.putString("bubbleLabel", bubble);
+            ed.putBoolean("showChronometer", true);
+            ed.putBoolean("countDown", countDown);
+            ed.putBoolean("inRest", countDown);
+            ed.putLong("whenMs", when);
+            ed.putFloat("progress", prog);
+            ed.apply();
+
+            activity.runOnUiThread(() -> {
+                try {
+                    WorkoutHudOverlay.updateCached(bubble, when, countDown, prog);
+                } catch (Exception e) {
+                    Log.e(TAG, "updateCached failed", e);
+                }
+            });
+
+            Log.i(TAG, "showWorkout posted=" + posted + " active=" + active);
+            return "{\"ok\":" + (posted || active > 0 || active < 0) +
+                ",\"posted\":" + posted +
+                ",\"activeCount\":" + active +
+                ",\"notifications\":\"granted\"" +
+                ",\"overlay\":\"" + (WorkoutHudOverlay.canDraw(activity) ? "granted" : "denied") + "\"}";
+        } catch (Exception e) {
+            Log.e(TAG, "showWorkout failed", e);
+            return "{\"ok\":false,\"error\":\"" + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
         }
-        return resultHolder[0];
     }
 
     @JavascriptInterface
@@ -256,6 +241,21 @@ public final class WorkoutHudBridge {
         });
     }
 
+    /**
+     * Non-blocking: do not wait on the bridge thread (that froze the WebView).
+     * Prefer ensureOverlayPermission() + AppDialog from JS instead.
+     */
+    @JavascriptInterface
+    public String promptOverlayPermission(
+        String title,
+        String message,
+        String confirmLabel,
+        String cancelLabel
+    ) {
+        // Deprecated path — returns immediately; JS should use AppDialog.
+        return "{\"accepted\":false,\"deprecated\":true}";
+    }
+
     @JavascriptInterface
     public void openNotificationSettings() {
         activity.runOnUiThread(() -> {
@@ -285,37 +285,63 @@ public final class WorkoutHudBridge {
         }
     }
 
+    /**
+     * Always posts an Android notification (name + body).
+     * Shows the floating head only when app is backgrounded, bubble enabled, and overlay granted.
+     */
+    @JavascriptInterface
+    public String showChatMessageAlert(String peerId, String title, String body) {
+        if (peerId == null || peerId.isEmpty()) return "{\"ok\":false}";
+        final String p = peerId;
+        final String t = title != null ? title : "Nuevo mensaje";
+        final String b = body != null ? body : "";
+        try {
+            ChatBubbleStore.showMessageNotification(activity.getApplicationContext(), p, t, b);
+            // Delay head until after onPause so isInForeground is false when leaving the app
+            activity.getWindow().getDecorView().postDelayed(() -> {
+                try {
+                    if (MainActivity.isInForeground()) return;
+                    if (!ChatBubbleStore.isEnabled(activity, p)) return;
+                    if (!ChatBubbleOverlay.canDraw(activity)) return;
+                    ChatBubbleOverlay.show(activity.getApplicationContext(), p, t, b, 1);
+                } catch (Exception e) {
+                    Log.e(TAG, "showChatMessageAlert bubble failed", e);
+                }
+            }, 450);
+            return "{\"ok\":true}";
+        } catch (Exception e) {
+            Log.e(TAG, "showChatMessageAlert failed", e);
+            return "{\"ok\":false,\"error\":\"" + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
+        }
+    }
+
     @JavascriptInterface
     public String showChatBubble(String peerId, String name, String preview, String avatarUrl) {
-        // Preference-only enable must never draw while the user is inside the app.
+        // Never draw over the in-app chat thread
         if (MainActivity.isInForeground()) {
             return "{\"ok\":true,\"deferred\":true}";
         }
-        final String[] out = new String[]{"{\"ok\":false}"};
-        final Object lock = new Object();
+        if (!ChatBubbleOverlay.canDraw(activity)) {
+            return "{\"ok\":false,\"error\":\"overlay\"}";
+        }
+        // Fire-and-forget — never block the WebView bridge thread (causes blank/freeze)
+        final String p = peerId;
+        final String n = name;
+        final String prev = preview;
         activity.runOnUiThread(() -> {
             try {
-                if (!ChatBubbleOverlay.canDraw(activity)) {
-                    out[0] = "{\"ok\":false,\"error\":\"overlay\"}";
-                } else {
-                    ChatBubbleOverlay.show(activity, peerId, name, preview, 1);
-                    out[0] = "{\"ok\":true}";
-                }
+                ChatBubbleOverlay.show(
+                    activity.getApplicationContext(),
+                    p,
+                    n,
+                    prev,
+                    1
+                );
             } catch (Exception e) {
-                out[0] = "{\"ok\":false,\"error\":\"" + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
-            }
-            synchronized (lock) {
-                lock.notifyAll();
+                Log.e(TAG, "showChatBubble failed", e);
             }
         });
-        try {
-            synchronized (lock) {
-                lock.wait(1200);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return out[0];
+        return "{\"ok\":true}";
     }
 
     @JavascriptInterface

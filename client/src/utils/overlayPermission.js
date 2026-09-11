@@ -1,8 +1,8 @@
 import { isNativeApp } from './appMode'
 
 /**
- * Shared “Aparecer encima” permission flow for workout + chat bubbles.
- * Always shows the in-app dialog when the OS permission is missing.
+ * Shared “Aparecer encima” permission flow.
+ * Uses Qyntra AppDialog (in-app). Never blocks the WebView bridge thread.
  */
 
 export async function checkOverlayPermission() {
@@ -75,17 +75,16 @@ export function hasPendingOverlayPermission() {
   }
 }
 
-async function waitUntilForeground(maxMs = 8000) {
+async function waitUntilForeground(maxMs = 5000) {
   const start = Date.now()
   while (Date.now() - start < maxMs) {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-      // Settle after system sheets
-      await new Promise((r) => window.setTimeout(r, 450))
+      await new Promise((r) => window.setTimeout(r, 200))
       return true
     }
-    await new Promise((r) => window.setTimeout(r, 200))
+    await new Promise((r) => window.setTimeout(r, 120))
   }
-  return typeof document === 'undefined' || document.visibilityState === 'visible'
+  return true
 }
 
 /**
@@ -99,29 +98,24 @@ export async function ensureOverlayPermission(dialog, options = {}) {
     message =
       'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
     confirmLabel = 'Configurar',
-    cancelLabel = 'Cancelar',
-    settleMs = 600
+    cancelLabel = 'Ahora no',
+    settleMs = 300
   } = options
 
   await waitUntilForeground()
   if (settleMs > 0) await new Promise((r) => window.setTimeout(r, settleMs))
 
   let status = 'denied'
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      status = await checkOverlayPermission()
-    } catch {
-      status = 'denied'
-    }
-    if (status === 'granted') break
-    await new Promise((r) => window.setTimeout(r, 250))
+  try {
+    status = await checkOverlayPermission()
+  } catch {
+    status = 'denied'
   }
 
   if (status === 'granted') {
     clearPendingOverlayPermission()
     try {
       window.QyntraNative?.hideOverlay?.()
-      window.QyntraNative?.hideChatBubble?.('')
     } catch {
       /* ignore */
     }
@@ -132,9 +126,6 @@ export async function ensureOverlayPermission(dialog, options = {}) {
     markPendingOverlayPermission()
     return 'denied'
   }
-
-  // Ensure any previous dialog finished unmounting
-  await new Promise((r) => window.setTimeout(r, 120))
 
   const accepted = await dialog.confirm(message, {
     title,
@@ -150,8 +141,8 @@ export async function ensureOverlayPermission(dialog, options = {}) {
   }
 
   markPendingOverlayPermission()
-  // Let dialog exit animation finish so we never freeze on a black scrim
-  await new Promise((r) => window.setTimeout(r, 320))
+  // Let the Qyntra dialog unmount fully before leaving the activity
+  await new Promise((r) => window.setTimeout(r, 280))
   await openOverlaySettings()
   return 'prompted'
 }

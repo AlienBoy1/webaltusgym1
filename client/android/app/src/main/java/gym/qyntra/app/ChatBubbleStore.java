@@ -26,6 +26,7 @@ public final class ChatBubbleStore {
     public static final String CHANNEL_ID = "qyntra_chat_messages";
     private static final String KEY_PEERS = "enabled_peers";
     private static final String KEY_API = "api_base";
+    private static final String KEY_TOKEN = "auth_token";
     private static final int NOTIF_BASE = 88000;
 
     private ChatBubbleStore() {}
@@ -37,16 +38,26 @@ public final class ChatBubbleStore {
             if (obj.has("apiBase")) {
                 ed.putString(KEY_API, obj.optString("apiBase", ""));
             }
+            if (obj.has("authToken")) {
+                String tok = obj.optString("authToken", "");
+                if (tok != null && !tok.isEmpty()) ed.putString(KEY_TOKEN, tok);
+            }
             JSONArray peers = obj.optJSONArray("peers");
             Set<String> set = new HashSet<>();
+            StringBuilder csv = new StringBuilder();
             if (peers != null) {
                 for (int i = 0; i < peers.length(); i++) {
                     String id = peers.optString(i, "");
-                    if (!id.isEmpty()) set.add(id);
+                    if (id.isEmpty()) continue;
+                    set.add(id);
+                    if (csv.length() > 0) csv.append(',');
+                    csv.append(id);
                 }
             }
-            ed.putStringSet(KEY_PEERS, set);
-            ed.apply();
+            // Android StringSet quirk: always write a fresh set + CSV backup
+            ed.putStringSet(KEY_PEERS, new HashSet<>(set));
+            ed.putString(KEY_PEERS + "_csv", csv.toString());
+            ed.commit();
         } catch (Exception e) {
             Log.e(TAG, "syncFromJson", e);
         }
@@ -54,9 +65,15 @@ public final class ChatBubbleStore {
 
     public static boolean isEnabled(Context context, String peerId) {
         if (peerId == null || peerId.isEmpty()) return false;
-        Set<String> set = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getStringSet(KEY_PEERS, null);
-        return set != null && set.contains(peerId);
+        SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        Set<String> set = sp.getStringSet(KEY_PEERS, null);
+        if (set != null && set.contains(peerId)) return true;
+        String csv = sp.getString(KEY_PEERS + "_csv", "");
+        if (csv == null || csv.isEmpty()) return false;
+        for (String part : csv.split(",")) {
+            if (peerId.equals(part.trim())) return true;
+        }
+        return false;
     }
 
     public static String apiBase(Context context) {
@@ -64,6 +81,9 @@ public final class ChatBubbleStore {
     }
 
     public static String authToken(Context context) {
+        SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String direct = sp.getString(KEY_TOKEN, null);
+        if (direct != null && !direct.isEmpty()) return direct;
         // Capacitor Preferences storage
         SharedPreferences cap = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
         String token = cap.getString("qyntra.auth.token", null);

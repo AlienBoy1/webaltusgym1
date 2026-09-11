@@ -214,33 +214,40 @@ export default function MainLayout() {
 
     const alertMessage = (data) => {
       if (data?.from) ackDelivered(data.from)
-      if (pathRef.current.startsWith('/chat')) return
+      const hidden = document.visibilityState === 'hidden'
+      // Inside an open chat while looking at the app: don't steal focus with toasts/heads
+      if (!hidden && pathRef.current.startsWith('/chat')) return
       const tag = data.tag || `msg-${data.from}`
       if (recentPushTags.has(tag)) return
       recentPushTags.add(tag)
       window.setTimeout(() => recentPushTags.delete(tag), 3500)
 
-      // Device notification only — no in-app inbox rows for messages
-      const hidden = document.visibilityState === 'hidden'
       if (hidden) {
-        showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
-          tag,
-          onClick: () => navigate(`/chat?peer=${encodeURIComponent(data.from || '')}`)
-        })
         import('../utils/chatBubbles')
-          .then(({ isChatBubbleEnabled, showNativeChatBubble }) => {
-            if (!isChatBubbleEnabled(data.from)) return
-            return showNativeChatBubble({
+          .then(({ notifyNativeIncomingChat, isChatBubbleEnabled }) => {
+            // Always post native tray notification (name + message)
+            notifyNativeIncomingChat({
               peerId: data.from,
               name: data.fromName || 'Mensaje',
-              preview: data.message || '',
-              avatarUrl: ''
+              preview: data.message || ''
+            })
+            // Bubble head is included inside notifyNativeIncomingChat when enabled
+            if (!isChatBubbleEnabled(data.from)) {
+              // keep web fallback for non-native / missing bridge
+              showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
+                tag,
+                onClick: () => navigate(`/chat?peer=${encodeURIComponent(data.from || '')}`)
+              })
+            }
+          })
+          .catch(() => {
+            showNotification(`${data.fromName || 'Mensaje'}`, data.message || 'Nuevo mensaje', {
+              tag,
+              onClick: () => navigate(`/chat?peer=${encodeURIComponent(data.from || '')}`)
             })
           })
-          .catch(() => {})
         return
       }
-      // App visible but not on /chat: light toast (not inbox)
       toast.success(`${data.fromName || 'Mensaje'}: ${data.message || 'Nuevo mensaje'}`, {
         duration: 4000
       })

@@ -221,9 +221,7 @@ function MessageTicks({ status, isMe, muted = false }) {
       className="ml-1.5 inline-flex flex-col items-center justify-center rounded-full px-[6px] py-[3px] align-middle"
       style={{
         background: muted ? 'rgba(15, 23, 42, 0.32)' : 'rgba(15, 23, 42, 0.42)',
-        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.16), 0 1px 2px rgba(0,0,0,0.22)',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)'
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.16), 0 1px 2px rgba(0,0,0,0.22)'
       }}
     >
       <svg
@@ -471,7 +469,7 @@ function ChatBottomSheet({ open, onClose, title, children }) {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[120] flex items-end justify-center bg-black/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -852,16 +850,30 @@ export default function Chat() {
   }, [selectedChat?.otherId, wallpaperId])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    // Only auto-scroll when the user is near the bottom — avoids jank / blank WebView on Android
+    const el = messagesScrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distance < 140) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    }
+  }, [messages.length])
 
   useEffect(() => {
-    if (selectedChat?.otherId) {
-      fetchMessages(selectedChat.otherId)
+    if (!selectedChat?.otherId) return undefined
+    let cancelled = false
+    const otherId = selectedChat.otherId
+    ;(async () => {
+      await fetchMessages(otherId)
+      if (cancelled) return
+    })()
+    return () => {
+      cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.otherId])
 
-  // Safety net while a thread is open: merge receipts (+ body) if realtime hiccups
+  // Safety net while a thread is open: merge receipts if realtime hiccups
   useEffect(() => {
     const otherId = selectedChat?.otherId
     if (!otherId) return undefined
@@ -894,14 +906,13 @@ export default function Chat() {
     const tick = async () => {
       if (document.visibilityState !== 'visible') return
       try {
-        const { data: receipts } = await api.get(`/chat/receipts/${otherId}`, { timeout: 8000 })
+        const { data: receipts } = await api.get(`/chat/receipts/${otherId}`, { timeout: 6000 })
         applyReceipts(receipts)
       } catch {
         /* ignore */
       }
-      // Full sync less often and never re-mark as read (avoids stampede / 500s)
       fullTicks += 1
-      if (fullTicks % 5 !== 0) return
+      if (fullTicks % 6 !== 0) return
       try {
         const { data } = await api.get(`/chat/messages/${otherId}`, {
           params: { markRead: 0 },
@@ -915,11 +926,7 @@ export default function Chat() {
             const local = prevById.get(String(server.id))
             if (!local) return server
             const receipt = mergeReceipt(local, server)
-            return {
-              ...local,
-              ...server,
-              ...receipt
-            }
+            return { ...local, ...server, ...receipt }
           })
           return temps.length ? [...merged, ...temps] : merged
         })
@@ -928,9 +935,15 @@ export default function Chat() {
       }
     }
 
-    tick()
-    const poll = window.setInterval(tick, 8000)
-    return () => window.clearInterval(poll)
+    // Don't stampede the thread on open — wait before first poll
+    const start = window.setTimeout(() => {
+      tick()
+    }, 12000)
+    const poll = window.setInterval(tick, 12000)
+    return () => {
+      window.clearTimeout(start)
+      window.clearInterval(poll)
+    }
   }, [selectedChat?.otherId])
 
   // Inbox preview safety net (typing / last message) when list is visible
@@ -1999,20 +2012,21 @@ export default function Chat() {
 
   useEffect(() => {
     if (!selectedChat?.otherId || !conversations?.length) return
+    // Only hydrate stub threads opened from deep links (name === 'Chat')
+    if (selectedChat.name && selectedChat.name !== 'Chat') return
     const hit = conversations.find((c) => String(c.otherId) === String(selectedChat.otherId))
     if (!hit) return
-    if (selectedChat.name && selectedChat.name !== 'Chat' && selectedChat.avatar) return
-    setSelectedChat((prev) =>
-      prev?.otherId === hit.otherId
-        ? {
-            ...prev,
-            name: hit.name || prev.name,
-            avatar: hit.avatar || prev.avatar,
-            username: hit.username || prev.username
-          }
-        : prev
-    )
-  }, [conversations, selectedChat?.otherId, selectedChat?.name, selectedChat?.avatar])
+    setSelectedChat((prev) => {
+      if (!prev || String(prev.otherId) !== String(hit.otherId)) return prev
+      if (prev.name !== 'Chat' && prev.avatar) return prev
+      return {
+        ...prev,
+        name: hit.name || prev.name,
+        avatar: hit.avatar || prev.avatar,
+        username: hit.username || prev.username
+      }
+    })
+  }, [conversations, selectedChat?.otherId, selectedChat?.name])
 
   // Open chat from profile "Mensaje" button or story reply
   useEffect(() => {
@@ -2029,10 +2043,12 @@ export default function Chat() {
           avatar: null,
           unread: 0
         })
+        setWallpaperId(getChatWallpaper(peerFromQuery))
         setChatBubbleOn(isChatBubbleEnabled(peerFromQuery))
         void dismissChatNotification(peerFromQuery)
         void hideNativeChatBubble(peerFromQuery)
       }
+      api.post(`/chat/read/${peerFromQuery}`).catch(() => {})
       navigate('/chat', { replace: true, state: {} })
       return
     }
@@ -2072,7 +2088,7 @@ export default function Chat() {
     startConversation(startWith)
     navigate(location.pathname, { replace: true, state: {} })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state?.startWith?._id, location.state?.startWith?.id])
+  }, [location.search, location.state?.startWith?._id, location.state?.startWith?.id])
 
   const filteredConversations = conversations.filter((c) => {
     const q = search.toLowerCase()
@@ -2163,7 +2179,7 @@ export default function Chat() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar conversación…"
               enterKeyHint="search"
-              className="w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)]/90 py-3 pl-10 pr-4 text-[15px] text-[color:var(--text-primary)] outline-none backdrop-blur-sm transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--color-primary)] focus:bg-[color:var(--bg-app)] focus:ring-4 focus:ring-[rgba(var(--color-primary-rgb),0.12)]"
+              className="w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-muted)] py-3 pl-10 pr-4 text-[15px] text-[color:var(--text-primary)] outline-none transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--color-primary)] focus:bg-[color:var(--bg-app)] focus:ring-4 focus:ring-[rgba(var(--color-primary-rgb),0.12)]"
             />
           </div>
         </div>
@@ -2346,10 +2362,10 @@ export default function Chat() {
             <ChatWallpaper styleId={wallpaperId} />
 
             <header
-              className={`relative z-10 flex items-center gap-2 border-b px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-4 ${
+              className={`relative z-10 flex items-center gap-2 border-b px-3 py-3 sm:gap-3 sm:px-4 ${
                 hasStyledWall
-                  ? 'border-white/10 bg-black/55'
-                  : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/90'
+                  ? 'border-white/10 bg-black/80'
+                  : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
               }`}
             >
               <button
@@ -2455,8 +2471,7 @@ export default function Chat() {
                           label: chatBubbleOn ? 'Desactivar burbuja de chat' : 'Activar burbuja de chat',
                           action: async () => {
                             setShowThreadMenu(false)
-                            // Let the menu portal unmount before any dialog (prevents black scrim lock)
-                            await new Promise((r) => window.setTimeout(r, 180))
+                            await new Promise((r) => window.setTimeout(r, 120))
 
                             if (!isNativeApp()) {
                               toast('La burbuja de chat está disponible en la app Android')
@@ -2477,37 +2492,43 @@ export default function Chat() {
                               return
                             }
 
-                            // Save preference FIRST — bubble must NOT appear until a new message arrives
+                            // Keep chat fully usable — only save preference (no overlay drawn in-app)
                             setChatBubbleEnabled(peerId, true)
                             setChatBubbleOn(true)
                             await syncChatBubblesToNative()
-                            // Never preview/show bubble on enable
                             void hideNativeChatBubble(peerId)
+                            try {
+                              const { subscribeToPush } = await import('../../utils/push')
+                              await subscribeToPush()
+                            } catch {
+                              /* push may already be on */
+                            }
 
                             const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
                             const status = await ensureOverlayPermission(dialog, {
-                              title: 'Activar burbuja de chat',
+                              title: 'Activar burbuja',
                               message:
-                                'Para mostrar la cabeza flotante cuando te escriban, activa “Aparecer encima de otras apps” para Qyntra. Se abrirá Ajustes de Android.',
+                                'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa. La burbuja solo aparecerá cuando te escriban y no estés dentro de la app.',
                               confirmLabel: 'Configurar',
                               cancelLabel: 'Ahora no',
-                              settleMs: 200
+                              settleMs: 80
                             })
 
+                            // Stay in the same chat — never navigate away / never blank the thread
                             if (status === 'prompted') {
                               toast(
-                                'Preferencia guardada. Activa el permiso y vuelve: la burbuja solo aparecerá cuando recibas un mensaje.',
-                                { duration: 8000 }
+                                'Preferencia guardada. Activa el permiso y vuelve: seguirás pudiendo usar este chat con normalidad.',
+                                { duration: 7500 }
                               )
                             } else if (status === 'granted') {
                               toast.success(
-                                'Burbuja lista. Aparecerá al recibir un mensaje de este chat fuera de la app.',
+                                'Listo. Si te escriben fuera de Qyntra verás la burbuja; dentro de la app el chat sigue igual.',
                                 { duration: 5500 }
                               )
                             } else {
                               toast(
-                                'Preferencia guardada. Sin el permiso de “aparecer encima”, solo verás la notificación normal.',
-                                { duration: 7000 }
+                                'Preferencia guardada. Sin permiso de “aparecer encima” solo llegará la notificación normal.',
+                                { duration: 6500 }
                               )
                             }
                           }
@@ -2753,7 +2774,7 @@ export default function Chat() {
                                 type="button"
                                 data-no-swipe
                                 onClick={() => applyReaction(msg, emoji)}
-                                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs shadow-sm backdrop-blur-sm transition active:scale-95 ${
+                                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs shadow-sm transition active:scale-95 ${
                                   mine
                                     ? 'border-[rgba(var(--color-primary-rgb),0.45)] bg-[rgba(var(--color-primary-rgb),0.16)]'
                                     : hasStyledWall
@@ -2807,7 +2828,7 @@ export default function Chat() {
                 voiceSession ? 'hidden' : ''
               } ${
                 hasStyledWall
-                  ? 'border-white/10 bg-black/60 backdrop-blur-md'
+                  ? 'border-white/10 bg-black/80'
                   : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
               }`}
               style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
@@ -3103,7 +3124,7 @@ export default function Chat() {
       <AnimatePresence>
         {showNewChat && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -3501,7 +3522,7 @@ export default function Chat() {
       {/* Keep reply visible while recording / previewing media outside the text form */}
       {replyTo && (voiceSession || imageDraft) && !sending && (
         <div className="pointer-events-none fixed inset-x-0 top-16 z-[114] flex justify-center px-3 pt-2">
-          <div className="pointer-events-auto flex w-full max-w-3xl items-stretch overflow-hidden rounded-2xl border border-white/12 bg-[#121218]/95 text-white shadow-lg backdrop-blur-md">
+          <div className="pointer-events-auto flex w-full max-w-3xl items-stretch overflow-hidden rounded-2xl border border-white/12 bg-[#121218] text-white shadow-lg">
             <div className="w-1 shrink-0 bg-[color:var(--color-primary)]" />
             <div className="min-w-0 flex-1 px-3 py-2">
               <p className="truncate text-xs font-semibold text-[color:var(--color-primary)]">

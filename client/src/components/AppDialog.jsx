@@ -1,11 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiAlertTriangle, FiInfo, FiCheck } from 'react-icons/fi'
 
 const DialogContext = createContext(null)
 
 /**
- * Native in-app dialogs (confirm / alert / prompt) — replaces window.confirm/alert/prompt.
+ * In-app dialogs (Qyntra style). No backdrop-blur — that freezes Android WebViews black/blank.
  */
 export function AppDialogProvider({ children }) {
   const [dialog, setDialog] = useState(null)
@@ -26,7 +26,6 @@ export function AppDialogProvider({ children }) {
 
   const open = useCallback((config) => {
     return new Promise((resolve) => {
-      // Queue if another dialog is already open — never drop confirmations
       if (resolverRef.current) {
         queueRef.current.push({ config, resolve })
         return
@@ -34,28 +33,6 @@ export function AppDialogProvider({ children }) {
       resolverRef.current = resolve
       setDialog(config)
     })
-  }, [])
-
-  // When leaving the app (system Settings), hide the black scrim immediately
-  // without cancelling the promise — prevents a frozen black WebView on return.
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === 'hidden') {
-        setDialog((current) => {
-          if (!current) return null
-          return { ...current, __suppressScrim: true }
-        })
-        return
-      }
-      // Back to foreground: restore dialog UI if still pending
-      setDialog((current) => {
-        if (!current?.__suppressScrim) return current
-        const { __suppressScrim, ...rest } = current
-        return rest
-      })
-    }
-    document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
   const api = useMemo(
@@ -95,23 +72,24 @@ export function AppDialogProvider({ children }) {
     [open]
   )
 
-  const showUi = Boolean(dialog) && !dialog.__suppressScrim
-
   return (
     <DialogContext.Provider value={api}>
       {children}
       <AnimatePresence>
-        {showUi && (
+        {dialog && (
           <motion.div
+            key="qyntra-app-dialog"
             className="fixed inset-0 z-[200] flex items-end justify-center p-4 sm:items-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: 0.15 }}
           >
+            {/* Solid scrim — NEVER backdrop-blur on Android WebView */}
             <button
               type="button"
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              className="absolute inset-0"
+              style={{ background: 'rgba(0,0,0,0.55)' }}
               aria-label="Cerrar"
               onClick={() => {
                 if (dialog.dismissible === false) return
@@ -121,10 +99,10 @@ export function AppDialogProvider({ children }) {
             <motion.div
               role="dialog"
               aria-modal="true"
-              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 16, scale: 0.98 }}
-              transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
               className="relative w-full max-w-md overflow-hidden rounded-2xl border p-5 shadow-2xl sm:p-6"
               style={{
                 background: 'var(--bg-elevated)',

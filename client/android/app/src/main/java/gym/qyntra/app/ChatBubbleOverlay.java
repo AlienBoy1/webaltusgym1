@@ -37,12 +37,13 @@ public final class ChatBubbleOverlay {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context);
     }
 
-    /** Never draw over the live WebView — only when the activity is backgrounded. */
+    /** Chat heads only when the user is outside the app. */
     public static void show(Context context, String peerId, String name, String preview, int unread) {
         if (peerId == null || peerId.isEmpty()) return;
         if (!canDraw(context)) return;
+        // Never cover the live chat UI — even for FCM while the activity is resumed
         if (MainActivity.isInForeground()) {
-            Log.i(TAG, "skip show — app in foreground (bubble waits for next push while backgrounded)");
+            Log.i(TAG, "skip show — app in foreground");
             return;
         }
         try {

@@ -134,7 +134,7 @@ export default function ChatMessageActionOverlay({
         >
           <button
             type="button"
-            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/55"
             aria-label="Cerrar"
             onClick={onClose}
           />
@@ -144,7 +144,7 @@ export default function ChatMessageActionOverlay({
             initial={{ y: -24, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -16, opacity: 0 }}
-            className="absolute inset-x-0 top-0 z-20 flex items-center gap-1 border-b border-white/10 bg-[color:var(--bg-elevated)]/95 px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-[color:var(--text-primary)] shadow-lg backdrop-blur-xl"
+            className="absolute inset-x-0 top-0 z-20 flex items-center gap-1 border-b border-white/10 bg-[color:var(--bg-elevated)] px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-[color:var(--text-primary)] shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -207,7 +207,7 @@ export default function ChatMessageActionOverlay({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="pointer-events-auto flex w-full justify-center px-3 box-border">
-                <div className="flex max-w-[calc(100vw-1.5rem)] items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-white/10 bg-[color:var(--bg-elevated)]/95 px-1.5 py-1 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl scrollbar-none">
+                <div className="flex max-w-[calc(100vw-1.5rem)] items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-white/10 bg-[color:var(--bg-elevated)] px-1.5 py-1 shadow-[0_16px_48px_rgba(0,0,0,0.45)] scrollbar-none">
                   {CHAT_QUICK_REACTIONS.map((r) => {
                     const active = msg.myReaction === r.emoji
                     return (

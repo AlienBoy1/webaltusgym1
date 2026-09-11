@@ -105,14 +105,29 @@ export async function dismissChatNotification(peerId) {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Native Android tray notification (name + body) + optional floating head.
+ * Prefer this over web Notification API inside Capacitor.
+ */
+export async function notifyNativeIncomingChat({ peerId, name, preview }) {
+  if (!isNativeApp() || !peerId) return false
   try {
-    const { Capacitor } = await import('@capacitor/core')
-    if (Capacitor.isNativePlatform?.() || isNativeApp()) {
-      // Native cancel via bridge already attempted
+    if (typeof window !== 'undefined' && window.QyntraNative?.showChatMessageAlert) {
+      const raw = window.QyntraNative.showChatMessageAlert(
+        String(peerId),
+        String(name || 'Nuevo mensaje'),
+        String(preview || '')
+      )
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+      return Boolean(parsed?.ok)
     }
   } catch {
     /* ignore */
   }
+  // Fallback: bubble-only path
+  return showNativeChatBubble({ peerId, name, preview, avatarUrl: '' })
 }
 
 export async function showNativeChatBubble({ peerId, name, preview, avatarUrl }) {
@@ -166,9 +181,17 @@ async function syncNativeChatBubbles(map) {
         /* ignore */
       }
     }
+    let authToken = ''
+    try {
+      const { getStoredToken } = await import('./tokenStorage')
+      authToken = getStoredToken() || ''
+    } catch {
+      /* ignore */
+    }
     const payload = JSON.stringify({
       peers: Object.keys(map || {}).filter((id) => map[id]),
-      apiBase
+      apiBase,
+      authToken
     })
     if (typeof window !== 'undefined' && window.QyntraNative?.syncChatBubbles) {
       window.QyntraNative.syncChatBubbles(payload)

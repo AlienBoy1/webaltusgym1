@@ -97,7 +97,7 @@ async function syncSupabaseSession(accessToken, refreshToken) {
     })
     await Promise.race([
       work,
-      new Promise((resolve) => setTimeout(resolve, 4000))
+      new Promise((resolve) => setTimeout(resolve, 1200))
     ])
   } catch (err) {
     console.warn('Supabase setSession failed:', err?.message || err)
@@ -442,7 +442,7 @@ export const useAuthStore = create((set, get) => ({
       } else {
         endInit({ isAuthenticated: false })
       }
-    }, 10000)
+    }, 4500)
 
     try {
       try {
@@ -454,14 +454,18 @@ export const useAuthStore = create((set, get) => ({
       let token = getStoredToken()
       let refreshToken = getStoredRefreshToken()
 
-      // Last chance: read Preferences directly if WebView storage is still empty
-      if (!token || !refreshToken) {
+      // One quick Preferences fallback only when web storage is empty
+      if (!token) {
         try {
           const native = await getNativePersistedTokens()
-          if (native.remember && (native.token || native.refreshToken)) {
-            await setAuthTokens(native.token, native.refreshToken, true)
-            token = getStoredToken() || native.token
-            refreshToken = getStoredRefreshToken() || native.refreshToken
+          if (native.remember && native.token) {
+            // Write web storage sync; native persist is best-effort in background
+            localStorage.setItem('rememberMe', '1')
+            localStorage.setItem('token', native.token)
+            if (native.refreshToken) localStorage.setItem('refreshToken', native.refreshToken)
+            token = native.token
+            refreshToken = native.refreshToken
+            void setAuthTokens(native.token, native.refreshToken, true)
           }
         } catch {
           /* ignore */
@@ -471,7 +475,7 @@ export const useAuthStore = create((set, get) => ({
       const cached = loadCachedUser()
       const remember = isRememberMeEnabled()
 
-      // Show cached session immediately so UI can leave boot even if /auth/me is slow
+      // Cached session → leave boot immediately
       if (token && cached) {
         set({
           user: cached,
@@ -485,33 +489,21 @@ export const useAuthStore = create((set, get) => ({
       }
 
       if (!token) {
-        let nativeHasSession = false
-        try {
-          const native = await getNativePersistedTokens()
-          nativeHasSession = Boolean(native.remember && (native.token || native.refreshToken))
-        } catch {
-          /* ignore */
-        }
-        if (!nativeHasSession) {
-          try {
-            await clearAuthTokens()
-          } catch {
-            /* ignore */
-          }
-          persistCachedUser(null)
-        }
+        // Fast path to login — do not block on Preferences clear
+        persistCachedUser(null)
         endInit({
           isAuthenticated: false,
           user: null,
           token: null,
           refreshToken: null
         })
+        void clearAuthTokens()
         return false
       }
 
       try {
         await syncSupabaseSession(token, refreshToken)
-        const { data } = await api.get('/auth/me', { timeout: 8000 })
+        const { data } = await api.get('/auth/me', { timeout: 5000 })
         const prev = get().user
         const user = mergeUsersPreservingSettings(prev, data.user)
         persistCachedUser(user)
@@ -533,7 +525,7 @@ export const useAuthStore = create((set, get) => ({
         const isNetwork = !error?.response
         const status = error?.response?.status
         const isServerBlip = status >= 500 && status <= 599
-        if (isTimeout || isNetwork || isServerBlip) {
+        if (isTimeout || isNetwork || isServerBlip || cached) {
           endInit({
             isAuthenticated: true,
             token,
@@ -554,24 +546,6 @@ export const useAuthStore = create((set, get) => ({
             })
             return true
           }
-          // Keep cached session if refresh flaked but we already unlocked the UI
-          if (cached) {
-            endInit({
-              isAuthenticated: true,
-              user: cached,
-              token,
-              refreshToken,
-              rememberMe: isRememberMeEnabled()
-            })
-            return true
-          }
-          endInit({ isAuthenticated: false, user: null, token: null, refreshToken: null })
-          return false
-        }
-        try {
-          await clearAuthTokens()
-        } catch {
-          /* ignore */
         }
         persistCachedUser(null)
         endInit({
@@ -580,6 +554,7 @@ export const useAuthStore = create((set, get) => ({
           refreshToken: null,
           isAuthenticated: false
         })
+        void clearAuthTokens()
         return false
       }
     } catch (err) {

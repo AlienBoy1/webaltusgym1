@@ -3,7 +3,7 @@ import { isNativeApp } from './appMode'
 const REMEMBER_KEY = 'rememberMe'
 const ACCESS_TOKEN_KEY = 'token'
 const REFRESH_TOKEN_KEY = 'refreshToken'
-const PREFS_TIMEOUT_MS = 1800
+const PREFS_TIMEOUT_MS = 700
 
 const NATIVE_KEYS = {
   remember: 'qyntra.auth.rememberMe',
@@ -159,8 +159,8 @@ export function getStoredTokens() {
 }
 
 /**
- * Persist tokens. Web storage is sync; Preferences is best-effort with timeout
- * so login / boot never hangs on a stuck Capacitor bridge.
+ * Persist tokens. Web storage is sync (instant). Preferences persist in background
+ * so login / boot never stall on a slow Capacitor bridge.
  */
 export async function setAuthTokens(accessToken, refreshToken, remember = true) {
   const preferLocal = remember !== false
@@ -175,7 +175,8 @@ export async function setAuthTokens(accessToken, refreshToken, remember = true) 
   if (refreshToken) store.setItem(REFRESH_TOKEN_KEY, refreshToken)
   localStorage.setItem(REMEMBER_KEY, preferLocal ? '1' : '0')
 
-  await persistNativeTokens(accessToken, refreshToken, preferLocal)
+  // Background durable write — do not await on the critical path
+  void persistNativeTokens(accessToken, refreshToken, preferLocal)
   hydratePromise = null
 }
 
