@@ -751,27 +751,23 @@ export default function Workouts() {
       toast.error('No se pudo activar la notificación del entreno')
     }
 
-    // After notifications: ALWAYS show Qyntra AppDialog if overlay missing
+    // After notifications: prompt for TRAINING bubble (separate from chat bubbles)
     if (isNativeApp()) {
       try {
-        // Let the notification permission sheet settle, then prompt in-app
         await new Promise((r) => window.setTimeout(r, 700))
-        const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
-        const status = await ensureOverlayPermission(dialog, {
-          title: 'Activar burbuja',
-          message:
-            'Para ver el cronómetro sobre otras apps, activa “Aparecer encima de otras apps” para Qyntra. Se abrirá Ajustes de Android.',
-          confirmLabel: 'Configurar',
-          cancelLabel: 'Ahora no',
-          settleMs: 200
-        })
-        if (status === 'prompted') {
-          toast(
-            'Activa el permiso y vuelve a Qyntra. Al salir de la app verás la burbuja.',
-            { duration: 9000 }
-          )
-        } else if (status === 'denied') {
-          toast('Puedes activarla luego en Configuración → Permisos', { duration: 5000 })
+        const { ensureFeatureOverlay, isWorkoutBubblePrefOn } = await import('../../utils/bubblePrefs')
+        const { checkOverlayPermission } = await import('../../utils/overlayPermission')
+        const overlay = await checkOverlayPermission()
+        if (!isWorkoutBubblePrefOn() || overlay !== 'granted') {
+          const status = await ensureFeatureOverlay(dialog, 'workout')
+          if (status === 'prompted') {
+            toast(
+              'Activa el permiso y vuelve a Qyntra. Al salir verás la burbuja de entrenamiento.',
+              { duration: 9000 }
+            )
+          } else if (status === 'denied') {
+            toast('Puedes activar la burbuja de entrenamiento en Configuración', { duration: 5000 })
+          }
         }
       } catch (err) {
         console.warn('overlay prompt:', err?.message || err)

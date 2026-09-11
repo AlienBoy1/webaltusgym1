@@ -36,6 +36,7 @@ public class MainActivity extends BridgeActivity {
         // Inside the app: ALWAYS hide system overlays (React UI owns the foreground)
         WorkoutHudOverlay.hideForForeground(this);
         ChatBubbleOverlay.hideAll(this);
+        ChatPanelOverlay.hide(this);
         WorkoutHudPlugin.restoreIfNeeded(this);
         getWindow().getDecorView().post(() -> WorkoutHudOverlay.hideForForeground(this));
         getWindow().getDecorView().postDelayed(() -> WorkoutHudOverlay.hideForForeground(this), 400);

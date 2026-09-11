@@ -27,7 +27,14 @@ public final class ChatBubbleStore {
     private static final String KEY_PEERS = "enabled_peers";
     private static final String KEY_API = "api_base";
     private static final String KEY_TOKEN = "auth_token";
+    private static final String KEY_META = "peers_meta_json";
     private static final int NOTIF_BASE = 88000;
+
+    public static final class PeerMeta {
+        public String name = "";
+        public String avatar = "";
+        public String wallpaper = "none";
+    }
 
     private ChatBubbleStore() {}
 
@@ -42,6 +49,11 @@ public final class ChatBubbleStore {
                 String tok = obj.optString("authToken", "");
                 if (tok != null && !tok.isEmpty()) ed.putString(KEY_TOKEN, tok);
             }
+            if (obj.has("peersMeta")) {
+                ed.putString(KEY_META, obj.optJSONObject("peersMeta") != null
+                    ? obj.optJSONObject("peersMeta").toString()
+                    : obj.optString("peersMeta", "{}"));
+            }
             JSONArray peers = obj.optJSONArray("peers");
             Set<String> set = new HashSet<>();
             StringBuilder csv = new StringBuilder();
@@ -54,13 +66,40 @@ public final class ChatBubbleStore {
                     csv.append(id);
                 }
             }
-            // Android StringSet quirk: always write a fresh set + CSV backup
             ed.putStringSet(KEY_PEERS, new HashSet<>(set));
             ed.putString(KEY_PEERS + "_csv", csv.toString());
             ed.commit();
         } catch (Exception e) {
             Log.e(TAG, "syncFromJson", e);
         }
+    }
+
+    public static PeerMeta peerMeta(Context context, String peerId) {
+        PeerMeta out = new PeerMeta();
+        if (peerId == null || peerId.isEmpty()) return out;
+        try {
+            String raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_META, "{}");
+            JSONObject all = new JSONObject(raw == null || raw.isEmpty() ? "{}" : raw);
+            JSONObject hit = all.optJSONObject(peerId);
+            if (hit == null) return out;
+            out.name = hit.optString("name", "");
+            out.avatar = hit.optString("avatar", "");
+            out.wallpaper = hit.optString("wallpaper", "none");
+        } catch (Exception e) {
+            Log.w(TAG, "peerMeta", e);
+        }
+        return out;
+    }
+
+    public static String resolveDisplayName(Context context, String peerId, String fallback) {
+        PeerMeta meta = peerMeta(context, peerId);
+        if (meta.name != null && !meta.name.isEmpty() && !"Usuario".equalsIgnoreCase(meta.name)) {
+            return meta.name;
+        }
+        if (fallback != null && !fallback.isEmpty() && !"Usuario".equalsIgnoreCase(fallback)) {
+            return fallback;
+        }
+        return fallback != null && !fallback.isEmpty() ? fallback : "Nuevo mensaje";
     }
 
     public static boolean isEnabled(Context context, String peerId) {
@@ -115,11 +154,12 @@ public final class ChatBubbleStore {
         String body
     ) {
         ensureChannel(context);
+        String displayTitle = resolveDisplayName(context, peerId, title);
         Intent open = new Intent(context, MainActivity.class);
         open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         open.putExtra("open_path", "/chat");
         open.putExtra("chat_peer_id", peerId);
-        open.putExtra("chat_peer_name", title != null ? title : "");
+        open.putExtra("chat_peer_name", displayTitle);
 
         PendingIntent openPi = PendingIntent.getActivity(
             context,
@@ -140,7 +180,7 @@ public final class ChatBubbleStore {
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_qyntra_q)
-            .setContentTitle(title != null ? title : "Nuevo mensaje")
+            .setContentTitle(displayTitle)
             .setContentText(body != null ? body : "")
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body != null ? body : ""))
             .setPriority(NotificationCompat.PRIORITY_HIGH)

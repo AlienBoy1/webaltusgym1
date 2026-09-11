@@ -33,11 +33,16 @@ public final class QyntraMessagingService extends FirebaseMessagingService {
                 body = remoteMessage.getNotification().getBody();
             }
             if (peerId != null && !peerId.isEmpty()) {
-                // Always show tray notification with sender name + message text
+                String displayName = ChatBubbleStore.resolveDisplayName(
+                    this,
+                    peerId,
+                    title != null ? title : "Nuevo mensaje"
+                );
+                String avatar = ChatBubbleStore.peerMeta(this, peerId).avatar;
                 ChatBubbleStore.showMessageNotification(
                     this,
                     peerId,
-                    title != null ? title : "Nuevo mensaje",
+                    displayName,
                     body != null ? body : ""
                 );
                 ChatBubbleStore.postChatReceipt(this, peerId, "delivered");
@@ -47,9 +52,10 @@ public final class QyntraMessagingService extends FirebaseMessagingService {
                     ChatBubbleOverlay.show(
                         this,
                         peerId,
-                        title != null ? title : "?",
+                        displayName,
                         body != null ? body : "",
-                        1
+                        1,
+                        avatar
                     );
                 }
             }

@@ -6,6 +6,7 @@ import { isNativeApp } from './appMode'
 
 const STORAGE_KEY = 'qyntra:chatBubbles'
 const API_BASE_KEY = 'qyntra:apiBase'
+const PEERS_META_KEY = 'qyntra:chatPeerMeta'
 
 function readMap() {
   try {
@@ -25,6 +26,45 @@ function writeMap(map) {
     /* ignore */
   }
   void syncNativeChatBubbles(map)
+}
+
+function readPeerMeta() {
+  try {
+    const raw = localStorage.getItem(PEERS_META_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writePeerMeta(meta) {
+  try {
+    localStorage.setItem(PEERS_META_KEY, JSON.stringify(meta))
+  } catch {
+    /* ignore */
+  }
+  void syncNativeChatBubbles(readMap())
+}
+
+export function getCachedPeerProfile(peerId) {
+  if (!peerId) return null
+  const hit = readPeerMeta()[String(peerId)]
+  return hit && typeof hit === 'object' ? hit : null
+}
+
+export function cachePeerProfile(peerId, { name, avatar, wallpaper } = {}) {
+  if (!peerId) return
+  const meta = readPeerMeta()
+  const id = String(peerId)
+  const prev = meta[id] || {}
+  meta[id] = {
+    name: name || prev.name || '',
+    avatar: avatar || prev.avatar || '',
+    wallpaper: wallpaper !== undefined ? wallpaper : prev.wallpaper || 'none'
+  }
+  writePeerMeta(meta)
 }
 
 export function isChatBubbleEnabled(peerId) {
@@ -109,16 +149,23 @@ export async function dismissChatNotification(peerId) {
 
 /**
  * Native Android tray notification (name + body) + optional floating head.
- * Prefer this over web Notification API inside Capacitor.
  */
-export async function notifyNativeIncomingChat({ peerId, name, preview }) {
+export async function notifyNativeIncomingChat({ peerId, name, preview, avatarUrl }) {
   if (!isNativeApp() || !peerId) return false
+  const cached = getCachedPeerProfile(peerId)
+  const resolvedName =
+    (name && name !== 'Usuario' ? name : null) || cached?.name || name || 'Nuevo mensaje'
+  const resolvedAvatar = avatarUrl || cached?.avatar || ''
+  if (resolvedName && resolvedName !== 'Usuario') {
+    cachePeerProfile(peerId, { name: resolvedName, avatar: resolvedAvatar })
+  }
   try {
     if (typeof window !== 'undefined' && window.QyntraNative?.showChatMessageAlert) {
       const raw = window.QyntraNative.showChatMessageAlert(
         String(peerId),
-        String(name || 'Nuevo mensaje'),
-        String(preview || '')
+        String(resolvedName),
+        String(preview || ''),
+        String(resolvedAvatar)
       )
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
       return Boolean(parsed?.ok)
@@ -126,23 +173,29 @@ export async function notifyNativeIncomingChat({ peerId, name, preview }) {
   } catch {
     /* ignore */
   }
-  // Fallback: bubble-only path
-  return showNativeChatBubble({ peerId, name, preview, avatarUrl: '' })
+  return showNativeChatBubble({
+    peerId,
+    name: resolvedName,
+    preview,
+    avatarUrl: resolvedAvatar
+  })
 }
 
 export async function showNativeChatBubble({ peerId, name, preview, avatarUrl }) {
   if (!isNativeApp() || !peerId || !isChatBubbleEnabled(peerId)) return false
-  // Never draw while the user is looking at the app
   if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
     return false
   }
+  const cached = getCachedPeerProfile(peerId)
+  const resolvedName = (name && name !== 'Usuario' ? name : null) || cached?.name || name || '?'
+  const resolvedAvatar = avatarUrl || cached?.avatar || ''
   try {
     if (typeof window !== 'undefined' && window.QyntraNative?.showChatBubble) {
       const raw = window.QyntraNative.showChatBubble(
         String(peerId),
-        String(name || 'Mensaje'),
+        String(resolvedName),
         String(preview || ''),
-        String(avatarUrl || '')
+        String(resolvedAvatar)
       )
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
       return Boolean(parsed?.ok) && !parsed?.deferred
@@ -188,8 +241,10 @@ async function syncNativeChatBubbles(map) {
     } catch {
       /* ignore */
     }
+    const peersMeta = readPeerMeta()
     const payload = JSON.stringify({
       peers: Object.keys(map || {}).filter((id) => map[id]),
+      peersMeta,
       apiBase,
       authToken
     })

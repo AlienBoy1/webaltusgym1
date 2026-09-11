@@ -37,7 +37,8 @@ import {
   loadCachedMessageThread,
   dismissChatNotification,
   hideNativeChatBubble,
-  syncChatBubblesToNative
+  syncChatBubblesToNative,
+  cachePeerProfile
 } from '../../utils/chatBubbles'
 import { isNativeApp } from '../../utils/appMode'
 import { useStoryViewer } from '../../components/StoryViewerContext'
@@ -1102,6 +1103,11 @@ export default function Chat() {
     const next = { ...conv, otherId: conv.otherId || conv.oderId }
     setSelectedChat(next)
     setChatBubbleOn(isChatBubbleEnabled(next.otherId))
+    cachePeerProfile(next.otherId, {
+      name: next.name,
+      avatar: next.avatar,
+      wallpaper: getChatWallpaper(next.otherId)
+    })
     void dismissChatNotification(next.otherId)
     void hideNativeChatBubble(next.otherId)
     // Hydrate full profile photo if the list had a slim / missing avatar
@@ -2495,6 +2501,11 @@ export default function Chat() {
                             // Keep chat fully usable — only save preference (no overlay drawn in-app)
                             setChatBubbleEnabled(peerId, true)
                             setChatBubbleOn(true)
+                            cachePeerProfile(peerId, {
+                              name: selectedChat?.name,
+                              avatar: selectedChat?.avatar,
+                              wallpaper: getChatWallpaper(peerId)
+                            })
                             await syncChatBubblesToNative()
                             void hideNativeChatBubble(peerId)
                             try {
@@ -2504,15 +2515,13 @@ export default function Chat() {
                               /* push may already be on */
                             }
 
-                            const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
-                            const status = await ensureOverlayPermission(dialog, {
-                              title: 'Activar burbuja',
-                              message:
-                                'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa. La burbuja solo aparecerá cuando te escriban y no estés dentro de la app.',
-                              confirmLabel: 'Configurar',
-                              cancelLabel: 'Ahora no',
-                              settleMs: 80
-                            })
+                            const { ensureFeatureOverlay, isChatBubblesPrefOn } = await import('../../utils/bubblePrefs')
+                            const { checkOverlayPermission } = await import('../../utils/overlayPermission')
+                            const overlay = await checkOverlayPermission()
+                            let status = 'granted'
+                            if (!isChatBubblesPrefOn() || overlay !== 'granted') {
+                              status = await ensureFeatureOverlay(dialog, 'chat')
+                            }
 
                             // Stay in the same chat — never navigate away / never blank the thread
                             if (status === 'prompted') {

@@ -81,11 +81,16 @@ export function setChatWallpaper(peerId, styleId) {
     const key = `qyntra_chat_wall:${peerId}`
     if (!styleId || styleId === CHAT_WALLPAPER_NONE) {
       localStorage.removeItem(key)
-      return
-    }
-    if (CHAT_WALLPAPER_STYLES.some((s) => s.id === styleId)) {
+    } else if (CHAT_WALLPAPER_STYLES.some((s) => s.id === styleId)) {
       localStorage.setItem(key, styleId)
     }
+  } catch {
+    /* ignore */
+  }
+  try {
+    import('../utils/chatBubbles').then(({ cachePeerProfile }) => {
+      cachePeerProfile(peerId, { wallpaper: styleId || 'none' })
+    })
   } catch {
     /* ignore */
   }

@@ -290,20 +290,20 @@ public final class WorkoutHudBridge {
      * Shows the floating head only when app is backgrounded, bubble enabled, and overlay granted.
      */
     @JavascriptInterface
-    public String showChatMessageAlert(String peerId, String title, String body) {
+    public String showChatMessageAlert(String peerId, String title, String body, String avatarUrl) {
         if (peerId == null || peerId.isEmpty()) return "{\"ok\":false}";
         final String p = peerId;
-        final String t = title != null ? title : "Nuevo mensaje";
+        final String t = ChatBubbleStore.resolveDisplayName(activity, peerId, title);
         final String b = body != null ? body : "";
+        final String av = avatarUrl != null ? avatarUrl : ChatBubbleStore.peerMeta(activity, peerId).avatar;
         try {
             ChatBubbleStore.showMessageNotification(activity.getApplicationContext(), p, t, b);
-            // Delay head until after onPause so isInForeground is false when leaving the app
             activity.getWindow().getDecorView().postDelayed(() -> {
                 try {
                     if (MainActivity.isInForeground()) return;
                     if (!ChatBubbleStore.isEnabled(activity, p)) return;
                     if (!ChatBubbleOverlay.canDraw(activity)) return;
-                    ChatBubbleOverlay.show(activity.getApplicationContext(), p, t, b, 1);
+                    ChatBubbleOverlay.show(activity.getApplicationContext(), p, t, b, 1, av);
                 } catch (Exception e) {
                     Log.e(TAG, "showChatMessageAlert bubble failed", e);
                 }
@@ -317,17 +317,16 @@ public final class WorkoutHudBridge {
 
     @JavascriptInterface
     public String showChatBubble(String peerId, String name, String preview, String avatarUrl) {
-        // Never draw over the in-app chat thread
         if (MainActivity.isInForeground()) {
             return "{\"ok\":true,\"deferred\":true}";
         }
         if (!ChatBubbleOverlay.canDraw(activity)) {
             return "{\"ok\":false,\"error\":\"overlay\"}";
         }
-        // Fire-and-forget — never block the WebView bridge thread (causes blank/freeze)
         final String p = peerId;
-        final String n = name;
+        final String n = ChatBubbleStore.resolveDisplayName(activity, peerId, name);
         final String prev = preview;
+        final String av = avatarUrl != null ? avatarUrl : ChatBubbleStore.peerMeta(activity, peerId).avatar;
         activity.runOnUiThread(() -> {
             try {
                 ChatBubbleOverlay.show(
@@ -335,7 +334,8 @@ public final class WorkoutHudBridge {
                     p,
                     n,
                     prev,
-                    1
+                    1,
+                    av
                 );
             } catch (Exception e) {
                 Log.e(TAG, "showChatBubble failed", e);

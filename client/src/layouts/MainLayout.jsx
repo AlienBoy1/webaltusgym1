@@ -229,7 +229,8 @@ export default function MainLayout() {
             notifyNativeIncomingChat({
               peerId: data.from,
               name: data.fromName || 'Mensaje',
-              preview: data.message || ''
+              preview: data.message || '',
+              avatarUrl: data.avatar || ''
             })
             // Bubble head is included inside notifyNativeIncomingChat when enabled
             if (!isChatBubbleEnabled(data.from)) {

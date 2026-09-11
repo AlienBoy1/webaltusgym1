@@ -119,9 +119,32 @@ export function initSocket(userId) {
       async (payload) => {
         const row = payload.new
         const decoded = decodeChatContent(row.content)
+        const fromId = row.from_user_id
+        let fromName = 'Usuario'
+        let avatar = ''
+        try {
+          const { getCachedPeerProfile, cachePeerProfile } = await import('./chatBubbles')
+          const cached = getCachedPeerProfile(fromId)
+          if (cached?.name && cached.name !== 'Usuario') {
+            fromName = cached.name
+            avatar = cached.avatar || ''
+          } else {
+            const { fetchAvatarsByIds } = await import('./userAvatars')
+            const map = await fetchAvatarsByIds([fromId])
+            const hit = map[String(fromId)]
+            if (hit?.name) fromName = hit.name
+            if (hit?.avatar) avatar = hit.avatar
+            if (fromName || avatar) {
+              cachePeerProfile(fromId, { name: fromName, avatar })
+            }
+          }
+        } catch {
+          /* keep fallback */
+        }
         emit('newMessage', {
-          from: row.from_user_id,
-          fromName: 'Usuario',
+          from: fromId,
+          fromName,
+          avatar,
           message: decoded.preview,
           text: decoded.text,
           attachment: decoded.attachment,

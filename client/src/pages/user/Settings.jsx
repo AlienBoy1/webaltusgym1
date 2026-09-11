@@ -16,6 +16,13 @@ import {
 import { setWorkoutPreferences, checkWorkoutOverlayPermission, requestWorkoutOverlayPermission, forceShowWorkoutOverlay, getWorkoutSession } from '../../utils/workoutSession'
 import { getStorageAccessGranted, setStorageAccessGranted } from '../../utils/storageAccess'
 import { isNativeApp } from '../../utils/appMode'
+import {
+  isWorkoutBubblePrefOn,
+  isChatBubblesPrefOn,
+  setWorkoutBubblePref,
+  setChatBubblesPref,
+  syncBubblePrefsToNative
+} from '../../utils/bubblePrefs'
 import { useAppDialog } from '../../components/AppDialog'
 import GoogleIcon from '../../components/GoogleIcon'
 import { getGoogleLinkedStatus, startGoogleLink } from '../../utils/googleAuth'
@@ -66,6 +73,8 @@ export default function UserSettings() {
   const [activeSection, setActiveSection] = useState(() => searchParams.get('section') || 'notifications')
   const [storageAccess, setStorageAccess] = useState(() => getStorageAccessGranted())
   const [overlayAccess, setOverlayAccess] = useState(false)
+  const [workoutBubblePref, setWorkoutBubblePrefState] = useState(false)
+  const [chatBubblesPref, setChatBubblesPrefState] = useState(false)
   const [googleLinked, setGoogleLinked] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
@@ -94,6 +103,11 @@ export default function UserSettings() {
   }, [searchParams])
 
   useEffect(() => {
+    setWorkoutBubblePrefState(isWorkoutBubblePrefOn())
+    setChatBubblesPrefState(isChatBubblesPrefOn())
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     const refreshOverlay = async () => {
       if (!isNativeApp()) {
@@ -104,7 +118,6 @@ export default function UserSettings() {
         const status = await checkWorkoutOverlayPermission()
         const granted = status === 'granted'
         if (!cancelled) setOverlayAccess(granted)
-        // When user returns from Android settings with permission on + workout active → show bubble now
         if (granted && getWorkoutSession()?.activeWorkout) {
           await forceShowWorkoutOverlay()
         }
@@ -648,40 +661,66 @@ export default function UserSettings() {
                     </p>
                   )}
                   {isNativeApp() && (
-                    <div className="flex items-center justify-between border-b border-white/5 py-3">
-                      <div>
-                        <div className="font-medium">Burbuja sobre otras apps</div>
-                        <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                          Muestra la burbuja «entrenando» encima de WhatsApp u otras apps mientras tu sesión está activa.
+                    <>
+                      <div className="flex items-center justify-between border-b border-white/5 py-3">
+                        <div>
+                          <div className="font-medium">Burbuja de entrenamiento</div>
+                          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                            Cronómetro «entrenando» sobre otras apps. Requiere permiso del sistema.
+                          </div>
                         </div>
+                        <Toggle
+                          enabled={workoutBubblePref}
+                          onChange={async (v) => {
+                            if (!v) {
+                              setWorkoutBubblePref(false)
+                              setWorkoutBubblePrefState(false)
+                              syncBubblePrefsToNative()
+                              toast('Burbuja de entrenamiento desactivada')
+                              return
+                            }
+                            const { ensureFeatureOverlay } = await import('../../utils/bubblePrefs')
+                            const status = await ensureFeatureOverlay(dialog, 'workout')
+                            setWorkoutBubblePrefState(true)
+                            syncBubblePrefsToNative()
+                            if (status === 'prompted') {
+                              toast('Activa “Aparecer encima” y vuelve a Qyntra', { duration: 7000 })
+                            } else if (status === 'granted') {
+                              toast.success('Burbuja de entrenamiento lista')
+                            }
+                          }}
+                        />
                       </div>
-                      <Toggle
-                        enabled={overlayAccess}
-                        onChange={async (v) => {
-                          if (!v) {
-                            await dialog.alert(
-                              'Para desactivar la burbuja, apaga “Aparecer encima de otras apps” en Ajustes del sistema para Qyntra.',
-                              { title: 'Burbuja de entreno' }
-                            )
-                            const { openOverlaySettings } = await import('../../utils/overlayPermission')
-                            await openOverlaySettings()
-                            return
-                          }
-                          const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
-                          const status = await ensureOverlayPermission(dialog, {
-                            title: 'Activar burbuja',
-                            message:
-                              'Android abrirá la pantalla de permisos. Activa Qyntra en “Aparecer encima de otras apps” y vuelve aquí.',
-                            confirmLabel: 'Abrir ajustes',
-                            cancelLabel: 'Cancelar',
-                            settleMs: 100
-                          })
-                          if (status === 'prompted') {
-                            toast('Activa el permiso y vuelve a Qyntra', { duration: 7000 })
-                          }
-                        }}
-                      />
-                    </div>
+                      <div className="flex items-center justify-between border-b border-white/5 py-3">
+                        <div>
+                          <div className="font-medium">Burbujas de chat</div>
+                          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                            Cabezas de chat estilo Messenger cuando te escriben fuera de la app.
+                          </div>
+                        </div>
+                        <Toggle
+                          enabled={chatBubblesPref}
+                          onChange={async (v) => {
+                            if (!v) {
+                              setChatBubblesPref(false)
+                              setChatBubblesPrefState(false)
+                              syncBubblePrefsToNative()
+                              toast('Burbujas de chat desactivadas')
+                              return
+                            }
+                            const { ensureFeatureOverlay } = await import('../../utils/bubblePrefs')
+                            const status = await ensureFeatureOverlay(dialog, 'chat')
+                            setChatBubblesPrefState(true)
+                            syncBubblePrefsToNative()
+                            if (status === 'prompted') {
+                              toast('Activa “Aparecer encima” y vuelve a Qyntra', { duration: 7000 })
+                            } else if (status === 'granted') {
+                              toast.success('Burbujas de chat listas')
+                            }
+                          }}
+                        />
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -696,35 +735,32 @@ export default function UserSettings() {
                       <div>
                         <div className="font-medium">Burbuja «entrenando»</div>
                         <div className="text-sm text-gray-400">
-                          Permiso para mantener la burbuja visible al cambiar de app. {overlayAccess ? 'Activada.' : 'No activada.'}
+                          {workoutBubblePref && overlayAccess
+                            ? 'Preferencia y permiso activos.'
+                            : workoutBubblePref
+                              ? 'Preferencia activa — falta permiso del sistema.'
+                              : 'Desactivada. Se pedirá al iniciar un entrenamiento.'}
                         </div>
                       </div>
                       <button
                         type="button"
                         className="btn-secondary shrink-0 px-3 py-2 text-sm"
                         onClick={async () => {
-                          if (overlayAccess) {
-                            toast.success('La burbuja ya está permitida')
+                          const { ensureFeatureOverlay } = await import('../../utils/bubblePrefs')
+                          const status = await ensureFeatureOverlay(dialog, 'workout')
+                          setWorkoutBubblePrefState(true)
+                          syncBubblePrefsToNative()
+                          if (status === 'granted') {
+                            toast.success('Burbuja de entrenamiento lista')
                             if (getWorkoutSession()?.activeWorkout) {
                               await forceShowWorkoutOverlay()
                             }
-                            return
-                          }
-                          const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
-                          const status = await ensureOverlayPermission(dialog, {
-                            title: 'Activar burbuja',
-                            message:
-                              'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
-                            confirmLabel: 'Configurar',
-                            cancelLabel: 'Cancelar',
-                            settleMs: 100
-                          })
-                          if (status === 'prompted') {
+                          } else if (status === 'prompted') {
                             toast('Activa el permiso y vuelve a Qyntra', { duration: 7000 })
                           }
                         }}
                       >
-                        {overlayAccess ? 'Activa' : 'Activar'}
+                        {workoutBubblePref && overlayAccess ? 'Activa' : 'Activar'}
                       </button>
                     </div>
                   )}

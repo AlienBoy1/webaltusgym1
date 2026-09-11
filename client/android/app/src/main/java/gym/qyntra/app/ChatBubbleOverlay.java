@@ -4,7 +4,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
@@ -39,9 +38,12 @@ public final class ChatBubbleOverlay {
 
     /** Chat heads only when the user is outside the app. */
     public static void show(Context context, String peerId, String name, String preview, int unread) {
+        show(context, peerId, name, preview, unread, null);
+    }
+
+    public static void show(Context context, String peerId, String name, String preview, int unread, String avatarUrl) {
         if (peerId == null || peerId.isEmpty()) return;
         if (!canDraw(context)) return;
-        // Never cover the live chat UI — even for FCM while the activity is resumed
         if (MainActivity.isInForeground()) {
             Log.i(TAG, "skip show — app in foreground");
             return;
@@ -50,15 +52,25 @@ public final class ChatBubbleOverlay {
             Context app = context.getApplicationContext();
             ensureWm(app);
 
+            ChatBubbleStore.PeerMeta meta = ChatBubbleStore.peerMeta(app, peerId);
+            String resolvedName = ChatBubbleStore.resolveDisplayName(app, peerId, name);
+            String resolvedAvatar = (avatarUrl != null && !avatarUrl.isEmpty())
+                ? avatarUrl
+                : (meta.avatar != null ? meta.avatar : "");
+
             Head existing = heads.get(peerId);
             if (existing != null && existing.view.getParent() != null) {
-                existing.bubble.setPeerName(name);
+                existing.bubble.setPeerName(resolvedName);
+                existing.bubble.setAvatarUrl(resolvedAvatar);
                 existing.bubble.setUnread(unread);
+                existing.peerName = resolvedName;
+                existing.avatarUrl = resolvedAvatar;
                 return;
             }
 
             ChatBubbleView bubble = new ChatBubbleView(app);
-            bubble.setPeerName(name != null ? name : "?");
+            bubble.setPeerName(resolvedName);
+            bubble.setAvatarUrl(resolvedAvatar);
             bubble.setUnread(Math.max(1, unread));
             bubble.setClickable(true);
             bubble.setAlpha(0f);
@@ -74,7 +86,8 @@ public final class ChatBubbleOverlay {
             lp.y = Math.min(dm.heightPixels - size - dp(app, 120), dp(app, 120) + index * dp(app, 72));
 
             final String peer = peerId;
-            final String peerName = name != null ? name : "";
+            final String peerName = resolvedName;
+            final String peerAvatar = resolvedAvatar;
 
             bubble.setOnTouchListener(new View.OnTouchListener() {
                 private int startX;
@@ -116,19 +129,10 @@ public final class ChatBubbleOverlay {
                                 return true;
                             }
                             if (!moved) {
-                                Intent open = new Intent(app, MainActivity.class);
-                                open.setFlags(
-                                    Intent.FLAG_ACTIVITY_NEW_TASK
-                                        | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                );
-                                open.putExtra("open_path", "/chat");
-                                open.putExtra("chat_peer_id", peer);
-                                open.putExtra("chat_peer_name", peerName);
-                                app.startActivity(open);
-                                hide(app, peer);
+                                // Messenger-style: floating chat over other apps (not full app jump)
+                                ChatPanelOverlay.show(app, peer, peerName, peerAvatar, null);
+                                ChatBubbleStore.cancelNotification(app, peer);
                             } else {
-                                // Snap to nearest edge
                                 int targetX = lp.x + size / 2 < dm.widthPixels / 2 ? dp(app, 8) : dm.widthPixels - size - dp(app, 8);
                                 animateSnap(bubble, lp, targetX, lp.y);
                             }
@@ -145,6 +149,8 @@ public final class ChatBubbleOverlay {
             head.view = bubble;
             head.bubble = bubble;
             head.params = lp;
+            head.peerName = peerName;
+            head.avatarUrl = peerAvatar;
             heads.put(peerId, head);
 
             bubble.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
@@ -317,5 +323,7 @@ public final class ChatBubbleOverlay {
         View view;
         ChatBubbleView bubble;
         WindowManager.LayoutParams params;
+        String peerName;
+        String avatarUrl;
     }
 }
