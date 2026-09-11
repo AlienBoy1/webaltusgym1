@@ -270,53 +270,15 @@ export function hasPendingWorkoutOverlayPrompt() {
  * Never draws the system overlay while the app is in the foreground.
  */
 export async function promptWorkoutBubblePermission(dialog) {
-  // Wait until activity is foreground again (after system permission sheets)
-  for (let i = 0; i < 30; i++) {
-    if (typeof document === 'undefined' || document.visibilityState === 'visible') break
-    await new Promise((r) => window.setTimeout(r, 200))
-  }
-  // Extra beat so system sheets / toasts settle and AppDialog can mount cleanly
-  await new Promise((r) => window.setTimeout(r, 900))
-
-  let overlayStatus = 'denied'
-  try {
-    overlayStatus = await checkWorkoutOverlayPermission()
-  } catch {
-    overlayStatus = 'denied'
-  }
-
-  // Already allowed → keep native overlay hidden in-app; React bubble is enough
-  if (overlayStatus === 'granted') {
-    clearPendingWorkoutOverlayPrompt()
-    await hideWorkoutOverlay()
-    return 'granted'
-  }
-
-  if (!dialog?.confirm) {
-    markPendingWorkoutOverlayPrompt()
-    return 'denied'
-  }
-
-  // Force the permission dialog (same copy as Settings)
-  const enableBubble = await dialog.confirm(
-    'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
-    {
-      title: 'Activar burbuja',
-      confirmLabel: 'Configurar',
-      cancelLabel: 'Cancelar',
-      tone: 'info',
-      dismissible: false
-    }
-  )
-
-  if (!enableBubble) {
-    markPendingWorkoutOverlayPrompt()
-    return 'denied'
-  }
-
-  markPendingWorkoutOverlayPrompt()
-  await requestWorkoutOverlayPermission()
-  return 'prompted'
+  const { ensureOverlayPermission } = await import('./overlayPermission')
+  return ensureOverlayPermission(dialog, {
+    title: 'Activar burbuja',
+    message:
+      'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app. Así verás el cronómetro flotante al salir de Qyntra.',
+    confirmLabel: 'Configurar',
+    cancelLabel: 'Cancelar',
+    settleMs: 900
+  })
 }
 
 /**
@@ -325,10 +287,21 @@ export async function promptWorkoutBubblePermission(dialog) {
  */
 export async function maybeShowWorkoutOverlayAfterSettingsReturn() {
   try {
-    if (!hasPendingWorkoutOverlayPrompt()) return false
-    if (!getWorkoutSession()?.activeWorkout) return false
-    const status = await checkWorkoutOverlayPermission()
+    const { hasPendingOverlayPermission, clearPendingOverlayPermission, checkOverlayPermission } =
+      await import('./overlayPermission')
+    if (!hasPendingOverlayPermission() && !hasPendingWorkoutOverlayPrompt()) return false
+    if (!getWorkoutSession()?.activeWorkout) {
+      // Still clear pending if chat-only grant
+      const status = await checkOverlayPermission()
+      if (status === 'granted') {
+        clearPendingOverlayPermission()
+        clearPendingWorkoutOverlayPrompt()
+      }
+      return status === 'granted'
+    }
+    const status = await checkOverlayPermission()
     if (status !== 'granted') return false
+    clearPendingOverlayPermission()
     clearPendingWorkoutOverlayPrompt()
     await hideWorkoutOverlay()
     return true

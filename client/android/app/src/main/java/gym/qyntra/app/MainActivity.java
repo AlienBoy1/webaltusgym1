@@ -13,6 +13,11 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "MainActivity";
     private static final String PREFS = "qyntra_workout_hud";
+    private static volatile boolean inForeground = false;
+
+    public static boolean isInForeground() {
+        return inForeground;
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -26,18 +31,19 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        inForeground = true;
         injectNativeBridge();
-        // Inside the app: ALWAYS hide system bubble (React bubble is the only in-app one)
+        // Inside the app: ALWAYS hide system overlays (React UI owns the foreground)
         WorkoutHudOverlay.hideForForeground(this);
         ChatBubbleOverlay.hideAll(this);
         WorkoutHudPlugin.restoreIfNeeded(this);
-        // Re-hide after restore in case anything async tried to draw
         getWindow().getDecorView().post(() -> WorkoutHudOverlay.hideForForeground(this));
         getWindow().getDecorView().postDelayed(() -> WorkoutHudOverlay.hideForForeground(this), 400);
     }
 
     @Override
     public void onPause() {
+        inForeground = false;
         // Leaving the app: show the "entrenando" system bubble if workout is active
         try {
             SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);

@@ -87,7 +87,7 @@ function OrbitRing({ size, delay = 0, reverse = false, color, reduceMotion }) {
 
 /**
  * Branded full-screen theater for boot, login/logout and update flows.
- * Respects light / dark / system theme via html class + CSS variables.
+ * Visual language mirrors the public landing hero (photo + cinematic grades).
  */
 export default function SessionTheater({
   visible = true,
@@ -122,21 +122,20 @@ export default function SessionTheater({
 
   const particles = useMemo(
     () =>
-      Array.from({ length: 18 }, (_, i) => ({
+      Array.from({ length: 22 }, (_, i) => ({
         id: i,
-        left: `${6 + ((i * 17) % 88)}%`,
-        top: `${8 + ((i * 29) % 84)}%`,
+        left: `${4 + ((i * 19) % 92)}%`,
+        top: `${6 + ((i * 31) % 88)}%`,
         size: 2 + (i % 3),
-        delay: (i % 7) * 0.35,
-        duration: 4.5 + (i % 5)
+        delay: (i % 7) * 0.32,
+        duration: 4.2 + (i % 5)
       })),
     []
   )
 
   const stageLabel = status || meta.stages[stageIdx] || line
-  const gridLine = isLight ? 'rgba(15,15,20,0.06)' : 'rgba(255,255,255,0.035)'
-  const trackBg = isLight ? 'rgba(15,15,20,0.08)' : 'rgba(255,255,255,0.1)'
-  const idleDot = isLight ? 'rgba(15,15,20,0.18)' : 'rgba(255,255,255,0.2)'
+  const trackBg = isLight ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.14)'
+  const idleDot = isLight ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.22)'
 
   return (
     <AnimatePresence>
@@ -153,25 +152,43 @@ export default function SessionTheater({
           data-variant={variant}
           data-theme={theme}
         >
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{ background: 'var(--bg-app)' }}
-          />
+          {/* Landing hero photography — same asset as the public website */}
+          <div className="pointer-events-none absolute inset-0">
+            <picture>
+              <source srcSet="/landing/hero-gym.webp" type="image/webp" />
+              <img
+                src="/landing/hero-gym.jpg"
+                alt=""
+                className="h-full w-full scale-110 object-cover"
+                draggable={false}
+                decoding="async"
+              />
+            </picture>
+          </div>
+
+          {/* Cinematic grade matching Landing.jsx hero */}
           <div
             className="pointer-events-none absolute inset-0"
             style={{
-              background: isLogout
-                ? 'radial-gradient(ellipse at 50% 35%, rgba(0,245,255,0.12), transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(255,107,53,0.08), transparent 45%)'
-                : 'radial-gradient(ellipse at 50% 32%, rgba(255,107,53,0.16), transparent 52%), radial-gradient(ellipse at 20% 80%, rgba(0,245,255,0.1), transparent 45%)'
+              background: isLight
+                ? 'linear-gradient(180deg, rgba(247,248,252,0.42) 0%, rgba(10,10,16,0.55) 38%, rgba(7,7,12,0.9) 100%)'
+                : 'linear-gradient(180deg, rgba(7,7,12,0.4) 0%, rgba(7,7,12,0.62) 42%, rgba(7,7,12,0.94) 100%)'
             }}
           />
           <div
             className="pointer-events-none absolute inset-0"
             style={{
-              opacity: isLight ? 0.55 : 0.35,
-              backgroundImage: `linear-gradient(${gridLine} 1px, transparent 1px), linear-gradient(90deg, ${gridLine} 1px, transparent 1px)`,
-              backgroundSize: '48px 48px',
-              maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 72%)'
+              background: isLogout
+                ? 'radial-gradient(ellipse at 50% 28%, rgba(0,245,255,0.22), transparent 52%), radial-gradient(ellipse at 85% 75%, rgba(255,107,53,0.12), transparent 42%)'
+                : 'radial-gradient(ellipse at 50% 28%, rgba(255,107,53,0.28), transparent 52%), radial-gradient(ellipse at 85% 75%, rgba(0,245,255,0.14), transparent 42%)'
+            }}
+          />
+          {/* Soft vignette — no grid */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(ellipse at center, transparent 28%, rgba(5,5,10,0.55) 100%)'
             }}
           />
 
@@ -185,9 +202,10 @@ export default function SessionTheater({
                   top: p.top,
                   width: p.size,
                   height: p.size,
-                  background: iColor(p.id, isLogout, isLight)
+                  background: iColor(p.id, isLogout),
+                  boxShadow: `0 0 ${6 + (p.id % 4)}px ${iColor(p.id, isLogout)}`
                 }}
-                animate={{ opacity: [0.1, 0.75, 0.1], y: [0, -18, 0], scale: [1, 1.35, 1] }}
+                animate={{ opacity: [0.15, 0.9, 0.15], y: [0, -22, 0], scale: [1, 1.4, 1] }}
                 transition={{
                   duration: p.duration,
                   delay: p.delay,
@@ -203,9 +221,9 @@ export default function SessionTheater({
               style={{
                 background: isLogout
                   ? 'linear-gradient(90deg, transparent, rgba(0,245,255,0.55), transparent)'
-                  : 'linear-gradient(90deg, transparent, rgba(255,107,53,0.6), transparent)'
+                  : 'linear-gradient(90deg, transparent, rgba(255,107,53,0.65), transparent)'
               }}
-              animate={{ top: ['12%', '88%', '12%'], opacity: [0.15, 0.5, 0.15] }}
+              animate={{ top: ['14%', '86%', '14%'], opacity: [0.12, 0.55, 0.12] }}
               transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
             />
           )}
@@ -225,8 +243,7 @@ export default function SessionTheater({
             <motion.p
               initial={{ opacity: 0, letterSpacing: '0.5em' }}
               animate={{ opacity: 1, letterSpacing: '0.35em' }}
-              className="mb-7 text-[10px] font-semibold uppercase"
-              style={{ color: 'var(--text-muted)' }}
+              className="mb-7 text-[10px] font-semibold uppercase tracking-[0.35em] text-white/55"
             >
               {meta.kicker}
             </motion.p>
@@ -235,20 +252,20 @@ export default function SessionTheater({
               <OrbitRing
                 size="100%"
                 delay={0}
-                color="rgba(255,107,53,0.28)"
+                color="rgba(255,107,53,0.35)"
                 reduceMotion={reduceMotion}
               />
               <OrbitRing
                 size="78%"
                 delay={0.4}
                 reverse
-                color="rgba(0,245,255,0.22)"
+                color="rgba(0,245,255,0.28)"
                 reduceMotion={reduceMotion}
               />
               <OrbitRing
                 size="56%"
                 delay={0.8}
-                color={isLight ? 'rgba(15,15,20,0.12)' : 'rgba(255,255,255,0.12)'}
+                color="rgba(255,255,255,0.16)"
                 reduceMotion={reduceMotion}
               />
 
@@ -278,7 +295,7 @@ export default function SessionTheater({
                         scale: [1, 1.05, 1],
                         filter: [
                           'drop-shadow(0 0 0 rgba(255,107,53,0))',
-                          `drop-shadow(0 0 24px rgba(255,107,53,${isLight ? 0.35 : 0.55}))`,
+                          'drop-shadow(0 0 28px rgba(255,107,53,0.55))',
                           'drop-shadow(0 0 0 rgba(255,107,53,0))'
                         ]
                       }
@@ -294,18 +311,16 @@ export default function SessionTheater({
               key={heading}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              className="font-display text-5xl tracking-[0.08em] sm:text-6xl"
-              style={{ color: 'var(--text-primary)' }}
+              className="font-display text-5xl tracking-[0.08em] text-white sm:text-6xl"
             >
-              <span className={`session-theater-gradient${isLight ? ' is-light' : ''}`}>{heading}</span>
+              <span className="session-theater-gradient">{heading}</span>
             </motion.h1>
 
             <motion.p
               key={line}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mt-3 max-w-sm text-sm sm:text-base"
-              style={{ color: 'var(--text-secondary)' }}
+              className="mt-3 max-w-sm text-sm text-white/70 sm:text-base"
             >
               {line}
             </motion.p>
@@ -342,8 +357,7 @@ export default function SessionTheater({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.28 }}
-                  className="text-xs font-medium tracking-wide"
-                  style={{ color: 'var(--text-muted)' }}
+                  className="text-xs font-medium tracking-wide text-white/55"
                 >
                   {stageLabel}
                   {typeof progress === 'number' ? ` · ${Math.round(progress)}%` : ''}
@@ -381,12 +395,6 @@ export default function SessionTheater({
               color: transparent;
               animation: session-theater-shine 4.8s ease-in-out infinite;
             }
-            .session-theater-gradient.is-light {
-              background: linear-gradient(105deg, #FF6B35 0%, #1a1a22 45%, #0891b2 100%);
-              background-size: 200% 100%;
-              -webkit-background-clip: text;
-              background-clip: text;
-            }
             @keyframes session-theater-shine {
               0%, 100% { background-position: 0% 50%; }
               50% { background-position: 100% 50%; }
@@ -401,15 +409,9 @@ export default function SessionTheater({
   )
 }
 
-function iColor(i, isLogout, isLight) {
+function iColor(i, isLogout) {
   if (isLogout) {
-    return i % 2 === 0
-      ? `rgba(0,245,255,${isLight ? 0.45 : 0.55})`
-      : isLight
-        ? 'rgba(15,15,20,0.25)'
-        : 'rgba(255,255,255,0.35)'
+    return i % 2 === 0 ? 'rgba(0,245,255,0.7)' : 'rgba(255,255,255,0.45)'
   }
-  return i % 2 === 0
-    ? `rgba(255,107,53,${isLight ? 0.5 : 0.6})`
-    : `rgba(0,245,255,${isLight ? 0.35 : 0.4})`
+  return i % 2 === 0 ? 'rgba(255,107,53,0.75)' : 'rgba(0,245,255,0.5)'
 }

@@ -287,6 +287,10 @@ public final class WorkoutHudBridge {
 
     @JavascriptInterface
     public String showChatBubble(String peerId, String name, String preview, String avatarUrl) {
+        // Preference-only enable must never draw while the user is inside the app.
+        if (MainActivity.isInForeground()) {
+            return "{\"ok\":true,\"deferred\":true}";
+        }
         final String[] out = new String[]{"{\"ok\":false}"};
         final Object lock = new Object();
         activity.runOnUiThread(() -> {

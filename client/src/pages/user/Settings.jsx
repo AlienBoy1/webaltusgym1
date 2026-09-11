@@ -663,23 +663,22 @@ export default function UserSettings() {
                               'Para desactivar la burbuja, apaga “Aparecer encima de otras apps” en Ajustes del sistema para Qyntra.',
                               { title: 'Burbuja de entreno' }
                             )
-                            await requestWorkoutOverlayPermission()
+                            const { openOverlaySettings } = await import('../../utils/overlayPermission')
+                            await openOverlaySettings()
                             return
                           }
-                          const ok = await dialog.confirm(
-                            'Android abrirá la pantalla de permisos. Activa Qyntra en “Aparecer encima de otras apps” y vuelve aquí.',
-                            {
-                              title: 'Activar burbuja',
-                              confirmLabel: 'Abrir ajustes',
-                              cancelLabel: 'Cancelar',
-                              tone: 'info'
-                            }
-                          )
-                          if (!ok) return
-                          const { markPendingWorkoutOverlayPrompt } = await import('../../utils/workoutSession')
-                          markPendingWorkoutOverlayPrompt()
-                          await requestWorkoutOverlayPermission()
-                          toast('Activa el permiso y vuelve a Qyntra', { duration: 7000 })
+                          const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
+                          const status = await ensureOverlayPermission(dialog, {
+                            title: 'Activar burbuja',
+                            message:
+                              'Android abrirá la pantalla de permisos. Activa Qyntra en “Aparecer encima de otras apps” y vuelve aquí.',
+                            confirmLabel: 'Abrir ajustes',
+                            cancelLabel: 'Cancelar',
+                            settleMs: 100
+                          })
+                          if (status === 'prompted') {
+                            toast('Activa el permiso y vuelve a Qyntra', { duration: 7000 })
+                          }
                         }}
                       />
                     </div>
@@ -711,22 +710,18 @@ export default function UserSettings() {
                             }
                             return
                           }
-                          const ok = await dialog.confirm(
-                            'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
-                            {
-                              title: 'Activar burbuja',
-                              confirmLabel: 'Configurar',
-                              cancelLabel: 'Cancelar',
-                              tone: 'info'
-                            }
-                          )
-                          if (!ok) return
-                          const { markPendingWorkoutOverlayPrompt } = await import('../../utils/workoutSession')
-                          markPendingWorkoutOverlayPrompt()
-                          await requestWorkoutOverlayPermission()
-                          toast('Activa el permiso y vuelve a Qyntra — la burbuja aparecerá al instante', {
-                            duration: 7000
+                          const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
+                          const status = await ensureOverlayPermission(dialog, {
+                            title: 'Activar burbuja',
+                            message:
+                              'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa a la app.',
+                            confirmLabel: 'Configurar',
+                            cancelLabel: 'Cancelar',
+                            settleMs: 100
                           })
+                          if (status === 'prompted') {
+                            toast('Activa el permiso y vuelve a Qyntra', { duration: 7000 })
+                          }
                         }}
                       >
                         {overlayAccess ? 'Activa' : 'Activar'}

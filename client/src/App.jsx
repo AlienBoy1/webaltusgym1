@@ -128,6 +128,18 @@ function App() {
     checkAuth()
   }, [checkAuth])
 
+  // Belt-and-suspenders: never trap the user on the boot theater
+  useEffect(() => {
+    if (!initializing) return undefined
+    const t = window.setTimeout(() => {
+      const state = useAuthStore.getState()
+      if (!state.initializing) return
+      console.warn('App boot watchdog: clearing initializing')
+      useAuthStore.setState({ initializing: false, loading: false })
+    }, 12000)
+    return () => window.clearTimeout(t)
+  }, [initializing])
+
   useEffect(() => installRuntimeIntegrityGuards(), [])
 
   useEffect(() => {

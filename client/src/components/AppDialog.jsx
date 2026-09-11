@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiAlertTriangle, FiInfo, FiCheck } from 'react-icons/fi'
 
@@ -34,6 +34,28 @@ export function AppDialogProvider({ children }) {
       resolverRef.current = resolve
       setDialog(config)
     })
+  }, [])
+
+  // When leaving the app (system Settings), hide the black scrim immediately
+  // without cancelling the promise — prevents a frozen black WebView on return.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        setDialog((current) => {
+          if (!current) return null
+          return { ...current, __suppressScrim: true }
+        })
+        return
+      }
+      // Back to foreground: restore dialog UI if still pending
+      setDialog((current) => {
+        if (!current?.__suppressScrim) return current
+        const { __suppressScrim, ...rest } = current
+        return rest
+      })
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
   const api = useMemo(
@@ -73,16 +95,19 @@ export function AppDialogProvider({ children }) {
     [open]
   )
 
+  const showUi = Boolean(dialog) && !dialog.__suppressScrim
+
   return (
     <DialogContext.Provider value={api}>
       {children}
       <AnimatePresence>
-        {dialog && (
+        {showUi && (
           <motion.div
             className="fixed inset-0 z-[200] flex items-end justify-center p-4 sm:items-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
           >
             <button
               type="button"
@@ -118,7 +143,13 @@ export function AppDialogProvider({ children }) {
                     color: dialog.tone === 'danger' ? '#EF4444' : 'var(--color-primary)'
                   }}
                 >
-                  {dialog.tone === 'danger' ? <FiAlertTriangle size={20} /> : dialog.type === 'alert' ? <FiInfo size={20} /> : <FiCheck size={20} />}
+                  {dialog.tone === 'danger' ? (
+                    <FiAlertTriangle size={20} />
+                  ) : dialog.type === 'alert' ? (
+                    <FiInfo size={20} />
+                  ) : (
+                    <FiCheck size={20} />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="font-display text-2xl tracking-wide">{dialog.title}</h2>

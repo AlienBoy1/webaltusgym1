@@ -37,7 +37,6 @@ import {
   clearWorkoutNotification,
   sendWorkoutNotification,
   subscribeWorkoutSession,
-  promptWorkoutBubblePermission
 } from '../../utils/workoutSession'
 import { isNativeApp } from '../../utils/appMode'
 import PullToRefresh from '../../components/PullToRefresh'
@@ -753,22 +752,38 @@ export default function Workouts() {
     }
 
     // After notifications: ALWAYS ask for overlay bubble if the OS permission is missing
-    // (detect system “aparecer encima”, not an in-app toggle). Same dialog as Configuración.
     if (isNativeApp()) {
       try {
-        const status = await promptWorkoutBubblePermission(dialog)
+        // Extra pause after notification permission sheet so AppDialog is not swallowed
+        await new Promise((r) => window.setTimeout(r, 700))
+        const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
+        const status = await ensureOverlayPermission(dialog, {
+          title: 'Activar burbuja',
+          message:
+            'Para ver el cronómetro sobre otras apps, activa “Aparecer encima de otras apps” para Qyntra. Se abrirá Ajustes de Android.',
+          confirmLabel: 'Configurar',
+          cancelLabel: 'Ahora no',
+          settleMs: 500
+        })
         if (status === 'prompted') {
           toast(
             'Activa el permiso y vuelve a Qyntra. Al salir de la app verás la burbuja.',
             { duration: 9000 }
           )
         } else if (status === 'denied') {
-          toast('Puedes activarla luego en Configuración → Entrenamiento', {
+          toast('Puedes activarla luego en Configuración → Permisos', {
             duration: 5000
           })
         }
       } catch (err) {
         console.warn('overlay prompt:', err?.message || err)
+        // Last-resort: still try to surface the dialog once more
+        try {
+          const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
+          await ensureOverlayPermission(dialog, { settleMs: 400 })
+        } catch {
+          /* ignore */
+        }
       }
     }
   }

@@ -117,6 +117,10 @@ export async function dismissChatNotification(peerId) {
 
 export async function showNativeChatBubble({ peerId, name, preview, avatarUrl }) {
   if (!isNativeApp() || !peerId || !isChatBubbleEnabled(peerId)) return false
+  // Never draw while the user is looking at the app
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+    return false
+  }
   try {
     if (typeof window !== 'undefined' && window.QyntraNative?.showChatBubble) {
       const raw = window.QyntraNative.showChatBubble(
@@ -126,7 +130,7 @@ export async function showNativeChatBubble({ peerId, name, preview, avatarUrl })
         String(avatarUrl || '')
       )
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-      return Boolean(parsed?.ok)
+      return Boolean(parsed?.ok) && !parsed?.deferred
     }
   } catch {
     /* ignore */

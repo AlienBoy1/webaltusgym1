@@ -91,10 +91,14 @@ function mergeUsersPreservingSettings(prev, incoming) {
 async function syncSupabaseSession(accessToken, refreshToken) {
   if (!accessToken || !refreshToken) return
   try {
-    await supabase.auth.setSession({
+    const work = supabase.auth.setSession({
       access_token: accessToken,
       refresh_token: refreshToken
     })
+    await Promise.race([
+      work,
+      new Promise((resolve) => setTimeout(resolve, 4000))
+    ])
   } catch (err) {
     console.warn('Supabase setSession failed:', err?.message || err)
   }
@@ -417,115 +421,188 @@ export const useAuthStore = create((set, get) => ({
   checkAuth: async () => {
     set({ initializing: true, loading: true })
 
-    // Native: Preferences survive WebView wipes / process kill — hydrate BEFORE reading tokens
-    try {
-      await hydrateNativeTokenStorage()
-    } catch {
-      /* ignore */
+    const endInit = (extra = {}) => {
+      set({ initializing: false, loading: false, ...extra })
     }
 
-    let token = getStoredToken()
-    let refreshToken = getStoredRefreshToken()
+    // Hard ceiling — never leave the boot theater forever (stuck Preferences / network)
+    const watchdog = window.setTimeout(() => {
+      if (!get().initializing) return
+      console.warn('checkAuth watchdog: forcing boot exit')
+      const token = getStoredToken()
+      const cached = loadCachedUser()
+      if (token) {
+        endInit({
+          isAuthenticated: true,
+          token,
+          refreshToken: getStoredRefreshToken(),
+          user: get().user || cached,
+          rememberMe: isRememberMeEnabled()
+        })
+      } else {
+        endInit({ isAuthenticated: false })
+      }
+    }, 10000)
 
-    // Last chance: read Preferences directly if WebView storage is still empty
-    if (!token || !refreshToken) {
+    try {
       try {
-        const native = await getNativePersistedTokens()
-        if (native.remember && (native.token || native.refreshToken)) {
-          await setAuthTokens(native.token, native.refreshToken, true)
-          token = getStoredToken() || native.token
-          refreshToken = getStoredRefreshToken() || native.refreshToken
+        await hydrateNativeTokenStorage()
+      } catch {
+        /* ignore */
+      }
+
+      let token = getStoredToken()
+      let refreshToken = getStoredRefreshToken()
+
+      // Last chance: read Preferences directly if WebView storage is still empty
+      if (!token || !refreshToken) {
+        try {
+          const native = await getNativePersistedTokens()
+          if (native.remember && (native.token || native.refreshToken)) {
+            await setAuthTokens(native.token, native.refreshToken, true)
+            token = getStoredToken() || native.token
+            refreshToken = getStoredRefreshToken() || native.refreshToken
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
-    }
 
-    const cached = loadCachedUser()
-    const remember = isRememberMeEnabled()
+      const cached = loadCachedUser()
+      const remember = isRememberMeEnabled()
 
-    if (token && cached) {
-      set({ user: cached, isAuthenticated: true, token, refreshToken, rememberMe: remember })
-    }
-
-    if (!token) {
-      // ONLY clear when Preferences also has nothing — never wipe durable session on hydrate race
-      let nativeHasSession = false
-      try {
-        const native = await getNativePersistedTokens()
-        nativeHasSession = Boolean(native.remember && (native.token || native.refreshToken))
-      } catch {
-        /* ignore */
-      }
-      if (!nativeHasSession) {
-        await clearAuthTokens()
-        persistCachedUser(null)
-      }
-      set({
-        isAuthenticated: false,
-        user: null,
-        token: null,
-        refreshToken: null,
-        initializing: false,
-        loading: false
-      })
-      return false
-    }
-
-    try {
-      await syncSupabaseSession(token, refreshToken)
-      const { data } = await api.get('/auth/me', { timeout: 15000 })
-      const prev = get().user
-      const user = mergeUsersPreservingSettings(prev, data.user)
-      persistCachedUser(user)
-      set({
-        user,
-        isAuthenticated: true,
-        rememberMe: isRememberMeEnabled(),
-        token: getStoredToken() || token,
-        refreshToken: getStoredRefreshToken() || refreshToken,
-        membershipNotice: data.membershipNotice || null,
-        // Treat session restore as a login for once-per-session prompts
-        authSessionTick: (get().authSessionTick || 0) + 1
-      })
-      return true
-    } catch (error) {
-      // Never wipe remember-me tokens on timeout/network — only on definitive auth failure
-      const isTimeout =
-        error?.code === 'TIMEOUT' ||
-        error?.code === 'ECONNABORTED' ||
-        error?.message === 'Auth timeout'
-      const isNetwork = !error?.response
-      const status = error?.response?.status
-      const isServerBlip = status >= 500 && status <= 599
-      if (isTimeout || isNetwork || isServerBlip) {
+      // Show cached session immediately so UI can leave boot even if /auth/me is slow
+      if (token && cached) {
         set({
+          user: cached,
           isAuthenticated: true,
           token,
           refreshToken,
+          rememberMe: remember,
+          initializing: false,
+          loading: false
+        })
+      }
+
+      if (!token) {
+        let nativeHasSession = false
+        try {
+          const native = await getNativePersistedTokens()
+          nativeHasSession = Boolean(native.remember && (native.token || native.refreshToken))
+        } catch {
+          /* ignore */
+        }
+        if (!nativeHasSession) {
+          try {
+            await clearAuthTokens()
+          } catch {
+            /* ignore */
+          }
+          persistCachedUser(null)
+        }
+        endInit({
+          isAuthenticated: false,
+          user: null,
+          token: null,
+          refreshToken: null
+        })
+        return false
+      }
+
+      try {
+        await syncSupabaseSession(token, refreshToken)
+        const { data } = await api.get('/auth/me', { timeout: 8000 })
+        const prev = get().user
+        const user = mergeUsersPreservingSettings(prev, data.user)
+        persistCachedUser(user)
+        endInit({
+          user,
+          isAuthenticated: true,
+          rememberMe: isRememberMeEnabled(),
+          token: getStoredToken() || token,
+          refreshToken: getStoredRefreshToken() || refreshToken,
+          membershipNotice: data.membershipNotice || null,
+          authSessionTick: (get().authSessionTick || 0) + 1
+        })
+        return true
+      } catch (error) {
+        const isTimeout =
+          error?.code === 'TIMEOUT' ||
+          error?.code === 'ECONNABORTED' ||
+          error?.message === 'Auth timeout'
+        const isNetwork = !error?.response
+        const status = error?.response?.status
+        const isServerBlip = status >= 500 && status <= 599
+        if (isTimeout || isNetwork || isServerBlip) {
+          endInit({
+            isAuthenticated: true,
+            token,
+            refreshToken,
+            user: get().user || cached,
+            rememberMe: isRememberMeEnabled()
+          })
+          return true
+        }
+        if (refreshToken) {
+          const refreshed = await get().refreshSession(refreshToken)
+          if (refreshed.success || refreshed.transient) {
+            endInit({
+              isAuthenticated: true,
+              user: get().user || cached,
+              token: getStoredToken() || token,
+              refreshToken: getStoredRefreshToken() || refreshToken
+            })
+            return true
+          }
+          // Keep cached session if refresh flaked but we already unlocked the UI
+          if (cached) {
+            endInit({
+              isAuthenticated: true,
+              user: cached,
+              token,
+              refreshToken,
+              rememberMe: isRememberMeEnabled()
+            })
+            return true
+          }
+          endInit({ isAuthenticated: false, user: null, token: null, refreshToken: null })
+          return false
+        }
+        try {
+          await clearAuthTokens()
+        } catch {
+          /* ignore */
+        }
+        persistCachedUser(null)
+        endInit({
+          user: null,
+          token: null,
+          refreshToken: null,
+          isAuthenticated: false
+        })
+        return false
+      }
+    } catch (err) {
+      console.warn('checkAuth fatal:', err?.message || err)
+      const token = getStoredToken()
+      const cached = loadCachedUser()
+      if (token) {
+        endInit({
+          isAuthenticated: true,
+          token,
+          refreshToken: getStoredRefreshToken(),
           user: get().user || cached,
           rememberMe: isRememberMeEnabled()
         })
         return true
       }
-      if (refreshToken) {
-        const refreshed = await get().refreshSession(refreshToken)
-        if (refreshed.success || refreshed.transient) {
-          return true
-        }
-        return false
-      }
-      await clearAuthTokens()
-      persistCachedUser(null)
-      set({
-        user: null,
-        token: null,
-        refreshToken: null,
-        isAuthenticated: false
-      })
+      endInit({ isAuthenticated: false })
       return false
     } finally {
-      set({ initializing: false, loading: false })
+      window.clearTimeout(watchdog)
+      if (get().initializing) {
+        set({ initializing: false, loading: false })
+      }
     }
   }
 }))

@@ -2455,38 +2455,61 @@ export default function Chat() {
                           label: chatBubbleOn ? 'Desactivar burbuja de chat' : 'Activar burbuja de chat',
                           action: async () => {
                             setShowThreadMenu(false)
+                            // Let the menu portal unmount before any dialog (prevents black scrim lock)
+                            await new Promise((r) => window.setTimeout(r, 180))
+
                             if (!isNativeApp()) {
                               toast('La burbuja de chat está disponible en la app Android')
                               return
                             }
-                            const next = !chatBubbleOn
-                            if (next) {
-                              const { checkWorkoutOverlayPermission, requestWorkoutOverlayPermission, markPendingWorkoutOverlayPrompt } =
-                                await import('../../utils/workoutSession')
-                              const overlay = await checkWorkoutOverlayPermission()
-                              if (overlay !== 'granted') {
-                                const ok = await dialog.confirm(
-                                  'Se abrirá Ajustes de Android. Activa “Aparecer encima de otras apps” para Qyntra y regresa. Así la burbuja podrá mostrarse al recibir mensajes.',
-                                  {
-                                    title: 'Activar burbuja de chat',
-                                    confirmLabel: 'Configurar',
-                                    cancelLabel: 'Cancelar',
-                                    tone: 'info'
-                                  }
-                                )
-                                if (!ok) return
-                                markPendingWorkoutOverlayPrompt()
-                                await requestWorkoutOverlayPermission()
-                              }
+
+                            const peerId = selectedChat?.otherId
+                            if (!peerId) return
+
+                            const enabling = !chatBubbleOn
+
+                            if (!enabling) {
+                              setChatBubbleEnabled(peerId, false)
+                              setChatBubbleOn(false)
+                              await syncChatBubblesToNative()
+                              void hideNativeChatBubble(peerId)
+                              toast.success('Burbuja desactivada para este chat')
+                              return
                             }
-                            setChatBubbleEnabled(selectedChat.otherId, next)
-                            setChatBubbleOn(next)
+
+                            // Save preference FIRST — bubble must NOT appear until a new message arrives
+                            setChatBubbleEnabled(peerId, true)
+                            setChatBubbleOn(true)
                             await syncChatBubblesToNative()
-                            toast.success(
-                              next
-                                ? 'Burbuja activa: verás una cabeza flotante al recibir mensajes fuera de la app'
-                                : 'Burbuja desactivada para este chat'
-                            )
+                            // Never preview/show bubble on enable
+                            void hideNativeChatBubble(peerId)
+
+                            const { ensureOverlayPermission } = await import('../../utils/overlayPermission')
+                            const status = await ensureOverlayPermission(dialog, {
+                              title: 'Activar burbuja de chat',
+                              message:
+                                'Para mostrar la cabeza flotante cuando te escriban, activa “Aparecer encima de otras apps” para Qyntra. Se abrirá Ajustes de Android.',
+                              confirmLabel: 'Configurar',
+                              cancelLabel: 'Ahora no',
+                              settleMs: 200
+                            })
+
+                            if (status === 'prompted') {
+                              toast(
+                                'Preferencia guardada. Activa el permiso y vuelve: la burbuja solo aparecerá cuando recibas un mensaje.',
+                                { duration: 8000 }
+                              )
+                            } else if (status === 'granted') {
+                              toast.success(
+                                'Burbuja lista. Aparecerá al recibir un mensaje de este chat fuera de la app.',
+                                { duration: 5500 }
+                              )
+                            } else {
+                              toast(
+                                'Preferencia guardada. Sin el permiso de “aparecer encima”, solo verás la notificación normal.',
+                                { duration: 7000 }
+                              )
+                            }
                           }
                         },
                         {
